@@ -41,6 +41,7 @@ Este inventario se hizo porque el dueño lo pidió: «verifica si falta alguna»
 | Dirección rápida | `components/DireccionRapida.tsx` | Al llenar el carrito por primera vez |
 | Aviso de pago pendiente | `components/PagoPendiente.tsx` | Al volver debiendo el comprobante |
 | Cuenta | `screens/Account.tsx` | Pestaña «Cuenta» |
+| Buscar | `screens/Buscar.tsx` | Pestaña «Buscar» (desde el 2026-09-26) |
 
 ### Las seis puertas
 
@@ -188,10 +189,22 @@ marca. El orden nuevo, de arriba abajo:
 - **Aviso de pago pendiente**, si lo hay. ⚠️ Reemplazó al secuestro: antes,
   reabrir con un pedido sin pagar entraba DIRECTO a la pantalla de pago. Ahora
   se abre la tienda con el aviso a la vista y se entra tocándolo.
-- **BUSCADOR** de ancho completo, justo encima de la carta que busca. Estuvo
-  arriba del todo entre el 2026-08-25 y el 2026-08-26 para no obligar a pasar la
-  foto; con el héroe nuevo eso partía la marca en dos —el logo y el nombre
-  quedaban debajo de un campo de formulario—.
+- ~~**BUSCADOR** en la portada~~ **SE MUDÓ A SU PROPIA PANTALLA el
+  2026-09-26** (`screens/Buscar.tsx`), a pedido del dueño. Fue un campo fijo
+  arriba del todo (2026-08-25), luego encima de la carta, y después una barra
+  escondida que abría la pestaña «Buscar». En todas sus versiones compartía
+  sitio con la portada: el héroe seguía arriba y los resultados ocupaban el
+  lugar de la carta, así que parecía la portada rota.
+  · Es una CAPA (`z-[35]`) sobre la tienda: la tienda conserva su scroll, y al
+    volver el cliente está donde estaba. Va DEBAJO de la barra inferior (z-40)
+    —el carrito sigue a mano— y de las hojas (z-50), para que la ficha de un
+    resultado se abra encima.
+  · Sin escribir enseña lo que buscó antes en ese teléfono y la carta por
+    secciones; con resultados, los agrupa por sección con la MISMA tarjeta de la
+    carta; sin resultados, el estado vacío y las secciones.
+  · El campo va a 16 px (por debajo, Safari amplía la página), y el foco se da
+    dentro del toque sobre un campo escondido que se lo pasa al real: iOS solo
+    abre el teclado así.
 - ~~**Categorías en círculos**~~ **RETIRADAS el 2026-08-11.** Pintaban la misma
   lista (`grupos`) que las pestañas de justo debajo.
 - **Barra inferior fija**: Inicio · Buscar · Carrito · **Cuenta**.
