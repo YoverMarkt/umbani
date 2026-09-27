@@ -4366,6 +4366,22 @@ begin
     raise exception 'pasado el tope debía callar, y fue %', v_r;
   end if;
 
+  -- ⚠️ …pero AVISA, y solo esta vez (2026-09-27). El dueño se quedó escribiendo
+  -- MENÚ a un chat mudo sin saber por qué ni hasta cuándo.
+  if (v_r->>'aviso')::boolean is not true then
+    raise exception 'el mensaje que cruza el techo debía avisar: %', v_r;
+  end if;
+  if (v_r->>'hasta')::timestamptz < now() + interval '11 hours 59 minutes' then
+    raise exception 'el aviso debía decir hasta cuándo (12 h): %', v_r;
+  end if;
+  v_r := public.claim_marketplace_reply(v_cliente, 25, 12);
+  if (v_r->>'aviso')::boolean is true then
+    raise exception 'el silenciado recibe el aviso UNA vez, no en cada intento: %', v_r;
+  end if;
+  if v_r->>'hasta' is null then
+    raise exception 'el silencio debe seguir diciendo hasta cuándo: %', v_r;
+  end if;
+
   -- Y el silencio NO se levanta al cambiar de hora: con una ventana que se
   -- reinicia sola, quien molesta con paciencia pagaría el techo entero cada
   -- hora — 25 por hora son 600 mensajes pagados al día.
