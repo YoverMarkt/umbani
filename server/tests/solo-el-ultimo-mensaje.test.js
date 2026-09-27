@@ -192,7 +192,7 @@ const armarMarketplace = (conversacion) => {
     searchMarketplaceBusinesses: vi.fn(async () => [LOCALES.pizzerias[0]]),
     marketplaceKnownTerm: vi.fn(async () => null),
     cancelUnpaidOrderOnPurpose: vi.fn(async () => 0),
-    revokeAllStorefrontSessions: vi.fn(async () => 0),
+    revokeStorefrontSessionsOnExit: vi.fn(async () => 0),
   }
   const deps = {
     database,
@@ -259,7 +259,7 @@ describe('el caso del dueño, con la función real', () => {
     })
     await atender(m.deps, 'bbbbb.1')
     expect(m.database.cancelUnpaidOrderOnPurpose).not.toHaveBeenCalled()
-    expect(m.database.revokeAllStorefrontSessions).not.toHaveBeenCalled()
+    expect(m.database.revokeStorefrontSessionsOnExit).not.toHaveBeenCalled()
   })
 
   it('un número escrito que no es opción no se busca como si fuera comida', async () => {

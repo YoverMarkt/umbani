@@ -3357,6 +3357,55 @@ revoke all on function public.revoke_storefront_sessions_except(uuid, uuid)
 grant execute on function public.revoke_other_storefront_sessions(uuid, uuid)
   to service_role;
 
+-- Al salir con MENÚ o «Empezar de nuevo»: el enlace lo deciden los PEDIDOS,
+-- no el chat (2026-09-27). Ver `migration-2026-09-27-enlaces-al-salir.sql`.
+create or replace function public.revoke_storefront_sessions_on_exit(
+  p_customer_id uuid
+)
+returns integer
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_revocadas integer;
+begin
+  if p_customer_id is null then
+    return 0;
+  end if;
+
+  with revocadas as (
+    update public.storefront_sessions as sesion
+       set revoked_at = now()
+     where sesion.customer_id = p_customer_id
+       and sesion.revoked_at is null
+       -- ⚠️ La excepción: el local donde todavía se le necesita. Se mira el
+       -- pedido TAL COMO ESTÁ AHORA, después de que MENÚ cancelara el suyo.
+       and not exists (
+         select 1
+           from public.orders as pedido
+          where pedido.customer_id = p_customer_id
+            and pedido.business_id = sesion.business_id
+            and pedido.source      = 'storefront'
+            and pedido.status in ('esperando_pago', 'pago_en_revision')
+       )
+    returning 1
+  )
+  select count(*)::integer into v_revocadas from revocadas;
+
+  return coalesce(v_revocadas, 0);
+end;
+$$;
+
+comment on function public.revoke_storefront_sessions_on_exit(uuid) is
+  'MENÚ y «Empezar de nuevo»: revoca todos los enlaces del cliente salvo los de '
+  'un local donde aún tenga un pedido de la tienda esperando pago o en revisión.';
+
+revoke all on function public.revoke_storefront_sessions_on_exit(uuid)
+  from public, anon, authenticated;
+grant execute on function public.revoke_storefront_sessions_on_exit(uuid)
+  to service_role;
+
 create index if not exists idx_storefront_sessions_por_cliente
   on public.storefront_sessions (customer_id) where revoked_at is null;
 
@@ -16581,7 +16630,16 @@ begin
   into v_business
   from public.businesses
   where id = p_business_id
-  for share;
+  -- ⚠️ FOR NO KEY UPDATE, no FOR SHARE (2026-09-27). El disparador que
+  -- numera el pedido (`assign_order_number`) ESCRIBE en esta misma fila
+  -- (`last_order_number + 1`). Con FOR SHARE, dos pedidos a la vez en el
+  -- mismo local tomaban los dos el bloqueo compartido, luego cada uno
+  -- esperaba al otro para escribir, y PostgreSQL mataba uno con «deadlock
+  -- detected»: el cliente veía fallar su pedido. Tomando desde el principio
+  -- el bloqueo que igual se iba a necesitar, el segundo ESPERA unos
+  -- milisegundos a que el primero termine, en vez de chocar. No choca con
+  -- las foráneas (FOR KEY SHARE), así que nada más se frena.
+  for no key update;
   if not found then
     raise exception using errcode = '42501', message = 'El negocio no existe';
   end if;

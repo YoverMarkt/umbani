@@ -37,7 +37,7 @@ const armar = ({ vista = null, estado = 'navegando' } = {}) => {
     isPlatformBlocked: vi.fn().mockResolvedValue(false),
     isContactBlocked: vi.fn().mockResolvedValue(false),
     cancelUnpaidOrderOnPurpose: vi.fn().mockResolvedValue(0),
-    revokeAllStorefrontSessions: vi.fn().mockResolvedValue(0),
+    revokeStorefrontSessionsOnExit: vi.fn().mockResolvedValue(0),
     logMarketplaceEvent: vi.fn().mockResolvedValue(undefined),
   }
   const enviados = []

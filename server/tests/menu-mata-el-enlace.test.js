@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MENÚ MATA EL ENLACE ANTERIOR
@@ -42,7 +43,7 @@ const armar = ({ estado = 'en_local', bloqueado = true } = {}) => {
     isPlatformBlocked: vi.fn().mockResolvedValue(false),
     isContactBlocked: vi.fn().mockResolvedValue(false),
     cancelUnpaidOrderOnPurpose: vi.fn().mockResolvedValue(1),
-    revokeAllStorefrontSessions: vi.fn().mockResolvedValue(2),
+    revokeStorefrontSessionsOnExit: vi.fn().mockResolvedValue(2),
   }
   return {
     database,
@@ -65,7 +66,7 @@ describe('MENÚ revoca el enlace anterior', () => {
   it('con un local elegido, mata los enlaces vivos', async () => {
     const m = armar({ estado: 'en_local' })
     await escribir(m.deps, 'menu')
-    expect(m.database.revokeAllStorefrontSessions).toHaveBeenCalledWith('cli-1')
+    expect(m.database.revokeStorefrontSessionsOnExit).toHaveBeenCalledWith('cli-1')
   })
 
   it('y también «Empezar de nuevo» ESCRITO, que entra por el otro camino', async () => {
@@ -79,7 +80,7 @@ describe('MENÚ revoca el enlace anterior', () => {
       flow_state: { vista: { vista: 'confirmando_reinicio', pagina: 0 } }, version: 3,
     })
     await escribir(m.deps, '✅ Empezar de nuevo')
-    expect(m.database.revokeAllStorefrontSessions).toHaveBeenCalledWith('cli-1')
+    expect(m.database.revokeStorefrontSessionsOnExit).toHaveBeenCalledWith('cli-1')
   })
 
   it('el botón como llega DE VERDAD: con YCloud es su NÚMERO, «1», no su título', async () => {
@@ -96,7 +97,7 @@ describe('MENÚ revoca el enlace anterior', () => {
     })
     await escribir(m.deps, '1')
     expect(m.database.cancelUnpaidOrderOnPurpose).toHaveBeenCalled()
-    expect(m.database.revokeAllStorefrontSessions).toHaveBeenCalledWith('cli-1')
+    expect(m.database.revokeStorefrontSessionsOnExit).toHaveBeenCalledWith('cli-1')
   })
 
   it('«2» —Seguir mi pedido— NO los revoca todos: devuelve el enlace', async () => {
@@ -106,21 +107,35 @@ describe('MENÚ revoca el enlace anterior', () => {
       flow_state: { vista: { vista: 'confirmando_reinicio', pagina: 0 } }, version: 3,
     })
     await escribir(m.deps, '2')
-    expect(m.database.revokeAllStorefrontSessions).not.toHaveBeenCalled()
+    expect(m.database.revokeStorefrontSessionsOnExit).not.toHaveBeenCalled()
   })
 
-  // ⚠️ LA EXCEPCIÓN. Sin ella, quien ya transfirió se queda sin la pantalla
-  // por donde manda su comprobante.
-  it('NO lo revoca a quien debe un comprobante', async () => {
+  // ⚠️ LA EXCEPCIÓN —quien debe un comprobante o lo tiene en revisión conserva
+  // su enlace— ya NO se decide aquí con el estado del chat, sino en la base con
+  // los pedidos (`revoke_storefront_sessions_on_exit`, probada en
+  // `verificar-esquema.sql`). Hasta el 2026-09-27 esta prueba exigía «NO lo
+  // revoca a quien debe un comprobante»… con la cancelación devolviendo 1: es
+  // decir, daba por bueno cancelar el pedido y dejarle el enlace vivo. Le pasó
+  // al amigo del dueño con el #25 de La Abuelita.
+  it('a quien debe un comprobante: PRIMERO se cancela, DESPUÉS se deciden los enlaces', async () => {
     const m = armar({ estado: 'esperando_comprobante' })
     await escribir(m.deps, 'menu')
-    expect(m.database.revokeAllStorefrontSessions).not.toHaveBeenCalled()
+    expect(m.database.cancelUnpaidOrderOnPurpose).toHaveBeenCalled()
+    expect(m.database.revokeStorefrontSessionsOnExit).toHaveBeenCalledWith('cli-1')
+    expect(m.database.cancelUnpaidOrderOnPurpose.mock.invocationCallOrder[0])
+      .toBeLessThan(m.database.revokeStorefrontSessionsOnExit.mock.invocationCallOrder[0])
   })
 
-  it('ni a quien lo tiene en revisión', async () => {
+  it('a quien lo tiene en revisión también se le pregunta a la base, que es quien sabe', async () => {
     const m = armar({ estado: 'pago_en_revision' })
     await escribir(m.deps, 'menu')
-    expect(m.database.revokeAllStorefrontSessions).not.toHaveBeenCalled()
+    expect(m.database.revokeStorefrontSessionsOnExit).toHaveBeenCalledWith('cli-1')
+  })
+
+  it('el estado del chat ya no decide nada: no se le pasa', async () => {
+    const fuente = readFileSync(new URL('../src/services/marketplace-entry.ts', import.meta.url), 'utf8')
+    expect(fuente).not.toMatch(/matarEnlaceAnterior\([^)]*estadoDeLaConversacion/)
+    expect(fuente).not.toMatch(/necesitaSuEnlace/)
   })
 
   // ─────────────────────────────────────────────────────────────────────
@@ -157,7 +172,7 @@ describe('MENÚ revoca el enlace anterior', () => {
   // 403 de `readStorefrontSession`.
   it('si la revocación revienta, MENÚ funciona igual', async () => {
     const m = armar({ estado: 'en_local' })
-    m.database.revokeAllStorefrontSessions.mockRejectedValue(new Error('base caída'))
+    m.database.revokeStorefrontSessionsOnExit.mockRejectedValue(new Error('base caída'))
     await escribir(m.deps, 'menu')
     expect(m.enviados.flatMap(e => e.options)).toContain('🍕 Pizzerías')
   })

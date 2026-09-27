@@ -5748,6 +5748,93 @@ $$;
 select '✅ «seguir mi pedido» deja vivo SOLO el enlace nuevo, salvo donde se debe dinero' as resultado;
 
 -- ═══════════════════════════════════════════════════════════════════════════
+-- AL SALIR CON MENÚ, EL ENLACE LO DECIDEN LOS PEDIDOS (2026-09-27)
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+-- El caso real del amigo del dueño: pidió en La Abuelita (#25), escribió MENÚ
+-- esperando comprobante, el pedido SE CANCELÓ… y el enlace siguió abriendo la
+-- tienda. La excepción «quien debe comprobante conserva su enlace» se aplicaba
+-- mirando el estado del chat de ANTES de cancelar.
+do $$
+declare
+  v_abuelita  uuid;
+  v_ceviche   uuid;
+  v_helado    uuid;
+  v_cliente   uuid;
+  v_s_abuela  uuid;
+  v_s_cevi    uuid;
+  v_s_helado  uuid;
+  v_revocadas integer;
+  v_estado    timestamptz;
+begin
+  insert into businesses (
+    slug, name, type, whatsapp_provider, whatsapp_number, ycloud_number,
+    takes_orders, chat_mode
+  ) values
+    ('abuela-salir-v', 'La Abuelita', 'almuerzos', 'ycloud', '+593900668001', '+593900668001', true, 'miniapp'),
+    ('cevi-salir-v', 'Cevichería', 'restaurante', 'ycloud', '+593900668002', '+593900668002', true, 'miniapp'),
+    ('helado-salir-v', 'Heladería', 'heladeria', 'ycloud', '+593900668004', '+593900668004', true, 'miniapp');
+
+  select id into v_abuelita from businesses where slug = 'abuela-salir-v';
+  select id into v_ceviche  from businesses where slug = 'cevi-salir-v';
+  select id into v_helado   from businesses where slug = 'helado-salir-v';
+
+  insert into public.customers (phone) values ('593900668100') returning id into v_cliente;
+
+  -- Primero la Cevichería, como en la vida real: ya mandó el comprobante, se está revisando. Tiene que poder
+  -- seguir viendo su pedido.
+  insert into public.storefront_sessions (business_id, customer_id, token_hash, contact_phone, expires_at)
+  values (v_ceviche, v_cliente, repeat('f1', 32), '593900668100', null) returning id into v_s_cevi;
+  insert into public.orders (business_id, customer_id, contact_phone, source, status, subtotal, total)
+  values (v_ceviche, v_cliente, '593900668100', 'storefront', 'pago_en_revision', 9, 9);
+  -- Después La Abuelita (un pedido en revisión no impide otro): el pedido esperando comprobante, que MENÚ va a cancelar.
+  insert into public.storefront_sessions (business_id, customer_id, token_hash, contact_phone, expires_at)
+  values (v_abuelita, v_cliente, repeat('f0', 32), '593900668100', null) returning id into v_s_abuela;
+  insert into public.orders (business_id, customer_id, contact_phone, source, status, subtotal, total)
+  values (v_abuelita, v_cliente, '593900668100', 'storefront', 'esperando_pago', 3.5, 3.5);
+  -- (Un segundo pedido esperando comprobante en OTRO local no puede existir:
+  -- `orders_limit_open_per_customer` lo impide —«envíalo y podrás hacer
+  -- otro»—, así que no hay ese caso que probar.)
+  -- Heladería: nada pendiente.
+  insert into public.storefront_sessions (business_id, customer_id, token_hash, contact_phone, expires_at)
+  values (v_helado, v_cliente, repeat('f3', 32), '593900668100', null) returning id into v_s_helado;
+
+  -- MENÚ, en su orden: primero se cancela el pedido del local elegido…
+  if public.cancel_unpaid_order_on_purpose(v_abuelita, v_cliente) <> 1 then
+    raise exception 'MENÚ no canceló el pedido sin pagar de La Abuelita';
+  end if;
+  -- …y DESPUÉS se deciden los enlaces, mirando los pedidos tal como quedaron.
+  v_revocadas := public.revoke_storefront_sessions_on_exit(v_cliente);
+  if v_revocadas <> 2 then
+    raise exception 'debía revocar La Abuelita y la Heladería, y revocó %', v_revocadas;
+  end if;
+
+  select revoked_at into v_estado from public.storefront_sessions where id = v_s_abuela;
+  if v_estado is null then
+    raise exception 'el enlace de La Abuelita siguió vivo con su pedido ya CANCELADO (el caso del #25)';
+  end if;
+  select revoked_at into v_estado from public.storefront_sessions where id = v_s_cevi;
+  if v_estado is not null then
+    raise exception 'se revocó el enlace de quien tiene el pago EN REVISIÓN';
+  end if;
+  select revoked_at into v_estado from public.storefront_sessions where id = v_s_helado;
+  if v_estado is null then
+    raise exception 'el enlace de un local sin nada pendiente siguió vivo';
+  end if;
+
+  -- Sin cliente no se toca nada.
+  if public.revoke_storefront_sessions_on_exit(null) <> 0 then
+    raise exception 'sin cliente revocó enlaces';
+  end if;
+
+  delete from businesses where id in (v_abuelita, v_ceviche, v_helado);
+  delete from public.customers where id = v_cliente;
+end;
+$$;
+
+select '✅ al salir con MENÚ el enlace lo deciden los pedidos: cae el del pedido recién cancelado' as resultado;
+
+-- ═══════════════════════════════════════════════════════════════════════════
 -- UNA SOLA DEFINICIÓN DE «BLOQUEADO» (2026-08-29)
 -- ═══════════════════════════════════════════════════════════════════════════
 --
