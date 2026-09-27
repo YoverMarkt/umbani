@@ -31,7 +31,7 @@ import { securityHeaders } from './middleware/security-headers'
 import * as bot from './services/bot-entry'
 import { processInboundWebhook } from './services/inbound-webhook'
 import * as tunnel from './services/tunnel'
-import { createWebhookInboxWorker } from './services/webhook-inbox-worker'
+import { createWebhookInboxWorker, fallaQueSeRegistra } from './services/webhook-inbox-worker'
 import { getBotInstance, setupTelegram } from './integrations/telegram'
 import authRouter = require('./routes/auth.routes')
 import adminRouter = require('./routes/admin.routes')
@@ -118,6 +118,12 @@ const webhookInboxWorker = createWebhookInboxWorker({
     //
     // `void` y `.catch`: registrar el error no puede provocar otro ni retrasar
     // el reintento del evento.
+    //
+    // ⚠️ Salvo el sondeo que falla UNA vez y se recupera al segundo
+    // (2026-09-27): arriba ya quedó en la consola, pero en el registro le
+    // costaba al dueño un día de correos del vigía por un corte de un segundo.
+    // Ver `CORTE_QUE_SE_REGISTRA_MS`.
+    if (!fallaQueSeRegistra(context)) return
     void recordError({
       category: 'canal',
       code: `inbox_${context.phase}`,

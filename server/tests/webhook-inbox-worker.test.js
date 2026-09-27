@@ -5,8 +5,10 @@ import { describe, expect, it, vi } from 'vitest'
 
 const require = createRequire(import.meta.url)
 const {
+  CORTE_QUE_SE_REGISTRA_MS,
   WEBHOOK_INBOX_ERROR_MAX_LENGTH,
   createWebhookInboxWorker,
+  fallaQueSeRegistra,
   sanitizeWebhookInboxError,
 } = require('../dist/services/webhook-inbox-worker')
 const serverDir = fileURLToPath(new URL('..', import.meta.url))
@@ -343,6 +345,72 @@ describe('worker del inbox durable de webhooks', () => {
       report => report.context.phase === 'poll',
     )).toBe(true))
     await worker.stop()
+  })
+
+  // ── Un sondeo suelto no es un corte (2026-09-27) ────────────────────────
+  //
+  // Cada sondeo fallido iba al registro, y el vigía avisa de cualquier entrada
+  // de las últimas 24 h: 11 «fetch failed» de un segundo en un mes —todos
+  // recuperados en el sondeo siguiente— le costaron al dueño días de correos.
+  it('mide cuánto lleva la base sin contestar al fallar el sondeo', async () => {
+    const timers = manualScheduler()
+    let reloj = 10_000
+    const now = vi.spyOn(Date, 'now').mockImplementation(() => reloj)
+    let falla = false
+    const repo = repository({
+      leaseWebhookEvents: vi.fn(async () => (falla
+        ? { data: null, error: { message: 'TypeError: fetch failed' } }
+        : ok([]))),
+    })
+    const reports = []
+    const worker = createWebhookInboxWorker({
+      workerId: 'worker-silencio',
+      repository: repo,
+      scheduler: timers.scheduler,
+      processEvent: async () => {},
+      onError(error, context) { reports.push(context) },
+    })
+
+    worker.start()
+    timers.runByDelay(0) // la base contesta a los 10 s
+    // Que termine esa vuelta —deja programada la siguiente— antes de mover nada.
+    await vi.waitFor(() => expect(timers.countByDelay(1_000)).toBe(1))
+    falla = true
+    reloj = 11_000
+    // La vuelta siguiente ya falla: un segundo después de la última respuesta.
+    await correrCuandoExista(timers.scheduler, timers.runByDelay, timers.countByDelay, 1_000)
+    await vi.waitFor(() => expect(reports).toHaveLength(1))
+    expect(reports[0]).toMatchObject({ phase: 'poll', silencioDeLaBaseMs: 1_000 })
+
+    reloj = 75_000
+    await correrCuandoExista(timers.scheduler, timers.runByDelay, timers.countByDelay, 1_000)
+    await vi.waitFor(() => expect(reports).toHaveLength(2))
+    expect(reports[1].silencioDeLaBaseMs).toBe(65_000)
+
+    now.mockRestore()
+    await worker.stop()
+  })
+
+  it('solo el corte que DURA va al registro; lo demás, siempre', () => {
+    // Un segundo: ruido. Un minuto sin base: los clientes ya esperan.
+    expect(fallaQueSeRegistra({ phase: 'poll', silencioDeLaBaseMs: 1_000 })).toBe(false)
+    expect(fallaQueSeRegistra({ phase: 'poll', silencioDeLaBaseMs: 31_000 })).toBe(false)
+    expect(fallaQueSeRegistra({ phase: 'poll', silencioDeLaBaseMs: CORTE_QUE_SE_REGISTRA_MS })).toBe(true)
+    // Sin medida no se adivina: se registra, como antes.
+    expect(fallaQueSeRegistra({ phase: 'poll' })).toBe(true)
+    // Un mensaje concreto que no se pudo procesar o cerrar nunca es ruido.
+    expect(fallaQueSeRegistra({ phase: 'process', silencioDeLaBaseMs: 0 })).toBe(true)
+    expect(fallaQueSeRegistra({ phase: 'complete' })).toBe(true)
+  })
+
+  it('el arranque decide con esa regla ANTES de registrar', () => {
+    // Construido y desconectado es el fallo que más se repite aquí: la regla
+    // no sirve de nada si `index.ts` registra sin preguntarle.
+    const indice = readFileSync(`${serverDir}/src/index.ts`, 'utf8')
+    const alFallar = indice.slice(indice.indexOf('onError: (error, context) =>'))
+    expect(alFallar.indexOf('if (!fallaQueSeRegistra(context)) return')).toBeGreaterThan(-1)
+    expect(alFallar.indexOf('if (!fallaQueSeRegistra(context)) return'))
+      .toBeLessThan(alFallar.indexOf('recordError('))
   })
 
   it('solo queda ready tras una operación SQL reciente y válida', async () => {

@@ -127,6 +127,11 @@ function dependenciasDelCanario(
       // escribirían en la conversación de un cliente que no existe.
       marcarUltimaLista: async () => false,
       anotarUltimaRespuesta: async () => undefined,
+      // Ni los pasos del menú (2026-09-27). Se colaban: en cada vuelta intentaba
+      // guardarlos con el cliente 'canario', que no es un uuid, y el log se
+      // llenaba de «❌ registrar el paso del menú». Si llegara a funcionar,
+      // inflaría los reportes de «Uso de Umbani» con visitas que no existen.
+      logMarketplaceEvent: async () => undefined,
       isPlatformBlocked: async () => false,
       isContactBlocked: async () => false,
     } as unknown as MarketplaceEntryDeps['database'],
