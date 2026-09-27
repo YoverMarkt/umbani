@@ -101,6 +101,25 @@ cliente se queja. En julio de 2026 fueron **cinco días**.
       `canal` ni `envio`.
 - [ ] Mándale un mensaje real al bot desde WhatsApp y espera respuesta.
 
+## 6. Retirar del registro lo que este cambio arregla
+
+El dueño lo pidió así (2026-09-27): **lo arreglado desaparece**. Si se queda
+30 días en la pantalla de Errores, cree que algo sigue mal, y el vigía de
+atención le manda correos un día entero por algo ya resuelto.
+
+```bash
+npm run errores -w @botpanel/server                              # ver el registro
+npm run errores -w @botpanel/server -- <código> [<código>…] --hasta=<hora del despliegue>
+# …revisa lo que enseña, y repite con --borrar
+```
+
+- `--hasta` es la hora en que el arreglo quedó **corriendo** (la de
+  `verify:deploy`). Lo que se repitió después **no se toca**: no estaba
+  arreglado, y el comando lo dice.
+- Si el error vuelve, **reaparece solo**: el registro crea la fila otra vez.
+- Solo lo que ESTE cambio resuelve. Lo que depende del dueño —recargar saldo
+  de YCloud u OpenAI— se retira cuando él confirma que lo hizo.
+
 ## Si algo salió mal
 
 | Síntoma | Qué mirar primero |

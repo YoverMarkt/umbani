@@ -62,6 +62,40 @@ export interface WebhookInboxWorkerErrorContext {
   phase: WebhookInboxWorkerPhase
   eventId?: string
   provider?: string
+  /**
+   * Solo en `poll`: cuánto lleva la base sin contestarle a este worker.
+   * Distingue un sondeo suelto que falla —y el siguiente, un segundo después,
+   * ya funciona— de un corte de verdad.
+   */
+  silencioDeLaBaseMs?: number
+}
+
+/**
+ * Cuánto tiene que durar un corte del sondeo para ir al registro de errores.
+ *
+ * ⚠️ Nace del 2026-09-27. Cada sondeo fallido se registraba, y el vigía avisa
+ * de CUALQUIER entrada de las últimas 24 h: un solo «fetch failed» de un
+ * segundo —11 en un mes, todos recuperados en el sondeo siguiente, sin un
+ * mensaje perdido— le costaba al dueño un día entero de correos de alarma.
+ * Una alarma que suena por nada se acaba ignorando, y entonces no avisa del
+ * corte que sí importa.
+ *
+ * Sesenta segundos: dos esperas seguidas del límite de 30 s de la base, o un
+ * minuto de «fetch failed» sin parar. Ahí los clientes ya esperan, y vale la
+ * pena enterarse.
+ */
+export const CORTE_QUE_SE_REGISTRA_MS = 60_000
+
+/**
+ * ¿Este fallo va al registro que ve el superadmin (y que lee el vigía)?
+ *
+ * Todo lo que no sea un sondeo breve, sí: un mensaje que no se pudo procesar
+ * o cerrar es de un cliente concreto, y eso nunca es ruido. La consola sigue
+ * recibiéndolos TODOS, también los breves.
+ */
+export function fallaQueSeRegistra(context: WebhookInboxWorkerErrorContext): boolean {
+  if (context.phase !== 'poll') return true
+  return (context.silencioDeLaBaseMs ?? CORTE_QUE_SE_REGISTRA_MS) >= CORTE_QUE_SE_REGISTRA_MS
 }
 
 export interface WebhookInboxWorkerOptions {
@@ -306,6 +340,9 @@ export function createWebhookInboxWorker(
   // el mensaje nuevo, así que al terminar se vuelve a mirar en este plazo.
   let vueltaPedida: number | null = null
   let lastDatabaseSuccessAt: number | null = null
+  // Desde cuándo corre: si la base no ha contestado NUNCA, el silencio se mide
+  // desde aquí.
+  let arrancoEn: number | null = null
 
   const markDatabaseSuccess = (): void => {
     lastDatabaseSuccessAt = Date.now()
@@ -663,7 +700,11 @@ export function createWebhookInboxWorker(
           return reservados
         })
         .catch((error) => {
-          report(error, { phase: 'poll' })
+          const ahora = Date.now()
+          report(error, {
+            phase: 'poll',
+            silencioDeLaBaseMs: Math.max(0, ahora - (lastDatabaseSuccessAt ?? arrancoEn ?? ahora)),
+          })
           return 0
         })
         .then((reservados) => {
@@ -711,6 +752,7 @@ export function createWebhookInboxWorker(
     start() {
       if (running) return
       running = true
+      arrancoEn = Date.now()
       programar(0)
     },
     stop,

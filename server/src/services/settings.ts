@@ -1,7 +1,13 @@
 import { createClient } from '@supabase/supabase-js'
 import path from 'node:path'
+import { exigirBaseLocalEnPruebas } from '../lib/solo-base-local-en-pruebas'
 
 require('dotenv').config({ path: path.join(__dirname, '../../.env') })
+
+// Bajo Vitest, solo una base local: este es el SEGUNDO cliente del servidor, y
+// sin la guarda aquí también, las pruebas lanzadas desde la raíz leerían los
+// ajustes de PRODUCCIÓN. Ver `lib/solo-base-local-en-pruebas`.
+exigirBaseLocalEnPruebas(process.env.SUPABASE_URL)
 
 const supabase = createClient(
   process.env.SUPABASE_URL as string,

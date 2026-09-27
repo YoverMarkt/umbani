@@ -37,6 +37,11 @@ function armar({ respuestas, escrituras = [], productos = [{ id: 'p1', name: 'Al
     resolveMarketplaceCustomer: async () => { escrituras.push('crear cliente'); return { id: 'x' } },
     advanceConversation: async () => { escrituras.push('escribir conversación'); return {} },
     claimMarketplaceReply: async () => { escrituras.push('gastar del techo'); return {} },
+    // ⚠️ Se colaba hasta el 2026-09-27: el canario no lo sustituía, y en cada
+    // vuelta intentaba guardar pasos del menú con el cliente 'canario'. Fallaba
+    // (no es un uuid) y solo ensuciaba el log — pero si llegara a funcionar,
+    // inflaría los reportes de «Uso de Umbani» con visitas que no existen.
+    logMarketplaceEvent: async () => { escrituras.push('registrar paso del menú') },
   }
   const errores = []
   const canario = crearCanario({
@@ -47,6 +52,10 @@ function armar({ respuestas, escrituras = [], productos = [{ id: 'p1', name: 'Al
       await deps.database.resolveMarketplaceCustomer(entrada.from)
       await deps.database.advanceConversation('x', { flowState: {} }, 1)
       await deps.database.claimMarketplaceReply('x')
+      // Como hace la entrada de verdad: sin la función, no registra.
+      if (deps.database.logMarketplaceEvent) {
+        await deps.database.logMarketplaceEvent({ customerId: 'x', tipo: 'menu' })
+      }
       const texto = respuestas[entrada.text]
       if (texto === undefined) return
       await deps.send(texto.reply, texto.options || [])
@@ -123,7 +132,7 @@ describe('el canario del camino del cliente', () => {
     expect(errores.map(e => e.code)).toContain('canario_categoria')
   })
 
-  it('NO ESCRIBE NADA: ni cliente, ni conversación, ni techo de mensajes', async () => {
+  it('NO ESCRIBE NADA: ni cliente, ni conversación, ni techo, ni pasos del menú', async () => {
     // ⚠️ Lo más importante de este archivo. Un vigilante que ensucia la base
     // se acaba apagando, y entonces no vigila. Las tres funciones que
     // escribirían están sustituidas por memoria.

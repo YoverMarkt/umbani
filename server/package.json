@@ -20,6 +20,7 @@
     "migrate:status": "node --env-file=.env tests/migraciones.mjs status",
     "migrate:baseline": "node --env-file=.env tests/migraciones.mjs baseline",
     "migrate": "node --env-file=.env tests/migraciones.mjs apply",
+    "errores": "node --env-file=.env tests/errores-resueltos.mjs",
     "test:coverage": "vitest run tests/ --coverage",
     "pretest:coverage": "npm run build",
     "backup": "node --env-file=.env tests/respaldo.mjs backup",

@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import type { Database } from './tipos-generados'
 import dotenv from 'dotenv'
 import path from 'node:path'
+import { exigirBaseLocalEnPruebas } from '../lib/solo-base-local-en-pruebas'
 
 dotenv.config({ path: path.join(__dirname, '../../.env') })
 
@@ -11,6 +12,10 @@ const key = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_KEY
 if (!url || !key) {
   throw new Error('Faltan SUPABASE_URL y SUPABASE_SERVICE_KEY en el servidor')
 }
+
+// Bajo Vitest, solo una base local: lanzadas desde la raíz, las pruebas
+// cargaban `server/.env` y escribían en PRODUCCIÓN (2026-09-20).
+exigirBaseLocalEnPruebas(url)
 
 /**
  * Cuánto se espera a una llamada a la base antes de darla por colgada.
