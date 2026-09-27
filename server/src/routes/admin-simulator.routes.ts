@@ -93,6 +93,12 @@ function dependenciasDelSimulador(
       // superadmin justo cuando está dando de alta varios locales seguidos —
       // que es exactamente cuando esta pantalla hace falta.
       claimMarketplaceReply: async () => ({ permitido: true, respuestas: 0 }),
+      // ⚠️ Tampoco el anti-eco (2026-09-26), por lo mismo: existe para no
+      // PAGAR mensajes repetidos, y aquí no se paga ninguno. Con él puesto,
+      // escribir «hola» dos veces en un minuto devolvería la segunda vez una
+      // pantalla vacía, y el superadmin creería que el bot se colgó. Sin
+      // huella anotada no hay nada con qué comparar, y cada mensaje responde.
+      anotarUltimaRespuesta: async () => undefined,
     } as unknown as MarketplaceEntryDeps['database'],
     issueLink: link.issueStorefrontLink,
     // ⚠️ Aquí SÍ se aplana a títulos, y a propósito: el simulador pinta las

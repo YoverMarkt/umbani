@@ -159,7 +159,20 @@ const ACUSE = '🙂 ¡Listo! Cuando quieras pedir, elige una categoría y te lle
  * todavía no usa. Y lo que sigue —la guía o la lista donde estaba— le dice qué
  * sí puede hacer.
  */
+/**
+ * Lo que llega en lugar de un toque en una lista VIEJA (2026-09-26).
+ *
+ * `marketplace-entry` lo pone cuando la marca del toque no es la de la última
+ * lista enviada. Viaja como un adjunto más a propósito: así hereda lo que ya
+ * hacen la foto y el audio —NO se busca, NO se ejecuta nada, y se repinta la
+ * pantalla ACTUAL con sus opciones—, que es justo lo que hace el chat de Luka
+ * que el dueño puso de referencia: solo vale el último mensaje.
+ */
+export const OPCION_ANTERIOR = '[opción anterior]'
+
 const ADJUNTOS = new Map<string, string>([
+  ['[opcion anterior]', '✋ Esa opción era de un mensaje anterior: aquí van las de ahora. '
+    + 'Si prefieres empezar de nuevo, escribe *MENÚ*.'],
   ['[foto]', '📷 Recibí tu foto, pero por aquí no me sirve todavía.'],
   ['[nota de voz]', '🎤 Recibí tu nota de voz, pero por aquí todavía no puedo escucharla.'],
   ['[ubicacion]', '📍 Recibí tu ubicación, pero ahora mismo no me hace falta.'],
@@ -378,23 +391,39 @@ const hora12 = (hhmm: string): string => {
 const avisoDeCerrados = (mostrados: MarketplaceBusiness[]): string => {
   const cerrados = mostrados.filter(noSePuedePedir)
   if (!cerrados.length) return ''
-  const lineas = cerrados.map((n) => {
-    // ⚠️ El local CERRADO manda sobre la carta: decirle «su carta empieza a
-    // las 7» a quien tiene el local cerrado hasta mañana es prometer algo que
-    // no va a poder hacer.
-    if (n.abierto === false) {
-      if (!n.abre?.open) return `${LUNA} ${n.name} · cerrado`
-      const cuando = n.abre.inDays === 0
-        ? 'hoy'
-        : n.abre.inDays === 1 ? 'mañana' : `el ${n.abre.dayName.toLocaleLowerCase('es')}`
-      return `${LUNA} ${n.name} · abre ${cuando} ${hora12(n.abre.open)}`
-    }
-    // Abierto, pero su carta de esta hora está vacía.
-    return n.carta_desde
-      ? `${LUNA} ${n.name} · su carta empieza ${hora12(n.carta_desde)}`
-      : `${LUNA} ${n.name} · sin carta a esta hora`
-  })
-  return `\n\n${lineas.join('\n')}`
+  return `\n\n${cerrados.map(lineaDeCerrado).join('\n')}`
+}
+
+/**
+ * Todos los locales de la página, no solo los cerrados (2026-09-26).
+ *
+ * ⚠️ Es para los RESULTADOS de una búsqueda. «Esto encontré para…» seguido
+ * solo de los cerrados se leía como que había encontrado menos de los que
+ * había: el dueño vio tres en la lista y dos en el texto, y preguntó por el
+ * tercero. En una categoría no hace falta —su cabecera no promete una lista—,
+ * y allí el texto sigue nombrando solo lo que hay que avisar.
+ */
+const listaDeLocales = (mostrados: MarketplaceBusiness[]): string => (
+  mostrados.length
+    ? `\n\n${mostrados.map(n => (noSePuedePedir(n) ? lineaDeCerrado(n) : `• ${n.name}`)).join('\n')}`
+    : ''
+)
+
+const lineaDeCerrado = (n: MarketplaceBusiness): string => {
+  // ⚠️ El local CERRADO manda sobre la carta: decirle «su carta empieza a
+  // las 7» a quien tiene el local cerrado hasta mañana es prometer algo que
+  // no va a poder hacer.
+  if (n.abierto === false) {
+    if (!n.abre?.open) return `${LUNA} ${n.name} · cerrado`
+    const cuando = n.abre.inDays === 0
+      ? 'hoy'
+      : n.abre.inDays === 1 ? 'mañana' : `el ${n.abre.dayName.toLocaleLowerCase('es')}`
+    return `${LUNA} ${n.name} · abre ${cuando} ${hora12(n.abre.open)}`
+  }
+  // Abierto, pero su carta de esta hora está vacía.
+  return n.carta_desde
+    ? `${LUNA} ${n.name} · su carta empieza ${hora12(n.carta_desde)}`
+    : `${LUNA} ${n.name} · sin carta a esta hora`
 }
 
 /** El trozo de lista que toca, más «Ver más» si queda algo detrás. */
@@ -555,7 +584,7 @@ export function verResultados(
     abiertosPrimero(negocios), pagina, etiquetaNegocio,
   )
   return {
-    reply: `🔎 Esto encontré para *${limpia}*:${avisoDeCerrados(mostrados)}`,
+    reply: `🔎 Esto encontré para *${limpia}*:${listaDeLocales(mostrados)}`,
     options: [...opciones, ...(hayMas ? [VER_MAS] : []), VOLVER],
     vista: { vista: 'busqueda', consulta: limpia, pagina },
   }

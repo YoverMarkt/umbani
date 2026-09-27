@@ -18,6 +18,7 @@ import {
   type MarketplaceView,
 } from './marketplace-menu'
 import { isOutsideHours, proximaApertura } from './schedule'
+import { enviosDelTurno, leerToque } from './marketplace-envio'
 import type { ScheduleRecord } from './schedule'
 import {
   esComprobante, esComprobanteAmbiguo, esFotoQueNoEsComprobante,
@@ -76,6 +77,11 @@ export interface MarketplaceEntryDatabase {
     shopping_locked: boolean
     flow_state: Record<string, unknown> | null
     version: number
+    /** La marca de la última lista enviada (2026-09-26). */
+    menu_mark?: string | null
+    /** La huella de la última respuesta y cuándo salió. */
+    last_reply_hash?: string | null
+    last_reply_at?: string | null
   } | null>
   advanceConversation(
     customerId: string,
@@ -154,6 +160,13 @@ export interface MarketplaceEntryDatabase {
    * entero deja de atenderlo. El del local solo cierra ese local.
    */
   isPlatformBlocked?(customerId: string): Promise<boolean>
+  /**
+   * Apunta la marca de la lista que se va a mandar, y la huella de la
+   * respuesta que salió. Opcionales: sin ellas el chat funciona como antes del
+   * 2026-09-26. Ver `marketplace-envio.ts`.
+   */
+  marcarUltimaLista?(customerId: string, marca: string): Promise<boolean>
+  anotarUltimaRespuesta?(customerId: string, huella: string): Promise<void>
 }
 
 export interface MarketplaceEntryDeps {
@@ -172,7 +185,12 @@ export interface MarketplaceEntryDeps {
    * el precio de un producto y el detalle de un reparto viajan en la
    * descripción, y una fila de lista de WhatsApp la pinta debajo del título.
    */
-  send(reply: string, options: (string | { title: string; description?: string })[]): Promise<void>
+  send(
+    reply: string,
+    options: (string | { title: string; description?: string })[],
+    /** La marca de esta lista: viaja en el id de cada opción. */
+    marca?: string | null,
+  ): Promise<void>
   /**
    * El enlace de la tienda como BOTÓN de WhatsApp.
    *
@@ -246,8 +264,9 @@ export async function handleMarketplaceMessage(
   },
   deps: MarketplaceEntryDeps,
 ): Promise<void> {
-  const { database, send } = deps
-  const { from, text } = input
+  const { database } = deps
+  const { from } = input
+  let text = input.text
 
   const customer = await database.resolveMarketplaceCustomer(from)
 
@@ -329,6 +348,32 @@ export async function handleMarketplaceMessage(
       ? database.getBusinessById(leida.selected_business_id)
       : null)),
   ])
+
+  // ── Solo vale el ÚLTIMO mensaje (2026-09-26) ───────────────────────
+  //
+  // Cada opción lleva la marca de su lista. Un toque con otra marca viene de
+  // un mensaje anterior: NO se ejecuta —se convierte en un aviso que repinta
+  // lo de ahora—. Antes el número de fila se aplicaba a la pantalla actual:
+  // «Minimarkets» acabó buscando «3» y «Jugos y batidos» entregó la carta de
+  // Monster Pizza. Ver `marketplace-envio.ts`.
+  //
+  // ⚠️ Va DESPUÉS del bloqueo y del techo: a quien está silenciado no se le
+  // contesta nada, tampoco el aviso.
+  const toque = leerToque(text, conversation?.menu_mark)
+  if (toque.vieja) deps.logger?.log('✋ [marketplace] toque en una lista vieja: no se ejecuta')
+  text = toque.texto
+
+  // Y los envíos de este turno salen con su marca y sin repetir la misma
+  // respuesta de hace menos de 60 s: veinte fotos seguidas daban veinte
+  // respuestas idénticas, y cada una se paga.
+  deps = {
+    ...deps,
+    ...enviosDelTurno(deps, customer.id, {
+      huella: conversation?.last_reply_hash,
+      at: conversation?.last_reply_at,
+    }),
+  }
+  const { send } = deps
 
   // Un marketplace sin un solo local disponible no puede ofrecer nada, y una
   // lista vacía es una calle sin salida que además cuesta un mensaje.
@@ -725,8 +770,13 @@ async function recorrerElMenu(
   // quiera comer: mandarlos a la búsqueda eran DOS consultas a la base por
   // cada foto suelta —los locales y el diccionario de términos— que no pueden
   // encontrar nada. El menú ya le respondió nombrando lo que mandó.
+  // ⚠️ Un NÚMERO suelto tampoco se busca (2026-09-26). Quien escribe «3» está
+  // eligiendo una fila, no pidiendo comida; buscarlo enseñaba «Esto encontré
+  // para 3» con los locales que tuvieran un 3 en algún producto. Si no es una
+  // opción de lo que tiene delante, se le repinta con el «no te entendí».
   if (respuesta.noEntendido
     && !esAdjuntoSinTexto(text)
+    && !/^\d+$/.test(text.trim())
     && !contexto.negocioElegidoId) {
     const encontrados = await conEstadoDeHorario(deps, await buscarLocales(deps, text))
     if (encontrados.length) {

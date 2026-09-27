@@ -123,6 +123,10 @@ function dependenciasDelCanario(
         return { conflicto: false }
       },
       claimMarketplaceReply: async () => ({ permitido: true, respuestas: 0 }),
+      // Tampoco la marca de la lista ni la huella de la respuesta (2026-09-26):
+      // escribirían en la conversación de un cliente que no existe.
+      marcarUltimaLista: async () => false,
+      anotarUltimaRespuesta: async () => undefined,
       isPlatformBlocked: async () => false,
       isContactBlocked: async () => false,
     } as unknown as MarketplaceEntryDeps['database'],

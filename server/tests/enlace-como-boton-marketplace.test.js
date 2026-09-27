@@ -144,8 +144,10 @@ describe('el visto azul del número de Umbani', () => {
     const fuente = fs.readFileSync('dist/services/inbound-webhook.js', 'utf8')
     const bloque = fuente.slice(fuente.indexOf('atenderMarketplace: async'))
     expect(bloque).toMatch(/const trasElVisto = \(enviar\) => visto\.then\(enviar\)/)
-    expect(bloque, 'el texto sale sin esperar al visto')
-      .toMatch(/send: \(reply, options\) => trasElVisto\(\(\) => platform\.enviarPorLaPlataforma\(/)
+    // Y con la marca de su lista hasta el final (2026-09-26): sin ella, los
+    // toques en listas viejas vuelven a aplicarse a la pantalla de ahora.
+    expect(bloque, 'el texto sale sin esperar al visto, o sin su marca')
+      .toMatch(/send: \(reply, options, marca\) => trasElVisto\(\(\) => platform\.enviarPorLaPlataforma\(from, reply, options, marca\)/)
     expect(bloque, 'el enlace sale sin esperar al visto')
       .toMatch(/sendLink: mensaje => trasElVisto\(\(\) => platform\.enviarEnlacePorLaPlataforma\(/)
     // Y el evento no se da por terminado con el visto todavía en vuelo.

@@ -256,6 +256,9 @@ function headerText(value: string | string[] | undefined): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined
 }
 
+/** El id de una opción con la marca de su lista: «k3f9a.2». */
+const OPCION_CON_MARCA = /^[a-z0-9]{4,10}\.\d{1,2}$/
+
 function ycloudContent(message: InboundMessage): InboundWebhookPayload['content'] | null {
   let text: string | undefined
   if (message.type === 'text') text = message.text?.body
@@ -265,8 +268,12 @@ function ycloudContent(message: InboundMessage): InboundWebhookPayload['content'
     // El id que enviamos es el NÚMERO de la opción; el menú ya entiende
     // números, y así el emparejamiento no depende del título, que WhatsApp
     // trunca a 20-24 caracteres.
+    //
+    // ⚠️ Desde el 2026-09-26 el número lleva delante la MARCA de su lista
+    // («k3f9a.2») y pasa ENTERO: es lo que deja saber si el toque viene del
+    // último mensaje o de uno viejo. Ver `marketplace-entry`.
     const id = String(reply?.id || '').trim()
-    text = /^\d{1,2}$/.test(id) ? id : reply?.title
+    text = OPCION_CON_MARCA.test(id) || /^\d{1,2}$/.test(id) ? id : reply?.title
   }
   // Igual que en Meta: lo elegido llega entero y no debe esperar la ventana.
   if (text?.trim() && (message.type === 'button' || message.type === 'interactive')) {

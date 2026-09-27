@@ -906,8 +906,10 @@ const processor = createInboundWebhookProcessor({
       await entry.handleMarketplaceMessage({ from, text, inboundId }, {
         database: db,
         issueLink: link.issueStorefrontLink,
-        send: (reply, options) => trasElVisto(
-          () => platform.enviarPorLaPlataforma(from, reply, options),
+        // La marca viaja en el id de cada opción: es lo que deja saber si un
+        // toque viene del último mensaje o de uno viejo (2026-09-26).
+        send: (reply, options, marca) => trasElVisto(
+          () => platform.enviarPorLaPlataforma(from, reply, options, marca),
         ),
         // El enlace, como botón «Ver la carta». Cae al texto si no sale.
         sendLink: mensaje => trasElVisto(

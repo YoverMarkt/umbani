@@ -1014,7 +1014,10 @@ export type Database = {
           flow_state: Json | null
           id: string
           last_message_at: string
+          last_reply_at: string | null
+          last_reply_hash: string | null
           last_reply_message_id: string | null
+          menu_mark: string | null
           muted_until: string | null
           reply_count: number
           reply_window_start: string | null
@@ -1031,7 +1034,10 @@ export type Database = {
           flow_state?: Json | null
           id?: string
           last_message_at?: string
+          last_reply_at?: string | null
+          last_reply_hash?: string | null
           last_reply_message_id?: string | null
+          menu_mark?: string | null
           muted_until?: string | null
           reply_count?: number
           reply_window_start?: string | null
@@ -1048,7 +1054,10 @@ export type Database = {
           flow_state?: Json | null
           id?: string
           last_message_at?: string
+          last_reply_at?: string | null
+          last_reply_hash?: string | null
           last_reply_message_id?: string | null
+          menu_mark?: string | null
           muted_until?: string | null
           reply_count?: number
           reply_window_start?: string | null

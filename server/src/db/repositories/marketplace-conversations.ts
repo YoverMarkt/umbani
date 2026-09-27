@@ -24,6 +24,11 @@ export interface MarketplaceConversation {
   version: number
   last_message_at: string
   expires_at: string | null
+  /** La marca de la última lista enviada. Ver `marcarUltimaLista`. */
+  menu_mark?: string | null
+  /** La huella de la última respuesta y cuándo salió. Ver `anotarUltimaRespuesta`. */
+  last_reply_hash?: string | null
+  last_reply_at?: string | null
 }
 
 /** Lo que se quiere cambiar. Lo que no se nombra, no se toca. */
@@ -154,6 +159,46 @@ const deleteConversation = async (customerId: string): Promise<void> => {
 }
 
 /**
+ * Apunta la marca de la lista que se le va a mandar al cliente.
+ *
+ * ⚠️ Nace del 2026-09-26: cada opción viajaba solo con su número de fila, y un
+ * toque en una lista VIEJA se aplicaba a la pantalla de ahora — «Minimarkets»
+ * acabó buscando «3» y «Jugos y batidos» entregó la carta de Monster Pizza.
+ * Con la marca, el toque dice de QUÉ lista viene.
+ *
+ * ⚠️ Fuera del bloqueo optimista: NO sube `version`. Mandar una lista no cambia
+ * el estado de la conversación, y si lo hiciera el siguiente `guardar` del
+ * mismo turno chocaría consigo mismo.
+ *
+ * Devuelve si había conversación que marcar: sin fila, no hay nada contra lo
+ * que comparar el toque y el llamador manda la lista sin marca.
+ */
+const marcarUltimaLista = async (customerId: string, marca: string): Promise<boolean> => {
+  const { data, error } = await db
+    .from('marketplace_conversations')
+    .update({ menu_mark: marca })
+    .eq('customer_id', customerId)
+    .select('id')
+  if (error) throw new Error(error.message)
+  return Boolean(data?.length)
+}
+
+/**
+ * Apunta la huella de la respuesta que se acaba de mandar, y cuándo.
+ *
+ * Es lo que deja contestar UNA vez a una ráfaga: veinte fotos seguidas daban
+ * veinte respuestas idénticas (2026-09-26), y desde el 1 de octubre cada una se
+ * paga. Tampoco sube `version`, por lo mismo que `marcarUltimaLista`.
+ */
+const anotarUltimaRespuesta = async (customerId: string, huella: string): Promise<void> => {
+  const { error } = await db
+    .from('marketplace_conversations')
+    .update({ last_reply_hash: huella, last_reply_at: new Date().toISOString() })
+    .eq('customer_id', customerId)
+  if (error) throw new Error(error.message)
+}
+
+/**
  * ¿Se le contesta a este cliente, o ya se pasó del techo?
  *
  * El equivalente del marketplace a `claimMiniappReply`, que solo cubre el canal
@@ -232,6 +277,8 @@ const setPlatformBlocked = async (
 export {
   getConversation,
   advanceConversation,
+  marcarUltimaLista,
+  anotarUltimaRespuesta,
   deleteConversation,
   claimMarketplaceReply,
   isPlatformBlocked,
