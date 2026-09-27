@@ -55,7 +55,10 @@ describe('la barra de categorías sigue al scroll también al volver', () => {
   it('el vigilante se vuelve a armar cuando la carta reaparece', () => {
     const tienda = leer('../src/screens/FoodStore.tsx')
     expect(tienda).toMatch(/const cartaALaVista = !enCuenta && !\(pagoPendiente && abrirPago\) && !recienHecho/)
-    expect(tienda).toMatch(/\}, \[grupos, resultados, cartaALaVista\]\)/)
+    // `resultados` salió de aquí el 2026-09-26: la búsqueda tiene su propia
+    // pantalla y ya no sustituye a la carta. Lo que importa sigue siendo que
+    // `cartaALaVista` rearme el vigilante.
+    expect(tienda).toMatch(/\}, \[grupos, cartaALaVista\]\)/)
   })
 })
 

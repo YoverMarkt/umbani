@@ -7,7 +7,6 @@ import {
   RiAddLine,
   RiArrowDownSLine,
   RiArrowLeftSLine,
-  RiCloseLine,
   RiEBikeLine,
   RiHome5Line,
   RiMapPin2Line,
@@ -39,6 +38,7 @@ import type { PedidoRecibido } from './OrderPlaced'
 import type { NuevaDireccion } from '../components/CartSheet'
 import type { Ubicacion } from '../lib/ubicacion'
 const Account = lazy(() => import('./Account'))
+const Buscar = lazy(() => import('./Buscar'))
 // Diferida como `Account`: solo aparece en el PRIMER «Agregar» de quien no
 // tiene dirección guardada, así que no tiene por qué viajar en la primera
 // carga —que es la que se paga en clientes que cierran antes de que abra—.
@@ -51,10 +51,6 @@ import type {
 // Flujo de comida, bebidas y retail: portada → categorías → producto → carrito.
 // Es el patrón que la gente ya tiene aprendido de las apps de delivery, y por
 // eso no se inventa nada nuevo aquí.
-
-/** Para buscar «jamon» y que salga «jamón». Nadie escribe tildes con una mano. */
-const normalizar = (texto: string) =>
-  texto.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 
 export default function FoodStore({
   slug, business, status, sesionesNuevas, onVolver, onFalloEnlace,
@@ -78,14 +74,10 @@ export default function FoodStore({
   const [enviando, setEnviando] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [categoriaActiva, setCategoriaActiva] = useState<string | null>(null)
-  const [busqueda, setBusqueda] = useState('')
   /**
-   * Si la barra de búsqueda está a la vista. Escondida gana una franja entera
-   * de la primera pantalla; la abre la pestaña «Buscar» de la barra de abajo.
-   *
-   * ⚠️ Cerrarla BORRA la búsqueda (ver el JSX): con texto escrito, la carta
-   * se sustituye por los resultados, y una barra escondida con texto dentro
-   * dejaría al cliente sin forma de volver a la carta.
+   * Si la pantalla de Buscar está abierta. Lo que se escribe vive DENTRO de
+   * ella (`screens/Buscar.tsx`): al cerrarla se olvida, y la carta de debajo
+   * no se entera de nada.
    */
   const [buscando, setBuscando] = useState(false)
   /**
@@ -154,7 +146,8 @@ export default function FoodStore({
 
   const secciones = useRef<Record<string, HTMLElement | null>>({})
   const pestanas = useRef<Record<string, HTMLElement | null>>({})
-  const buscador = useRef<HTMLInputElement>(null)
+  /** Recibe el foco DENTRO del toque de «Buscar». Ver la barra de abajo. */
+  const enfocarAntes = useRef<HTMLInputElement>(null)
   // Durante un salto programático el scroll atraviesa secciones intermedias y
   // la pestaña activa iría saltando por el camino. Se ignora hasta que llega.
   const saltando = useRef(false)
@@ -260,14 +253,13 @@ export default function FoodStore({
     ).filter(grupo => grupo.productos.length > 0)
   }, [catalogo])
 
-  // Buscar deja de lado las secciones: quien escribe «pepperoni» quiere una
-  // lista de resultados, no recorrer cuatro categorías para encontrarlos.
-  const resultados = useMemo(() => {
-    const texto = normalizar(busqueda.trim())
-    if (!texto || !catalogo) return null
-    return catalogo.products.filter(producto =>
-      normalizar(`${producto.name} ${producto.description || ''}`).includes(texto))
-  }, [busqueda, catalogo])
+  // La pantalla de Buscar viaja aparte. Se trae en segundo plano en cuanto hay
+  // carta, para que al tocar «Buscar» ya esté y no haya espera ni pantallazo.
+  useEffect(() => {
+    if (!catalogo) return
+    const precarga = window.setTimeout(() => { void import('./Buscar') }, 1500)
+    return () => window.clearTimeout(precarga)
+  }, [catalogo])
 
   /**
    * La pestaña activa la decide el SCROLL, no solo el toque. Sin esto, quien
@@ -285,7 +277,7 @@ export default function FoodStore({
   // se vuelve a armar cada vez que la carta reaparece.
   const cartaALaVista = !enCuenta && !(pagoPendiente && abrirPago) && !recienHecho
   useEffect(() => {
-    if (!grupos.length || resultados || !cartaALaVista) return
+    if (!grupos.length || !cartaALaVista) return
     // Qué secciones cruzan la línea de lectura. Vive dentro del efecto porque
     // no sobrevive a él: al cambiar la carta se empieza a contar de cero.
     const visibles = new Set<string>()
@@ -310,7 +302,7 @@ export default function FoodStore({
       if (nodo) observador.observe(nodo)
     }
     return () => observador.disconnect()
-  }, [grupos, resultados, cartaALaVista])
+  }, [grupos, cartaALaVista])
 
   // La pestaña activa se trae a la vista sola: con seis categorías, la que
   // manda puede haber quedado fuera de la pantalla por la derecha.
@@ -434,7 +426,6 @@ export default function FoodStore({
   const irACategoria = (id: string) => {
     saltando.current = true
     setCategoriaActiva(id)
-    setBusqueda('')
     secciones.current[id]?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     // Lo que tarda el desplazamiento suave en llegar. Al soltarlo, el
     // observador retoma el mando desde donde quedó el scroll.
@@ -1009,8 +1000,8 @@ export default function FoodStore({
           exactamente la misma lista (`grupos`) que las pestañas pegajosas de
           justo debajo. Dos veces lo mismo, una encima de la otra.
 
-          El sitio se gana lo que vale: es lo primero que se ve bajo el
-          buscador, y ahí va el aviso del pago pendiente. */}
+          El sitio se gana lo que vale: es lo primero que se ve bajo la
+          tarjeta de servicio, y ahí va el aviso del pago pendiente. */}
       {pagoPendiente && (
         <div className="px-4 pt-4">
           <Aviso
@@ -1024,74 +1015,6 @@ export default function FoodStore({
         </div>
       )}
 
-      {/* ── Buscador, ESCONDIDO hasta que hace falta ───────────────────
-          Ocupaba una franja fija de la primera pantalla para algo que casi
-          nadie usa al entrar: quien abre la carta de su pizzería la MIRA, y
-          buscar es lo que hace quien ya sabe el nombre. El dueño pidió ese
-          espacio de vuelta (2026-08-26), y se recupera sin perder la
-          función: lo abre la pestaña «Buscar» de la barra de abajo, que ya
-          existía y hasta hoy solo hacía scroll hasta aquí.
-
-          ⚠️ Al cerrarlo se BORRA la búsqueda, y eso no es un extra. Con
-          texto escrito, `resultados` sustituye la carta entera; si la barra
-          se pudiera esconder con el texto dentro, el cliente se quedaría
-          mirando tres resultados sin ningún control a la vista para volver a
-          la carta. Cerrar y limpiar tienen que ser el mismo gesto.
-
-          ⚠️ Y va PEGAJOSO arriba mientras está abierto: al filtrar, la lista
-          de abajo cambia bajo el dedo, y el campo que la está filtrando no
-          puede haberse ido con el scroll. */}
-      {buscando && (
-        <div className="superficie sticky top-0 z-40 px-4 pt-3 pb-3 shadow-alzada">
-          <div className="flex items-center gap-2">
-            {/* La lupa dentro de una pastilla de acento: es el mismo lenguaje
-                que el selector de entrega y el `+` de las tarjetas — el acento
-                marca lo que está ACTIVO, y buscar lo está mientras esta barra
-                se ve. */}
-            <span className="acento flex size-11 shrink-0 items-center justify-center rounded-2xl shadow-acento">
-              <RiSearchLine size={20} />
-            </span>
-            <div className="flex min-w-0 flex-1 items-center gap-2 rounded-2xl border-2 borde-tema px-4 py-2.5 focus-within:border-(--tinta)">
-              <input
-                ref={buscador}
-                value={busqueda}
-                onChange={event => setBusqueda(event.target.value.slice(0, 60))}
-                placeholder="¿Qué se te antoja?"
-                aria-label="Buscar productos"
-                className="min-w-0 flex-1 bg-transparent text-[15px] font-semibold tracking-tight outline-none placeholder:font-medium placeholder:texto-tenue"
-              />
-              {busqueda && (
-                <button
-                  onClick={() => { setBusqueda(''); buscador.current?.focus() }}
-                  aria-label="Borrar lo escrito"
-                  className="flex size-6 shrink-0 items-center justify-center rounded-full bg-black/10 transition active:scale-90"
-                >
-                  <RiCloseLine size={14} />
-                </button>
-              )}
-            </div>
-            {/* Cerrar es una palabra, no una X más: con dos X seguidas —una
-                para borrar y otra para salir— nadie sabe cuál hace qué. */}
-            <button
-              onClick={() => { setBusqueda(''); setBuscando(false) }}
-              className="shrink-0 px-1 text-[14px] font-bold texto-cuerpo transition active:scale-95"
-            >
-              Cerrar
-            </button>
-          </div>
-
-          {/* Cuánto se encontró, dentro de la misma barra: el contador estaba
-              suelto sobre la lista y se iba con el primer scroll. */}
-          {/* Solo con resultados: sin ninguno, lo dice el estado vacío de
-              abajo, y «Nada con…» aquí era decirlo dos veces (2026-09-25). */}
-          {busqueda.trim() && Boolean(resultados?.length) && (
-            <p className="caption mt-2.5 px-1 texto-tenue">
-              {`${resultados?.length} ${resultados?.length === 1 ? 'resultado' : 'resultados'} para «${busqueda.trim()}»`}
-            </p>
-          )}
-        </div>
-      )}
-
       {/* ── Pestañas de categoría, pegadas arriba ───────────────────────
           ⚠️ La activa va en TINTA, texto y subrayado, como la referencia —
           no en el color del negocio. El subrayado era `border-(--acento)`:
@@ -1099,7 +1022,7 @@ export default function FoodStore({
           sea una pestaña «activa» sin marca visible. Un elemento gráfico
           que porta información necesita 3:1, y el acento del negocio no lo
           garantiza porque lo elige él. */}
-      {!resultados && grupos.length > 1 && (
+      {grupos.length > 1 && (
         <nav className="superficie sticky top-0 z-30 mt-4 border-b borde-tema">
           <div className="sin-barra flex gap-1 overflow-x-auto px-4">
             {grupos.map(grupo => (
@@ -1120,24 +1043,8 @@ export default function FoodStore({
         </nav>
       )}
 
-      {/* ── Resultados de búsqueda ──────────────────────────────────────
-          Sin título propio: el recuento vive ahora DENTRO de la barra de
-          búsqueda, que va pegajosa arriba. Repetirlo aquí decía dos veces lo
-          mismo, y esta copia además se iba con el primer scroll. */}
-      {resultados && (
-        <section className="superficie px-4 pt-4 pb-6">
-          {resultados.length
-            ? <div className="grid grid-cols-2 gap-3">{resultados.map(tarjeta)}</div>
-            : (
-                <EstadoVacio icono={<RiSearchLine size={28} />} titulo={`No encontramos «${busqueda.trim()}»`}>
-                  Prueba con otra palabra o mira la carta completa.
-                </EstadoVacio>
-              )}
-        </section>
-      )}
-
       {/* ── Carta ── */}
-      {!resultados && grupos.map((grupo, indice) => (
+      {grupos.map((grupo, indice) => (
         <section
           key={grupo.id}
           data-categoria={grupo.id}
@@ -1170,6 +1077,32 @@ export default function FoodStore({
           </EstadoVacio>
         </div>
       )}
+
+      {buscando && (
+        <Suspense fallback={null}>
+          <Buscar
+            slug={slug}
+            negocio={business.name}
+            grupos={grupos}
+            tarjeta={tarjeta}
+            onCerrar={() => setBuscando(false)}
+            onIrACategoria={(id) => {
+              setBuscando(false)
+              // Al pintado siguiente: la carta ya está a la vista.
+              requestAnimationFrame(() => irACategoria(id))
+            }}
+          />
+        </Suspense>
+      )}
+      {/* El campo que recibe el foco en el toque de «Buscar». Invisible pero
+          enfocable: con `display: none` iOS no le daría el foco. 16 px para
+          que Safari no amplíe la página al enfocarlo. */}
+      <input
+        ref={enfocarAntes}
+        aria-hidden="true"
+        tabIndex={-1}
+        className="pointer-events-none fixed top-0 left-0 size-px text-[16px] opacity-0"
+      />
 
       {/* ══ EL PIE: «Ver pedido» ENCIMA de la barra, no tapándola ═══════
           ⚠️ Esto era un fallo, no una decisión. La barra del carrito estaba
@@ -1221,26 +1154,26 @@ export default function FoodStore({
                 iconoActivo: RiHome5Fill,
                 texto: 'Inicio',
                 accion: () => {
-                  setBusqueda('')
                   setBuscando(false)
                   window.scrollTo({ top: 0, behavior: 'smooth' })
                 },
               },
-              // Abre la barra de búsqueda, que por defecto está escondida para
-              // no gastar una franja de la primera pantalla. Antes solo hacía
-              // scroll hasta un campo que siempre estaba a la vista.
+              // Abre la pantalla de Buscar (2026-09-26). Antes abría una barra
+              // DENTRO de la portada, con el héroe encima y los resultados
+              // en el sitio de la carta: parecía la portada rota.
               {
                 id: 'buscar',
                 icono: RiSearchLine,
                 iconoActivo: RiSearchFill,
                 texto: 'Buscar',
                 accion: () => {
+                  // ⚠️ El foco, DENTRO del toque: iOS solo abre el teclado
+                  // así. El campo de verdad está en la pantalla de Buscar, que
+                  // se monta después; este campo escondido lo recibe ya y se
+                  // lo pasa (ver `screens/Buscar.tsx`). De un campo a otro,
+                  // iOS mantiene el teclado abierto.
+                  enfocarAntes.current?.focus()
                   setBuscando(true)
-                  window.scrollTo({ top: 0, behavior: 'smooth' })
-                  // El `focus` espera al pintado: el campo aún no existe en el
-                  // DOM en el momento del toque, así que enfocarlo ya sería
-                  // enfocar a nadie y el teclado no subiría.
-                  requestAnimationFrame(() => buscador.current?.focus())
                 },
               },
               // ⚠️ Abre SIEMPRE, también con el carrito vacío. Estaba como
