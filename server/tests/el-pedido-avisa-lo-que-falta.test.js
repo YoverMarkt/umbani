@@ -178,14 +178,18 @@ describe('el texto no promete lo que el sistema no hace', () => {
   // distinguir —quien ya transfirió y no mandó la foto se ve igual que quien
   // no pagó nada— y un MENÚ directo le cancelaría el pedido con el dinero
   // enviado.
-  it('avisa de que MENÚ pregunta antes de soltar el pedido', () => {
+  //
+  // ⚠️ Y SE VOLVIÓ A ARREGLAR EL TEXTO el 2026-09-27, en sentido contrario:
+  // desde el 2026-09-05 MENÚ va DIRECTO y cancela (decisión del dueño), así
+  // que «te pregunto antes de soltarlo» volvió a ser una promesa falsa.
+  it('no promete una pregunta que MENÚ ya no hace', () => {
     const r = resolverReinicio(NO_CONTINUAR, {
       negocio: { name: 'Monster Pizza', slug: 'monster-pizza' },
       bloqueado: true,
       esperandoComprobante: true,
     }, [])
     expect(r.respuesta.reply).toMatch(/MENÚ/)
-    expect(r.respuesta.reply).toMatch(/pregunto antes/i)
+    expect(r.respuesta.reply).not.toMatch(/pregunto antes/i)
   })
 })
 

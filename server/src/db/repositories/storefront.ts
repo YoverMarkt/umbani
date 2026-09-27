@@ -486,16 +486,26 @@ const createStorefrontOrder = async (input: {
  * Sin `contact_phone` en el filtro porque lo llama la ruta que ACABA de crear
  * el pedido con esos datos; el id es de un pedido recién nacido y el negocio
  * ya está comprobado.
+ *
+ * ⚠️ Trae también el `status`, y por la misma razón: la RPC NO lo devuelve.
+ * La ruta preguntaba `result.data.status === 'esperando_pago'` para pedir el
+ * comprobante por el chat, siempre daba falso, y ese aviso no salió ni una
+ * vez desde que se construyó (#283 → 2026-09-27: 0 en la cola de producción).
  */
 const getOrderMoney = async (businessId: string, orderId: string) => {
   const { data, error } = await db
     .from('orders')
-    .select('subtotal,shipping,total')
+    .select('subtotal,shipping,total,status')
     .eq('business_id', businessId)
     .eq('id', orderId)
     .maybeSingle()
   if (error || !data) return null
-  return data as { subtotal: number | string | null; shipping: number | string | null; total: number | string | null }
+  return data as {
+    subtotal: number | string | null
+    shipping: number | string | null
+    total: number | string | null
+    status: string | null
+  }
 }
 
 /**

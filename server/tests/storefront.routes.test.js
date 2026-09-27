@@ -368,6 +368,57 @@ describe('crear pedido desde la mini app', () => {
     expect(respuesta.body.id).toBe('pedido-2')
   })
 
+  // ── EL AVISO «MÁNDANOS LA FOTO» SALE DE VERDAD ──────────────────────────
+  //
+  // ⚠️ No salió NI UNA VEZ en un mes (#283 → 2026-09-27: 0 en la cola de
+  // producción). La ruta preguntaba por `result.data.status`, y
+  // `create_storefront_order` NO devuelve `status`: la condición era siempre
+  // falsa. La prueba del aviso pasaba porque llamaba a la función SUELTA con
+  // un pedido inventado que sí traía el campo — nadie comprobaba que la ruta
+  // llegara a llamarla.
+  //
+  // Por eso aquí la RPC devuelve su forma REAL (sin `status`), y lo que se
+  // mira es que el aviso llegue a reclamar el pedido.
+  it('pide el comprobante por el chat cuando la FILA espera pago', async () => {
+    vi.spyOn(db, 'createStorefrontOrder').mockResolvedValue({
+      data: { id: 'pedido-3', order_number: 7, subtotal: 10, shipping: 0, total: 10, items: 1 },
+      error: null,
+    })
+    vi.spyOn(db, 'getOrderMoney').mockResolvedValue({
+      subtotal: 10, shipping: 0, total: 10, status: 'esperando_pago',
+    })
+    const reclamo = vi.spyOn(db, 'claimOrderNotification').mockResolvedValue(null)
+
+    const respuesta = await ejecutar('/api/store/:slug/orders', 'post', {
+      storefront: { businessId: 'negocio-a', customerId: 'cliente-1', contactPhone: '+593999' },
+      params: { slug: 'pizzeria' },
+      body: { items: [{ productId: 'producto-1', quantity: 1 }], paymentMethod: 'transferencia' },
+    })
+
+    expect(respuesta.status).toBe(201)
+    expect(reclamo).toHaveBeenCalledWith('negocio-a', 'pedido-3', 'esperando_pago')
+  })
+
+  it('no se lo pide a un pedido en efectivo', async () => {
+    vi.spyOn(db, 'createStorefrontOrder').mockResolvedValue({
+      data: { id: 'pedido-4', order_number: 8, subtotal: 10, shipping: 0, total: 10, items: 1 },
+      error: null,
+    })
+    vi.spyOn(db, 'getOrderMoney').mockResolvedValue({
+      subtotal: 10, shipping: 0, total: 10, status: 'pendiente',
+    })
+    const reclamo = vi.spyOn(db, 'claimOrderNotification').mockResolvedValue(null)
+
+    const respuesta = await ejecutar('/api/store/:slug/orders', 'post', {
+      storefront: { businessId: 'negocio-a', customerId: 'cliente-1', contactPhone: '+593999' },
+      params: { slug: 'pizzeria' },
+      body: { items: [{ productId: 'producto-1', quantity: 1 }], paymentMethod: 'efectivo' },
+    })
+
+    expect(respuesta.status).toBe(201)
+    expect(reclamo).not.toHaveBeenCalled()
+  })
+
   it('descarta cualquier precio que mande el teléfono', async () => {
     const crear = vi.spyOn(db, 'createStorefrontOrder').mockResolvedValue({
       data: { id: 'pedido-1', total: 1250 }, error: null,

@@ -6297,9 +6297,14 @@ begin
 
   insert into public.customers (phone) values ('593900222600') returning id into v_cliente;
   insert into public.business_customers (business_id, customer_id) values (v_local, v_cliente);
+  -- ⚠️ Con la pregunta «¿Empezamos de nuevo o sigues?» PENDIENTE: es lo que
+  -- tiene quien escribió algo en el chat antes de pedir (2026-09-27).
   insert into public.marketplace_conversations (
-    customer_id, selected_business_id, shopping_locked, current_state
-  ) values (v_cliente, v_local, true, 'navegando');
+    customer_id, selected_business_id, shopping_locked, current_state, flow_state
+  ) values (
+    v_cliente, v_local, true, 'confirmando_reinicio',
+    '{"vista": {"vista": "confirmando_reinicio", "pagina": 0}}'::jsonb
+  );
 
   -- ── 1. CREAR EL PEDIDO MARCA LA CONVERSACIÓN ────────────────────────────
   -- Es el fallo que vivió el dueño: pidió por la mini app y el bot le siguió
@@ -6312,6 +6317,14 @@ begin
     from public.marketplace_conversations where customer_id = v_cliente;
   if v_estado <> 'esperando_comprobante' then
     raise exception 'crear el pedido no avisó a la conversación: %', v_estado;
+  end if;
+
+  -- ── 1b. Y BORRA LA PREGUNTA PENDIENTE (2026-09-27) ──────────────────────
+  -- Con ella viva, el «Empezar de nuevo» de ANTES de pedir cancelaba este
+  -- pedido recién nacido —lo reprodujo staging—, aunque ya hubiera transferido.
+  if (select flow_state from public.marketplace_conversations
+       where customer_id = v_cliente) is not null then
+    raise exception 'el pedido nuevo dejó viva la pregunta de «Empezar de nuevo»';
   end if;
 
   -- ── 2. ABANDONAR A PROPÓSITO CANCELA ────────────────────────────────────
@@ -6353,3 +6366,111 @@ end;
 $$;
 
 select '✅ el pedido avisa a la conversación, e irse avisando cancela sin contar como impago' as resultado;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- EL PEDIDO QUE NACE SIN DEBER NADA SUELTA EL CANDADO (2026-09-27)
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+-- El de efectivo nace en `pendiente` y nunca pasa por un estado que retenga,
+-- así que el disparador —que solo miraba UPDATE— no lo veía: el candado se
+-- quedaba puesto para siempre. En staging, con el pedido ya ENTREGADO, un
+-- «hola» seguía recibiendo «¿Empezamos de nuevo o sigues con tu pedido?». Lo
+-- soltaba a mano el checkout del chat, y se fue con él en el #360.
+do $$
+declare
+  v_a        uuid;
+  v_b        uuid;
+  v_cliente  uuid;
+  v_otro     uuid;
+  v_bloqueado boolean;
+  v_local    uuid;
+  v_estado   text;
+  v_flujo    jsonb;
+begin
+  insert into businesses (
+    slug, name, type, whatsapp_provider, whatsapp_number, ycloud_number,
+    takes_orders, chat_mode
+  ) values (
+    'efectivo-a-v', 'Pizza', 'pizzeria', 'ycloud',
+    '+593900333501', '+593900333501', true, 'miniapp'
+  ) returning id into v_a;
+  insert into businesses (
+    slug, name, type, whatsapp_provider, whatsapp_number, ycloud_number,
+    takes_orders, chat_mode
+  ) values (
+    'efectivo-b-v', 'Cevichería', 'restaurante', 'ycloud',
+    '+593900333502', '+593900333502', true, 'miniapp'
+  ) returning id into v_b;
+
+  -- ── 1. EL DE EFECTIVO SUELTA EL CANDADO Y EL LOCAL ──────────────────────
+  insert into public.customers (phone) values ('593900333600') returning id into v_cliente;
+  insert into public.marketplace_conversations (
+    customer_id, selected_business_id, shopping_locked, current_state, flow_state
+  ) values (
+    v_cliente, v_a, true, 'confirmando_reinicio',
+    '{"vista": {"vista": "confirmando_reinicio", "pagina": 0}}'::jsonb
+  );
+  insert into public.orders (business_id, customer_id, contact_phone, source, status, subtotal, total)
+  values (v_a, v_cliente, '593900333600', 'storefront', 'pendiente', 9, 9);
+
+  select shopping_locked, selected_business_id, current_state, flow_state
+    into v_bloqueado, v_local, v_estado, v_flujo
+    from public.marketplace_conversations where customer_id = v_cliente;
+  if v_bloqueado then
+    raise exception 'el pedido en efectivo NO soltó el candado';
+  end if;
+  if v_local is not null then
+    raise exception 'el candado se soltó pero el local siguió elegido';
+  end if;
+  if v_estado <> 'navegando' or v_flujo is not null then
+    raise exception 'la conversación quedó en % con vista %: el chat seguiría preguntando', v_estado, v_flujo;
+  end if;
+
+  -- ── 2. SOLO EN SU LOCAL ─────────────────────────────────────────────────
+  -- Si la persona ya anda eligiendo en OTRO local, ese candado es de lo que
+  -- hace ahora: un pedido que nace en el primero no se lo puede quitar.
+  update public.marketplace_conversations
+     set shopping_locked = true, selected_business_id = v_b, current_state = 'en_local'
+   where customer_id = v_cliente;
+  insert into public.orders (business_id, customer_id, contact_phone, source, status, subtotal, total)
+  values (v_a, v_cliente, '593900333600', 'storefront', 'pendiente', 9, 9);
+  select shopping_locked, selected_business_id into v_bloqueado, v_local
+    from public.marketplace_conversations where customer_id = v_cliente;
+  if not v_bloqueado or v_local is distinct from v_b then
+    raise exception 'un pedido en OTRO local soltó el candado de donde está ahora';
+  end if;
+
+  -- ── 3. EL QUE NACE DEBIENDO NO LO SUELTA ────────────────────────────────
+  -- Transferencia: el candado se queda hasta que el local acepte. Es la
+  -- decisión del 2026-08-30 («Umbani cerrado») y no cambia.
+  insert into public.customers (phone) values ('593900333601') returning id into v_otro;
+  insert into public.marketplace_conversations (
+    customer_id, selected_business_id, shopping_locked, current_state
+  ) values (v_otro, v_a, true, 'en_local');
+  insert into public.orders (business_id, customer_id, contact_phone, source, status, subtotal, total)
+  values (v_a, v_otro, '593900333601', 'storefront', 'esperando_pago', 9, 9);
+  select shopping_locked into v_bloqueado
+    from public.marketplace_conversations where customer_id = v_otro;
+  if not v_bloqueado then
+    raise exception 'un pedido esperando pago soltó el candado al nacer';
+  end if;
+
+  -- ── 4. EL DE MOSTRADOR NO TOCA LA CONVERSACIÓN ──────────────────────────
+  -- Lo teclea el dueño con la persona delante.
+  update public.marketplace_conversations
+     set shopping_locked = true, selected_business_id = v_b, current_state = 'en_local'
+   where customer_id = v_cliente;
+  insert into public.orders (business_id, customer_id, contact_phone, source, status, subtotal, total)
+  values (v_b, v_cliente, '593900333600', 'manual', 'pendiente', 9, 9);
+  select shopping_locked into v_bloqueado
+    from public.marketplace_conversations where customer_id = v_cliente;
+  if not v_bloqueado then
+    raise exception 'un pedido de MOSTRADOR soltó el candado del chat';
+  end if;
+
+  delete from businesses where id in (v_a, v_b);
+  delete from public.customers where id in (v_cliente, v_otro);
+end;
+$$;
+
+select '✅ el pedido en efectivo suelta el candado al nacer, solo en su local; el que debe y el de mostrador no' as resultado;

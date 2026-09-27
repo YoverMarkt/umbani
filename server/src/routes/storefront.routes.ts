@@ -98,11 +98,16 @@ interface StorefrontRouteDatabase {
     customerId: string,
     name: string,
   ): Promise<{ error: unknown }>
-  /** El dinero OFICIAL del pedido, leído de la fila ya sellada por el disparador. */
+  /**
+   * El dinero OFICIAL del pedido, leído de la fila ya sellada por el
+   * disparador. Y su estado: la RPC no lo devuelve, y sin él no se sabe si
+   * hay que pedir el comprobante por el chat.
+   */
   getOrderMoney(businessId: string, orderId: string): Promise<{
     subtotal: number | string | null
     shipping: number | string | null
     total: number | string | null
+    status: string | null
   } | null>
   createStorefrontOrder(input: Record<string, unknown>): Promise<{
     data: unknown
@@ -759,9 +764,12 @@ router.post('/api/store/:slug/orders', orderLimiter, requireStorefrontSession, a
   // tiene que ver su confirmación ahora. Esperar a un proveedor externo antes
   // de responder cambiaría su tiempo por el de un mensaje — y si el canal
   // estuviera lento, le diría que su pedido falló cuando no falló.
-  if (String((result.data as { status?: unknown } | null)?.status || '') === 'esperando_pago') {
-    void pedirComprobantePorChat(businessId, String((result.data as { id?: unknown }).id || ''))
-  }
+  //
+  // ⚠️ El estado se lee de la FILA, más abajo, y no de `result.data`: la RPC
+  // no devuelve `status`. Preguntarle a ella daba siempre falso, y este aviso
+  // no salió NI UNA VEZ en un mes (0 en la cola de producción, 2026-09-27).
+  // La prueba lo daba por bueno porque llamaba a la función suelta con un
+  // pedido inventado que sí traía el campo.
 
   // ── El total que se le devuelve al cliente sale de la FILA ──────────────
   //
@@ -779,6 +787,9 @@ router.post('/api/store/:slug/orders', orderLimiter, requireStorefrontSession, a
   // corto. Lo vigila la prueba de que los dos números coinciden.
   const creado = (result.data || {}) as Record<string, unknown>
   const oficial = await db.getOrderMoney(businessId, String(creado.id || ''))
+  if (oficial?.status === 'esperando_pago') {
+    void pedirComprobantePorChat(businessId, String(creado.id || ''))
+  }
   return res.status(201).json(oficial ? { ...creado, ...oficial } : creado)
 })
 
