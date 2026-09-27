@@ -3525,6 +3525,10 @@ export type Database = {
         Args: { p_customer_id: string; p_keep_session_id: string }
         Returns: number
       }
+      revoke_storefront_sessions_on_exit: {
+        Args: { p_customer_id: string }
+        Returns: number
+      }
       save_receipt_analysis: {
         Args: {
           p_analysis?: Json

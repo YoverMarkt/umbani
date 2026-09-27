@@ -408,33 +408,33 @@ const revokeStorefrontSessionsExcept = async (
 }
 
 /**
- * Revoca TODOS los enlaces vivos de un cliente. Lo usa MENÚ.
+ * Revoca los enlaces de un cliente AL SALIR —MENÚ o «Empezar de nuevo»— salvo
+ * los de un local donde aún tenga un pedido esperando pago o en revisión.
  *
  * ⚠️ Nace de una prueba del dueño (2026-09-03): escribió MENÚ, recibió las
  * categorías… y el botón «Ver la carta» de arriba **seguía abriendo el local
  * anterior**. Sus palabras: «todo lo de la palabra menú hacia arriba debería
- * morirse». Y no era solo estético: MENÚ suelta el candado de «un pedido a la
- * vez», así que por ese enlace viejo se podía armar un pedido en un local
- * mientras se navegaba otro — justo lo que el candado existe para impedir.
+ * morirse». MENÚ suelta el candado de «un pedido a la vez», y por un enlace
+ * viejo se podía armar un pedido en un local mientras se navegaba otro.
  *
- * ⚠️ Es un UPDATE directo y no una RPC a propósito: la que existe
- * (`revoke_other_storefront_sessions`) conserva una sesión por contrato y
- * rechaza un `keep` nulo, así que no sabe revocarlas todas. Añadir una RPC
- * gemela para una condición más simple sería una migración por nada.
+ * ⚠️ Y se rehízo el 2026-09-27 por la EXCEPCIÓN. Quien debe un comprobante o
+ * lo tiene en revisión conserva su enlace —ahí manda la captura y ve cómo va lo
+ * suyo—, pero eso se decidía con el estado del CHAT leído antes de que MENÚ
+ * cancelara el pedido. Al amigo del dueño le canceló el #25 y le dejó el
+ * enlace vivo: volvió a entrar a La Abuelita un minuto después. Ahora lo
+ * decide la base mirando los PEDIDOS tal como quedaron, en la misma consulta
+ * (`revoke_storefront_sessions_on_exit`).
  *
  * Devuelve cuántas revocó. No lanza si no había ninguna: MENÚ se escribe
  * muchas veces sin tener enlace abierto.
  */
-const revokeAllStorefrontSessions = async (customerId: string): Promise<number> => {
+const revokeStorefrontSessionsOnExit = async (customerId: string): Promise<number> => {
   if (!customerId) return 0
-  const { data, error } = await db
-    .from('storefront_sessions')
-    .update({ revoked_at: new Date().toISOString() })
-    .eq('customer_id', customerId)
-    .is('revoked_at', null)
-    .select('id')
+  const { data, error } = await db.rpc('revoke_storefront_sessions_on_exit', {
+    p_customer_id: customerId,
+  })
   fail(error, 'No se pudieron revocar los enlaces del cliente')
-  return (data || []).length
+  return Number(data ?? 0)
 }
 
 // El pedido de la tienda: la RPC resuelve cada precio desde la base. Aquí solo
@@ -1059,7 +1059,7 @@ export = {
   cleanupStorefrontSessions,
   revokeOtherStorefrontSessions,
   revokeStorefrontSessionsExcept,
-  revokeAllStorefrontSessions,
+  revokeStorefrontSessionsOnExit,
   cancelUnpaidOrderOnPurpose,
   createStorefrontOrder,
   getOrderMoney,

@@ -56,11 +56,12 @@ export interface MarketplaceEntryDatabase {
    */
   getSchedulesFor?(businessIds: string[]): Promise<Map<string, ScheduleRecord[]>>
   /**
-   * Revoca todos los enlaces vivos del cliente. Lo llama MENÚ.
-   * Opcional: sin ella el enlace anterior sigue vivo, que es como estaba
-   * antes del 2026-09-03.
+   * Revoca los enlaces del cliente al salir —MENÚ o «Empezar de nuevo»— salvo
+   * donde aún tenga un pedido esperando pago o en revisión. Lo decide la base
+   * mirando los PEDIDOS (2026-09-27). Opcional: sin ella el enlace anterior
+   * sigue vivo, que es como estaba antes del 2026-09-03.
    */
-  revokeAllStorefrontSessions?(customerId: string): Promise<number>
+  revokeStorefrontSessionsOnExit?(customerId: string): Promise<number>
   /** Deja constancia de un paso del menú. Opcional: es un registro, no dinero. */
   logMarketplaceEvent?(evento: {
     customerId: string | null
@@ -906,7 +907,7 @@ async function atenderComandoMenu(
       // de las dos, la mitad de los abandonos avisados seguirían caducando y
       // sumando falta.
       await abandonarPedido(deps, contexto.negocioElegidoId, customer.id)
-      await matarEnlaceAnterior(deps, customer.id, contexto.estadoDeLaConversacion)
+      await matarEnlaceAnterior(deps, customer.id)
       // 'vuelta': vuelve al inicio a propósito, igual que `responderAlMenu`.
       const respuesta = verCategorias(contexto.categorias, 0, 'vuelta')
       await guardar(deps, customer.id, contexto.version, respuesta, {
@@ -926,7 +927,7 @@ async function atenderComandoMenu(
     // de los MENÚ con el enlace vivo: aquí entra el MENÚ escrito, y arriba el
     // que llega estando en la pregunta de reinicio —donde además cae el botón
     // «✅ Empezar de nuevo», porque su texto normaliza a un COMANDO_MENU—.
-    await matarEnlaceAnterior(deps, customer.id, contexto.estadoDeLaConversacion)
+    await matarEnlaceAnterior(deps, customer.id)
     const respuesta = responderAlMenu(contexto.estado, contexto.categorias)
     await guardar(deps, customer.id, contexto.version, respuesta, {
       soltarLocal: true,
@@ -973,7 +974,7 @@ async function atenderConfirmacionDeReinicio(
       // NÚMERO («1»), no su título, y «1» no es un comando de MENÚ. Se creía
       // que el botón entraba por arriba —la prueba mandaba el título—, así que
       // en producción el enlace seguía abriendo la carta después de reiniciar.
-      await matarEnlaceAnterior(deps, customer.id, contexto.estadoDeLaConversacion)
+      await matarEnlaceAnterior(deps, customer.id)
     }
 
     await guardar(deps, customer.id, contexto.version, respuesta, {
@@ -1398,13 +1399,16 @@ function apuntarPaso(
 async function matarEnlaceAnterior(
   deps: MarketplaceEntryDeps,
   customerId: string,
-  estadoActual: string | null | undefined,
 ): Promise<void> {
-  const necesitaSuEnlace = estadoActual === 'esperando_comprobante'
-    || estadoActual === 'pago_en_revision'
-  if (necesitaSuEnlace || !deps.database.revokeAllStorefrontSessions) return
+  // ⚠️ La excepción —quien debe un comprobante o lo tiene en revisión
+  // conserva su enlace— la decide la BASE mirando los pedidos, no el estado
+  // del chat (2026-09-27). Este se leyó al empezar el turno, ANTES de que
+  // `abandonarPedido` cancelara el pedido: decía «esperando comprobante» de un
+  // pedido que ya no existía, y el enlace sobrevivía. Por eso esto va SIEMPRE
+  // después de `abandonarPedido`.
+  if (!deps.database.revokeStorefrontSessionsOnExit) return
   const revocados = await deps.database
-    .revokeAllStorefrontSessions(customerId)
+    .revokeStorefrontSessionsOnExit(customerId)
     .catch(() => 0)
   if (revocados) {
     deps.logger?.log(`🔗 [marketplace] MENÚ revocó ${revocados} enlace(s) anterior(es)`)

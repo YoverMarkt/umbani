@@ -59,7 +59,7 @@ function armar({ conversacion = {}, database: extra = {}, issueLink } = {}) {
     isPlatformBlocked: vi.fn().mockResolvedValue(false),
     isContactBlocked: vi.fn().mockResolvedValue(false),
     cancelUnpaidOrderOnPurpose: vi.fn().mockResolvedValue(1),
-    revokeAllStorefrontSessions: vi.fn().mockResolvedValue(2),
+    revokeStorefrontSessionsOnExit: vi.fn().mockResolvedValue(2),
     ...extra,
   }
   const deps = {
@@ -135,7 +135,7 @@ describe('«Seguir mi pedido» devuelve el enlace', () => {
     expect(m.todo()).toContain('https://umbani.app/s/abc123')
     // Y NO cancela nada: justo lo contrario de «Empezar de nuevo».
     expect(m.database.cancelUnpaidOrderOnPurpose).not.toHaveBeenCalled()
-    expect(m.database.revokeAllStorefrontSessions).not.toHaveBeenCalled()
+    expect(m.database.revokeStorefrontSessionsOnExit).not.toHaveBeenCalled()
   })
 
   it('si el local ya no existe, responde igual en vez de callarse', async () => {
@@ -208,7 +208,7 @@ describe('«Empezar de nuevo» sí corta por lo sano', () => {
     await escribir(m.deps, SI_REINICIAR)
 
     expect(m.database.cancelUnpaidOrderOnPurpose).toHaveBeenCalled()
-    expect(m.database.revokeAllStorefrontSessions).toHaveBeenCalledWith('cli-1')
+    expect(m.database.revokeStorefrontSessionsOnExit).toHaveBeenCalledWith('cli-1')
   })
 })
 
