@@ -756,6 +756,38 @@ export function avisoDeSilencio(hasta: string, ahora = new Date()): string {
     + 'foto de tu comprobante la recibimos igual.'
 }
 
+// ── Insultos (2026-09-27) ─────────────────────────────────────────────────
+//
+// Los textos que pidió el dueño: advertencia la primera vez, bloqueo de 15
+// días la segunda, y al volver, «te hemos desbloqueado». Ver
+// `lib/malas-palabras.ts` y `register_insult`.
+
+/** La primera vez: se le avisa de lo que pasará, sin atender el mensaje. */
+export const ADVERTENCIA_POR_INSULTOS = '⚠️ Por favor, mantén el respeto: en *Umbani* '
+  + 'tratamos a todos con respeto y esperamos lo mismo.\n\n'
+  + 'Si vuelves a usar insultos o malas palabras, tu número se bloqueará '
+  + 'automáticamente y no podrás pedir en Umbani durante 15 días.'
+
+/**
+ * La segunda: 15 días fuera. Se dice hasta cuándo —el plazo se cumple solo, así
+ * que prometerlo no es mentir—.
+ */
+export function avisoDeBloqueoPorInsultos(hasta: string | null, ahora = new Date()): string {
+  const fin = hasta ? new Date(hasta) : new Date(ahora.getTime() + 15 * 86_400_000)
+  const fecha = Number.isNaN(fin.getTime())
+    ? 'dentro de 15 días'
+    : `el ${new Intl.DateTimeFormat('es-EC', {
+      timeZone: ZONA, weekday: 'long', day: 'numeric', month: 'long',
+    }).format(fin)}`
+  return '🚫 Tu número quedó bloqueado por 15 días por usar insultos o malas palabras.\n\n'
+    + `Podrás volver a pedir en Umbani desde ${fecha}.`
+}
+
+/** Al volver —caducó, o lo levantó el superadmin—, en su primer mensaje. */
+export const TE_HEMOS_DESBLOQUEADO = '✅ Te hemos desbloqueado. Esperamos que '
+  + 'mejores tu conducta.\n\n'
+  + 'Si vuelve a pasar, tu número se bloqueará automáticamente.'
+
 export interface PasoInput {
   /**
    * Lo que escribió el cliente.

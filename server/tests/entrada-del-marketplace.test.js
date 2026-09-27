@@ -56,7 +56,7 @@ function armar({ conversacion = {}, database: extra = {}, issueLink } = {}) {
     getBusinessById: vi.fn().mockResolvedValue(LOCAL),
     getSchedulesFor: vi.fn().mockResolvedValue(new Map()),
     claimMarketplaceReply: vi.fn().mockResolvedValue({ permitido: true, respuestas: 1 }),
-    isPlatformBlocked: vi.fn().mockResolvedValue(false),
+    claimPlatformBlockState: vi.fn().mockResolvedValue({ bloqueado: false }),
     isContactBlocked: vi.fn().mockResolvedValue(false),
     cancelUnpaidOrderOnPurpose: vi.fn().mockResolvedValue(1),
     revokeStorefrontSessionsOnExit: vi.fn().mockResolvedValue(2),
@@ -218,7 +218,7 @@ describe('falla abierto', () => {
   it('sin la comprobación de bloqueo de plataforma, sigue atendiendo', async () => {
     // ⚠️ Es la regla de esta puerta: un fallo de la base no puede dejar mudo
     // al número por el que entra TODO el negocio.
-    const m = armar({ database: { isPlatformBlocked: undefined } })
+    const m = armar({ database: { claimPlatformBlockState: undefined } })
     await escribir(m.deps, 'hola')
 
     expect(m.enviados.length).toBeGreaterThan(0)
@@ -226,7 +226,7 @@ describe('falla abierto', () => {
 
   it('si la consulta de bloqueo revienta, atiende igual', async () => {
     const m = armar({
-      database: { isPlatformBlocked: vi.fn().mockRejectedValue(new Error('caída')) },
+      database: { claimPlatformBlockState: vi.fn().mockRejectedValue(new Error('caída')) },
     })
     await escribir(m.deps, 'hola')
 
@@ -477,8 +477,12 @@ describe('guardián: el orden de las puertas', () => {
     const puertas = [
       // El bloqueo de plataforma y el techo van primero: ni se cuenta ni se
       // contesta a quien no debe recibir respuesta.
-      'isPlatformBlocked',
+      'claimPlatformBlockState(customer.id',
       'claimMarketplaceReply(customer.id',
+      // Los insultos (2026-09-27): DESPUÉS del techo —la advertencia se paga, y
+      // quien insulta a ráfagas no se lo puede saltar— y ANTES que MENÚ —«menú,
+      // hijueputa» sigue siendo un insulto—.
+      'atenderInsulto(deps, text',
       // MENÚ, que es la salida de cualquier sitio.
       'atenderComandoMenu(deps, text',
       // Los marcadores del webhook, detrás de MENÚ.

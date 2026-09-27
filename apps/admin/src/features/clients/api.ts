@@ -128,7 +128,15 @@ export const getChannelHealth = () => api<ChannelHealth>('/api/admin/channel-hea
 // —que El Puerto te expulse no puede dejarte fuera de Umbani entero—. Este lo
 // pone el superadmin: el bot deja de responder y NINGÚN local acepta el pedido,
 // ni siquiera de mostrador.
-export type PlatformBlock = { phone: string; blockedAt: string; reason: string | null }
+export type PlatformBlock = {
+  phone: string
+  blockedAt: string
+  reason: string | null
+  /** Hasta cuándo; `null` = permanente (el del superadmin). */
+  until: string | null
+  /** `insultos` lo puso el chat solo (2026-09-27); `manual`, el superadmin. */
+  kind: 'manual' | 'insultos'
+}
 
 export const getPlatformBlocked = () => api<PlatformBlock[]>('/api/admin/blocked')
 

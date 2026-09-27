@@ -928,29 +928,41 @@ export type Database = {
       customers: {
         Row: {
           blocked_at: string | null
+          blocked_kind: string | null
           blocked_reason: string | null
+          blocked_until: string | null
           created_at: string
           id: string
+          insult_warned_at: string | null
           name: string | null
           phone: string
+          unblock_notice_pending: boolean
           updated_at: string
         }
         Insert: {
           blocked_at?: string | null
+          blocked_kind?: string | null
           blocked_reason?: string | null
+          blocked_until?: string | null
           created_at?: string
           id?: string
+          insult_warned_at?: string | null
           name?: string | null
           phone: string
+          unblock_notice_pending?: boolean
           updated_at?: string
         }
         Update: {
           blocked_at?: string | null
+          blocked_kind?: string | null
           blocked_reason?: string | null
+          blocked_until?: string | null
           created_at?: string
           id?: string
+          insult_warned_at?: string | null
           name?: string | null
           phone?: string
+          unblock_notice_pending?: boolean
           updated_at?: string
         }
         Relationships: []
@@ -3104,6 +3116,10 @@ export type Database = {
         }
         Returns: Json
       }
+      claim_platform_block_state: {
+        Args: { p_customer_id: string }
+        Returns: Json
+      }
       claim_storefront_link_send: {
         Args: {
           p_business_id: string
@@ -3475,6 +3491,10 @@ export type Database = {
       refresh_business_channel_identifiers: {
         Args: { p_business_id: string }
         Returns: undefined
+      }
+      register_insult: {
+        Args: { p_customer_id: string; p_dias?: number }
+        Returns: Json
       }
       register_payment_receipt: {
         Args: {

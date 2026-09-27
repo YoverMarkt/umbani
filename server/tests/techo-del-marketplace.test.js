@@ -42,7 +42,7 @@ const armar = ({ permitido = true, bloqueado = false, avisaDelBloqueo = false } 
     claimMarketplaceReply: vi.fn().mockResolvedValue({ permitido, respuestas: permitido ? 3 : 26 }),
     isContactBlocked: vi.fn().mockResolvedValue(bloqueado),
     claimBlockedNotice: vi.fn().mockResolvedValue(avisaDelBloqueo),
-    isPlatformBlocked: vi.fn().mockResolvedValue(false),
+    claimPlatformBlockState: vi.fn().mockResolvedValue({ bloqueado: false }),
   }
   return {
     database,
@@ -183,7 +183,7 @@ describe('el bloqueo de PLATAFORMA', () => {
   // Umbani entero deja de atender a esa persona.
   it('no se le responde absolutamente nada', async () => {
     const h = armar()
-    h.database.isPlatformBlocked.mockResolvedValue(true)
+    h.database.claimPlatformBlockState.mockResolvedValue({ bloqueado: true })
     await atender(h.deps, 'hola')
     expect(h.enviados).toEqual([])
   })
@@ -191,7 +191,7 @@ describe('el bloqueo de PLATAFORMA', () => {
   // Va antes que el techo porque es más fuerte y más barato: ni se cuenta.
   it('ni se gasta el techo ni se lee la conversación', async () => {
     const h = armar()
-    h.database.isPlatformBlocked.mockResolvedValue(true)
+    h.database.claimPlatformBlockState.mockResolvedValue({ bloqueado: true })
     await atender(h.deps, 'hola')
     expect(h.database.claimMarketplaceReply).not.toHaveBeenCalled()
     expect(h.database.getConversation).not.toHaveBeenCalled()
@@ -202,21 +202,21 @@ describe('el bloqueo de PLATAFORMA', () => {
   // busca. Es la diferencia con el techo, donde el comprobante sí pasa.
   it('tampoco se le contesta el comprobante', async () => {
     const h = armar()
-    h.database.isPlatformBlocked.mockResolvedValue(true)
+    h.database.claimPlatformBlockState.mockResolvedValue({ bloqueado: true })
     await atender(h.deps, '[el cliente envió su comprobante de pago del pedido #12]')
     expect(h.enviados).toEqual([])
   })
 
   it('falla ABIERTO: un fallo de la base no deja mudo al marketplace', async () => {
     const h = armar()
-    h.database.isPlatformBlocked.mockRejectedValue(new Error('base caída'))
+    h.database.claimPlatformBlockState.mockRejectedValue(new Error('base caída'))
     await atender(h.deps, 'hola')
     expect(h.enviados).toHaveLength(1)
   })
 
   it('sin la función configurada, se atiende', async () => {
     const h = armar()
-    delete h.database.isPlatformBlocked
+    delete h.database.claimPlatformBlockState
     await atender(h.deps, 'hola')
     expect(h.enviados).toHaveLength(1)
   })

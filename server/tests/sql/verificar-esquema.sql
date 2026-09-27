@@ -6490,3 +6490,104 @@ end;
 $$;
 
 select '✅ el pedido en efectivo suelta el candado al nacer, solo en su local; el que debe y el de mostrador no' as resultado;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- INSULTOS: ADVERTENCIA, 15 DÍAS FUERA, Y EL AVISO AL VOLVER (2026-09-27)
+-- ═══════════════════════════════════════════════════════════════════════════
+do $$
+declare
+  v_local   uuid;
+  v_cliente uuid;
+  v_r       jsonb;
+  v_falló   boolean;
+begin
+  insert into businesses (
+    slug, name, type, whatsapp_provider, whatsapp_number, ycloud_number,
+    takes_orders, chat_mode
+  ) values (
+    'insultos-v', 'Pizza', 'pizzeria', 'ycloud',
+    '+593900444501', '+593900444501', true, 'miniapp'
+  ) returning id into v_local;
+  insert into public.customers (phone) values ('593900444600') returning id into v_cliente;
+
+  -- ── 1. La primera vez, solo una advertencia ─────────────────────────────
+  v_r := public.register_insult(v_cliente, 15);
+  if v_r->>'accion' <> 'advertido' then
+    raise exception 'el primer insulto debía advertir: %', v_r;
+  end if;
+  if (public.claim_platform_block_state(v_cliente)->>'bloqueado')::boolean then
+    raise exception 'una advertencia no puede bloquear';
+  end if;
+
+  -- ── 2. La segunda, 15 días fuera de TODA la app ──────────────────────────
+  v_r := public.register_insult(v_cliente, 15);
+  if v_r->>'accion' <> 'bloqueado'
+     or (v_r->>'hasta')::timestamptz < now() + interval '14 days 23 hours' then
+    raise exception 'el segundo insulto debía bloquear 15 días: %', v_r;
+  end if;
+  v_r := public.claim_platform_block_state(v_cliente);
+  if not (v_r->>'bloqueado')::boolean or v_r->>'tipo' <> 'insultos' then
+    raise exception 'el bloqueo por insultos no se ve: %', v_r;
+  end if;
+  if public.register_insult(v_cliente, 15)->>'accion' <> 'ya_bloqueado' then
+    raise exception 'un insulto estando bloqueado no puede alargar ni tocar nada';
+  end if;
+
+  -- Ni el bot le contesta ni NINGÚN local acepta su pedido.
+  v_falló := false;
+  begin
+    insert into public.orders (business_id, customer_id, contact_phone, source, status, subtotal, total)
+    values (v_local, v_cliente, '593900444600', 'storefront', 'pendiente', 9, 9);
+  exception when insufficient_privilege then
+    v_falló := true;
+  end;
+  if not v_falló then
+    raise exception 'el bloqueado por insultos pudo pedir';
+  end if;
+
+  -- ── 3. Caduca SOLO, y al volver se le avisa UNA vez ──────────────────────
+  update public.customers set blocked_until = now() - interval '1 minute' where id = v_cliente;
+  v_r := public.claim_platform_block_state(v_cliente);
+  if (v_r->>'bloqueado')::boolean or not coalesce((v_r->>'avisar_desbloqueo')::boolean, false) then
+    raise exception 'al caducar debía desbloquear y avisar: %', v_r;
+  end if;
+  if (select blocked_at from public.customers where id = v_cliente) is not null then
+    raise exception 'el bloqueo caducado no se limpió';
+  end if;
+  if coalesce((public.claim_platform_block_state(v_cliente)->>'avisar_desbloqueo')::boolean, false) then
+    raise exception 'el aviso de desbloqueo salió DOS veces';
+  end if;
+  -- Y ya puede pedir.
+  insert into public.orders (business_id, customer_id, contact_phone, source, status, subtotal, total)
+  values (v_local, v_cliente, '593900444600', 'storefront', 'pendiente', 9, 9);
+
+  -- ── 4. Si vuelve a pasar, directo al bloqueo: la advertencia ya se dio ───
+  if public.register_insult(v_cliente, 15)->>'accion' <> 'bloqueado' then
+    raise exception 'tras el desbloqueo, el siguiente insulto debía bloquear directo';
+  end if;
+
+  -- ── 5. El superadmin lo levanta antes: también se le avisa al volver ─────
+  perform public.set_platform_blocked('593900444600', false, null);
+  v_r := public.claim_platform_block_state(v_cliente);
+  if (v_r->>'bloqueado')::boolean or not coalesce((v_r->>'avisar_desbloqueo')::boolean, false) then
+    raise exception 'levantarlo a mano debía dejar el aviso para su próximo mensaje: %', v_r;
+  end if;
+
+  -- ── 6. El bloqueo MANUAL no cambia: permanente, y sin aviso al levantarlo ─
+  perform public.set_platform_blocked('593900444600', true, 'Pedidos falsos');
+  if (select blocked_kind || '|' || coalesce(blocked_until::text, 'sin fecha')
+        from public.customers where id = v_cliente) <> 'manual|sin fecha' then
+    raise exception 'el bloqueo del superadmin debía ser manual y permanente';
+  end if;
+  perform public.set_platform_blocked('593900444600', false, null);
+  if coalesce((public.claim_platform_block_state(v_cliente)->>'avisar_desbloqueo')::boolean, false) then
+    raise exception 'levantar un bloqueo MANUAL no lleva el aviso de los insultos';
+  end if;
+
+  delete from public.orders where customer_id = v_cliente;
+  delete from businesses where id = v_local;
+  delete from public.customers where id = v_cliente;
+end;
+$$;
+
+select '✅ insultos: advertencia, 15 días fuera de toda la app, caduca solo y avisa UNA vez al volver' as resultado;

@@ -70,7 +70,13 @@ const db: {
   getAllBusinesses(): Promise<unknown[]>
   getLastInboundByBusiness(businessIds: string[]): Promise<ChannelActivity[]>
   getPlatformLastInboundAt(): Promise<string | null>
-  getPlatformBlocked(): Promise<{ phone: string; blockedAt: string; reason: string | null }[]>
+  getPlatformBlocked(): Promise<{
+    phone: string
+    blockedAt: string
+    reason: string | null
+    until: string | null
+    kind: 'manual' | 'insultos'
+  }[]>
   setPlatformBlocked(
     phone: string,
     blocked: boolean,

@@ -42,6 +42,9 @@ function armar({ respuestas, escrituras = [], productos = [{ id: 'p1', name: 'Al
     // (no es un uuid) y solo ensuciaba el log — pero si llegara a funcionar,
     // inflaría los reportes de «Uso de Umbani» con visitas que no existen.
     logMarketplaceEvent: async () => { escrituras.push('registrar paso del menú') },
+    // Y el bloqueo de plataforma y los insultos (2026-09-27): los dos ESCRIBEN.
+    claimPlatformBlockState: async () => { escrituras.push('reclamar el aviso de desbloqueo'); return { bloqueado: false } },
+    registerInsult: async () => { escrituras.push('registrar un insulto'); return { accion: 'advertido' } },
   }
   const errores = []
   const canario = crearCanario({
@@ -56,6 +59,8 @@ function armar({ respuestas, escrituras = [], productos = [{ id: 'p1', name: 'Al
       if (deps.database.logMarketplaceEvent) {
         await deps.database.logMarketplaceEvent({ customerId: 'x', tipo: 'menu' })
       }
+      await deps.database.claimPlatformBlockState?.('x')
+      await deps.database.registerInsult?.('x')
       const texto = respuestas[entrada.text]
       if (texto === undefined) return
       await deps.send(texto.reply, texto.options || [])

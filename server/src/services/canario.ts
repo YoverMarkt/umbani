@@ -132,7 +132,10 @@ function dependenciasDelCanario(
       // llenaba de «❌ registrar el paso del menú». Si llegara a funcionar,
       // inflaría los reportes de «Uso de Umbani» con visitas que no existen.
       logMarketplaceEvent: async () => undefined,
-      isPlatformBlocked: async () => false,
+      // El bloqueo de plataforma y los insultos ESCRIBEN (2026-09-27): el
+      // primero reclama el aviso de vuelta, el segundo advierte o bloquea.
+      claimPlatformBlockState: async () => ({ bloqueado: false }),
+      registerInsult: async () => ({ accion: 'nada' }),
       isContactBlocked: async () => false,
     } as unknown as MarketplaceEntryDeps['database'],
     send: async (reply: string, options: unknown[] = []) => {

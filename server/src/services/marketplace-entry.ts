@@ -15,6 +15,9 @@ import {
   esPreguntaPorAbiertos,
   verAbiertos,
   avisoDeSilencio,
+  ADVERTENCIA_POR_INSULTOS,
+  avisoDeBloqueoPorInsultos,
+  TE_HEMOS_DESBLOQUEADO,
   type MarketplaceBusiness,
   type MarketplaceCategory,
   type MarketplaceReply,
@@ -22,6 +25,7 @@ import {
 } from './marketplace-menu'
 import { isOutsideHours, proximaApertura } from './schedule'
 import { enviosDelTurno, leerToque } from './marketplace-envio'
+import { contieneInsulto } from '../lib/malas-palabras'
 import type { ScheduleRecord } from './schedule'
 import {
   esComprobante, esComprobanteAmbiguo, esFotoQueNoEsComprobante,
@@ -165,12 +169,25 @@ export interface MarketplaceEntryDatabase {
    */
   claimBlockedNotice?(businessId: string, customerId: string): Promise<boolean>
   /**
-   * ¿Está bloqueado en TODA la plataforma?
+   * ¿Está bloqueado en TODA la plataforma? Y si vuelve de un bloqueo por
+   * insultos —caducó o lo levantó el superadmin—, ¿toca decírselo?
    *
-   * Distinto del anterior: este lo pone el superadmin y significa que Umbani
-   * entero deja de atenderlo. El del local solo cierra ese local.
+   * Distinto del anterior: este lo pone el superadmin (o el chat, por
+   * insultos) y significa que Umbani entero deja de atenderlo. El del local
+   * solo cierra ese local. ⚠️ ESCRIBE: reclama el aviso de vuelta.
    */
-  isPlatformBlocked?(customerId: string): Promise<boolean>
+  claimPlatformBlockState?(customerId: string): Promise<{
+    bloqueado: boolean
+    avisarDesbloqueo?: boolean
+  }>
+  /**
+   * Un insulto: advertencia la primera vez, 15 días fuera la siguiente
+   * (2026-09-27). ⚠️ ESCRIBE: el canario y el simulador la sustituyen.
+   */
+  registerInsult?(customerId: string): Promise<{
+    accion: 'advertido' | 'bloqueado' | 'ya_bloqueado' | 'nada'
+    hasta?: string | null
+  }>
   /**
    * Apunta la marca de la lista que se va a mandar, y la huella de la
    * respuesta que salió. Opcionales: sin ellas el chat funciona como antes del
@@ -313,12 +330,24 @@ export async function handleMarketplaceMessage(
   // es la reacción que busca.
   //
   // ⚠️ Falla ABIERTO: un fallo de la base no puede dejar mudo al marketplace.
-  const bloqueadoEnLaPlataforma = database.isPlatformBlocked
-    ? await database.isPlatformBlocked(customer.id).catch(() => false)
-    : false
-  if (bloqueadoEnLaPlataforma) {
+  const bloqueo = database.claimPlatformBlockState
+    ? await database.claimPlatformBlockState(customer.id)
+      .catch(() => ({ bloqueado: false, avisarDesbloqueo: false }))
+    : { bloqueado: false, avisarDesbloqueo: false }
+  if (bloqueo.bloqueado) {
     deps.logger?.log('⛔ [marketplace] contacto bloqueado en toda la plataforma: no se responde')
     return
+  }
+
+  // ── 0b. Vuelve de un bloqueo por insultos ──────────────────────────
+  //
+  // Se le dice en su PRIMER mensaje, no al desbloquear (2026-09-27): pasados
+  // 15 días la ventana de 24 h de WhatsApp está cerrada y un mensaje libre no
+  // llegaría. Ahora, que acaba de escribir, sí. La base ya lo reclamó: sale
+  // una vez. Y su mensaje se atiende como siempre, justo después.
+  if (bloqueo.avisarDesbloqueo) {
+    await deps.send(TE_HEMOS_DESBLOQUEADO, [])
+      .catch(() => { /* el aviso es cortesía: su mensaje se atiende igual */ })
   }
 
   if (!esMarcadorDeComprobante && database.claimMarketplaceReply) {
@@ -341,6 +370,12 @@ export async function handleMarketplaceMessage(
       return
     }
   }
+
+  // ── 0c. Insultos (2026-09-27) ──────────────────────────────────────
+  //
+  // DESPUÉS del techo —la advertencia se paga— y ANTES que MENÚ. El detalle
+  // vive en `atenderInsulto`.
+  if (!esMarcadorDeComprobante && await atenderInsulto(deps, text, customer.id)) return
 
   // ⚠️ A LA VEZ, no una tras otra (2026-09-25): conversación, categorías y el
   // local elegido son lecturas independientes, y cada ida a la base se paga
@@ -935,6 +970,39 @@ async function recorrerElMenu(
 
   await guardar(deps, customer.id, contexto.version, respuesta, { soltarLocal: false })
   await send(respuesta.reply, respuesta.options)
+}
+
+/**
+ * Insultos: la PRIMERA vez, una advertencia; la SEGUNDA, 15 días fuera de
+ * toda la app (decisión del dueño, 2026-09-27, tras probarlo con su teléfono).
+ *
+ * Devuelve `true` cuando el mensaje era un insulto y ya se contestó.
+ *
+ * ⚠️ Solo las palabras fuertes, y la comida de Ecuador protegida: ver
+ * `lib/malas-palabras.ts`.
+ *
+ * ⚠️ El mensaje NO se atiende —ni búsqueda ni menú—: solo se le responde a lo
+ * que dijo. «menú, hijueputa» sigue siendo un insulto.
+ *
+ * ⚠️ Falla ABIERTO: si la base no contesta, el mensaje se atiende como antes.
+ * Bloquear a alguien por un fallo nuestro no tiene vuelta atrás.
+ */
+async function atenderInsulto(
+  deps: MarketplaceEntryDeps,
+  text: string,
+  customerId: string,
+): Promise<boolean> {
+  if (!deps.database.registerInsult || !contieneInsulto(text)) return false
+  const falta = await deps.database.registerInsult(customerId).catch(() => null)
+  if (falta?.accion !== 'advertido' && falta?.accion !== 'bloqueado') return false
+  deps.logger?.log(`🤬 [marketplace] insulto: ${falta.accion}`)
+  await deps.send(
+    falta.accion === 'advertido'
+      ? ADVERTENCIA_POR_INSULTOS
+      : avisoDeBloqueoPorInsultos(falta.hasta ?? null),
+    [],
+  )
+  return true
 }
 
 /**

@@ -238,34 +238,84 @@ const claimMarketplaceReply = async (
 }
 
 /**
- * ¿Esta persona está bloqueada en TODA la plataforma?
+ * ¿Esta persona está bloqueada en TODA la plataforma? Y si acaba de volver de
+ * un bloqueo por insultos, ¿toca decírselo?
  *
  * Distinto del bloqueo del dueño (`isContactBlocked`, por local). Este lo pone
- * el superadmin y significa que Umbani entero deja de atenderla.
+ * el superadmin —o el chat, por insultos (2026-09-27)— y significa que Umbani
+ * entero deja de atenderla.
+ *
+ * ⚠️ ESCRIBE, a diferencia de la consulta que sustituye: limpia el bloqueo de
+ * 15 días que ya caducó y RECLAMA el aviso de vuelta, en la misma consulta,
+ * para que salga una sola vez. Por eso el canario y el simulador la sustituyen.
  */
-const isPlatformBlocked = async (customerId: string): Promise<boolean> => {
-  const { data, error } = await db
-    .from('customers')
-    .select('blocked_at')
-    .eq('id', customerId)
-    .maybeSingle()
+const claimPlatformBlockState = async (
+  customerId: string,
+): Promise<{ bloqueado: boolean; avisarDesbloqueo: boolean }> => {
+  const { data, error } = await db.rpc('claim_platform_block_state', {
+    p_customer_id: customerId,
+  })
   if (error) throw new Error(error.message)
-  return Boolean((data as { blocked_at?: string | null } | null)?.blocked_at)
+  const estado = (data || {}) as { bloqueado?: boolean; avisar_desbloqueo?: boolean }
+  return {
+    bloqueado: estado.bloqueado === true,
+    avisarDesbloqueo: estado.avisar_desbloqueo === true,
+  }
 }
 
-/** Los teléfonos bloqueados en toda la plataforma, para el panel del superadmin. */
-const getPlatformBlocked = async (): Promise<
-  { phone: string; blockedAt: string; reason: string | null }[]
-> => {
+/**
+ * Un insulto en el chat: la primera vez, advertencia; la siguiente, 15 días
+ * fuera de toda la app. Lo decide la base en una sola consulta, con la fila
+ * bloqueada: dos insultos seguidos no pueden dar dos advertencias.
+ */
+const registerInsult = async (
+  customerId: string,
+  dias = 15,
+): Promise<{ accion: 'advertido' | 'bloqueado' | 'ya_bloqueado' | 'nada'; hasta: string | null }> => {
+  const { data, error } = await db.rpc('register_insult', {
+    p_customer_id: customerId,
+    p_dias: dias,
+  })
+  if (error) throw new Error(error.message)
+  const falta = (data || {}) as { accion?: string; hasta?: string | null }
+  const accion = falta.accion === 'advertido' || falta.accion === 'bloqueado' || falta.accion === 'ya_bloqueado'
+    ? falta.accion
+    : 'nada'
+  return { accion, hasta: falta.hasta ?? null }
+}
+
+/**
+ * Los teléfonos bloqueados en toda la plataforma, para el panel del superadmin.
+ *
+ * ⚠️ Solo los VIGENTES: un bloqueo de 15 días que ya pasó no se enseña, aunque
+ * la fila no se limpie hasta el próximo mensaje de esa persona.
+ */
+const getPlatformBlocked = async (): Promise<{
+  phone: string
+  blockedAt: string
+  reason: string | null
+  /** Hasta cuándo, o `null` si es permanente (el del superadmin). */
+  until: string | null
+  /** `insultos` lo puso el chat; `manual`, el superadmin. */
+  kind: 'manual' | 'insultos'
+}[]> => {
   const { data, error } = await db
     .from('customers')
-    .select('phone,blocked_at,blocked_reason')
+    .select('phone,blocked_at,blocked_reason,blocked_until,blocked_kind')
     .not('blocked_at', 'is', null)
     .order('blocked_at', { ascending: false })
     .limit(500)
   if (error) throw new Error(error.message)
-  return ((data || []) as Array<{ phone: string; blocked_at: string; blocked_reason: string | null }>)
-    .map(row => ({ phone: row.phone, blockedAt: row.blocked_at, reason: row.blocked_reason }))
+  const ahora = Date.now()
+  return (data || [])
+    .filter(row => !row.blocked_until || new Date(row.blocked_until).getTime() > ahora)
+    .map(row => ({
+      phone: row.phone,
+      blockedAt: String(row.blocked_at),
+      reason: row.blocked_reason,
+      until: row.blocked_until,
+      kind: row.blocked_kind === 'insultos' ? 'insultos' : 'manual',
+    }))
 }
 
 /** Lo pone y lo quita el SUPERADMIN, nunca un dueño. */
@@ -290,7 +340,8 @@ export {
   anotarUltimaRespuesta,
   deleteConversation,
   claimMarketplaceReply,
-  isPlatformBlocked,
+  claimPlatformBlockState,
+  registerInsult,
   getPlatformBlocked,
   setPlatformBlocked,
   searchScopeFor,
