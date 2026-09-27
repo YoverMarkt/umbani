@@ -778,3 +778,41 @@ describe('el webhook despierta al worker al guardar el mensaje', () => {
     expect(despertar).not.toHaveBeenCalled()
   })
 })
+
+// ═══════════════════════════════════════════════════════════════════════════
+// EL TOQUE LLEGA CON LA MARCA DE SU LISTA (2026-09-26)
+// ═══════════════════════════════════════════════════════════════════════════
+describe('una opción con marca pasa entera al chat', () => {
+  it('«k3f9a.2» no se cambia por el título: la marca dice de qué lista vino', async () => {
+    process.env.NODE_ENV = 'production'
+    delete process.env.BASE_URL
+    const body = ycloudPayload('ycloud-event-marca-1', 'ycloud-message-marca-1')
+    body.whatsappInboundMessage.type = 'interactive'
+    delete body.whatsappInboundMessage.text
+    body.whatsappInboundMessage.interactive = { list_reply: { id: 'k3f9a.2', title: '🛒 Minimarkets' } }
+
+    const response = await dispatch('post', '/webhook/ycloud', { body, ...signedYCloudRequest(body) })
+
+    expect(response.status).toBe(200)
+    expect(db.enqueueWebhookEvent).toHaveBeenCalledWith(
+      'business-a', 'ycloud', 'ycloud-event-marca-1', expect.any(String),
+      expect.objectContaining({ content: { kind: 'text', text: 'k3f9a.2', interactivo: true } }),
+    )
+  })
+
+  it('un id que no es ni número ni marca sigue cayendo al título', async () => {
+    process.env.NODE_ENV = 'production'
+    delete process.env.BASE_URL
+    const body = ycloudPayload('ycloud-event-marca-2', 'ycloud-message-marca-2')
+    body.whatsappInboundMessage.type = 'interactive'
+    delete body.whatsappInboundMessage.text
+    body.whatsappInboundMessage.interactive = { button_reply: { id: 'opt_0', title: '0' } }
+
+    await dispatch('post', '/webhook/ycloud', { body, ...signedYCloudRequest(body) })
+
+    expect(db.enqueueWebhookEvent).toHaveBeenCalledWith(
+      'business-a', 'ycloud', 'ycloud-event-marca-2', expect.any(String),
+      expect.objectContaining({ content: { kind: 'text', text: '0', interactivo: true } }),
+    )
+  })
+})

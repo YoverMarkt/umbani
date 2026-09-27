@@ -12119,6 +12119,38 @@ create index if not exists idx_marketplace_conversations_negocio
   on public.marketplace_conversations (selected_business_id)
   where selected_business_id is not null;
 
+-- El chat solo obedece al ÚLTIMO mensaje, y no repite la misma respuesta
+-- (2026-09-26). Ver `migration-2026-09-26-chat-solo-el-ultimo-mensaje.sql`.
+alter table public.marketplace_conversations
+  add column if not exists menu_mark text,
+  add column if not exists last_reply_hash text,
+  add column if not exists last_reply_at timestamptz;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'marketplace_conversations_menu_mark_check'
+  ) then
+    alter table public.marketplace_conversations
+      add constraint marketplace_conversations_menu_mark_check
+      check (menu_mark is null or menu_mark ~ '^[a-z0-9]{4,10}$');
+  end if;
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'marketplace_conversations_last_reply_hash_check'
+  ) then
+    alter table public.marketplace_conversations
+      add constraint marketplace_conversations_last_reply_hash_check
+      check (last_reply_hash is null or last_reply_hash ~ '^[0-9a-f]{16,64}$');
+  end if;
+end $$;
+
+comment on column public.marketplace_conversations.menu_mark is
+  'Marca de la última lista enviada. Un toque con otra marca es de un mensaje anterior y no se ejecuta.';
+comment on column public.marketplace_conversations.last_reply_hash is
+  'Huella de la última respuesta enviada: la misma dentro de 60 s no se repite.';
+
 
 -- ── 2. Blindaje ────────────────────────────────────────────────────────────
 --

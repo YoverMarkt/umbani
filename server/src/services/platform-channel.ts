@@ -134,11 +134,21 @@ const MARCADOR = { id: null, whatsapp_provider: 'marketplace' }
  * conserva `opt_N`, que hace caer la resolución al título, y no se pierde
  * nada: un título de un dígito no lo recorta nadie.
  */
-const idsDeFila = (options: OpcionDeSalida[]): { id: string; title: string; description?: string }[] => {
+export const idsDeFila = (
+  options: OpcionDeSalida[],
+  marca?: string | null,
+): { id: string; title: string; description?: string }[] => {
   const titulos = options.map(tituloDe)
   const hayNumeros = titulos.some(titulo => /^\d{1,2}$/.test(titulo.trim()))
   return options.map((opcion, indice) => ({
-    id: hayNumeros ? `opt_${indice}` : String(indice + 1),
+    // ⚠️ Con MARCA desde el 2026-09-26: «k3f9a.2» en vez de «2». El número
+    // solo decía QUÉ FILA, no DE QUÉ LISTA, y un toque en una lista vieja se
+    // aplicaba a la pantalla de ahora — «Minimarkets» (fila 3 de la portada)
+    // acabó buscando «3», y «Jugos y batidos» entregó la carta de Monster
+    // Pizza. La marca la guarda `marketplace-entry` y la compara al volver.
+    id: hayNumeros
+      ? `opt_${indice}`
+      : marca ? `${marca}.${indice + 1}` : String(indice + 1),
     title: tituloDe(opcion),
     ...(typeof opcion === 'string' || !opcion.description
       ? {}
@@ -182,6 +192,8 @@ export const enviarPorLaPlataforma = async (
   to: string,
   reply: string,
   options: OpcionDeSalida[] = [],
+  /** La marca de esta lista. Sin ella, las filas llevan solo su número. */
+  marca?: string | null,
 ): Promise<void> => {
   // `require` diferido: `integrations/whatsapp` importa este módulo, así que
   // un import arriba cerraría el ciclo al arrancar.
@@ -193,7 +205,7 @@ export const enviarPorLaPlataforma = async (
       negocio,
       to,
       reply,
-      idsDeFila(options),
+      idsDeFila(options, marca),
       'Ver opciones',
     )
     if (enviada) return
