@@ -116,7 +116,6 @@ describe('los otros dos recordatorios siguen igual', () => {
     const { deps, enviados } = armar('esperando_comprobante')
     await handle({ from: '593999111222', text: 'hola' }, deps)
     expect(enviados.at(-1).reply).toMatch(/comprobante/i)
-    expect(enviados.at(-1).options.join(' ')).toMatch(/Empezar de nuevo/)
   })
 
   it('a quien está a medio armar su pedido se le dice que lo termine', async () => {
@@ -130,5 +129,50 @@ describe('los otros dos recordatorios siguen igual', () => {
     expect(enviados.at(-1).reply).toMatch(/Estás pidiendo en/i)
     expect(enviados.at(-1).reply).toMatch(/Termínalo/i)
     expect(enviados.at(-1).options.join(' ')).toMatch(/Empezar de nuevo/)
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════
+// «TE ENVÍO EL COMPROBANTE» YA NO LLEVA «EMPEZAR DE NUEVO» (2026-09-27)
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// El texto que precarga la mini app —«Hola, te envío el comprobante de mi
+// pedido #N 🙂»— recibía la petición de la foto con «✅ Empezar de nuevo» como
+// PRIMER botón, y un toque por error cancelaba el pedido. Lo aprobó el dueño.
+// Quien transfirió y aún no mandó la foto se ve igual que quien no pagó nada,
+// así que el botón sale de TODO recordatorio del comprobante, no solo de este
+// texto: la gente lo edita, y el riesgo es el mismo.
+describe('quien debe la foto no tiene «Empezar de nuevo» a un toque', () => {
+  const TEXTO = 'Hola, te envío el comprobante de mi pedido #25 🙂'
+
+  it('el texto de la mini app recibe la petición de la foto, sin botones', async () => {
+    const { deps, enviados } = armar('esperando_comprobante')
+    await handle({ from: '593999111222', text: TEXTO }, deps)
+    expect(enviados.at(-1).reply).toMatch(/foto de tu transferencia/i)
+    expect(enviados.at(-1).options).toEqual([])
+  })
+
+  it('y la salida sigue nombrada: MENÚ', async () => {
+    const { deps, enviados } = armar('esperando_comprobante')
+    await handle({ from: '593999111222', text: TEXTO }, deps)
+    expect(enviados.at(-1).reply).toMatch(/MENÚ/)
+  })
+
+  it('no deja pendiente una pregunta que un «1» respondería', async () => {
+    const { deps, database } = armar('esperando_comprobante')
+    await handle({ from: '593999111222', text: TEXTO }, deps)
+    const guardado = database.advanceConversation.mock.calls.at(-1)[1]
+    expect(guardado.flowState.vista.vista).not.toBe('confirmando_reinicio')
+    // Y el estado del pago no se pisa: sin él, el siguiente mensaje volvería a
+    // decir «termínalo» a quien ya pidió.
+    expect(guardado.state).toBeUndefined()
+  })
+
+  it('un «1» después no cancela nada', async () => {
+    const { deps, database, enviados } = armar('esperando_comprobante')
+    database.cancelUnpaidOrderOnPurpose = vi.fn().mockResolvedValue(1)
+    await handle({ from: '593999111222', text: '1' }, deps)
+    expect(database.cancelUnpaidOrderOnPurpose).not.toHaveBeenCalled()
+    expect(enviados.at(-1).reply).toMatch(/foto de tu transferencia/i)
   })
 })

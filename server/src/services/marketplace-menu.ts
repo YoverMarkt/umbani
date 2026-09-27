@@ -897,10 +897,20 @@ export function recordarPedidoEnProceso(
  * mensaje es el que más va a leerse — y tiene que decir las DOS cosas: qué
  * falta, y cómo salir si prefiere pedir en otro sitio.
  *
- * ⚠️ Las opciones son LAS MISMAS que el otro recordatorio, y a propósito:
- * `resolverReinicio` las interpreta por su texto, así que cambiarlas aquí
- * dejaría al cliente tocando un botón que nadie sabe leer. Lo que cambia es
- * lo que significan: «Seguir mi pedido» es «me quedo con él y mando la foto».
+ * ⚠️ **SIN BOTONES desde el 2026-09-27**, igual que `recordarPagoEnRevision`.
+ * Llevaba «✅ Empezar de nuevo» como PRIMER botón, y un toque por error
+ * cancelaba el pedido. Lo vio el dueño con el texto que precarga la mini app
+ * —«Hola, te envío el comprobante de mi pedido #N»—: quien lo manda está a
+ * punto de pagar o ya pagó, y quien transfirió sin mandar aún la foto se ve
+ * igual que quien no pagó nada. El segundo botón tampoco servía aquí: «Seguir
+ * mi pedido» repetía esta misma instrucción en un mensaje que se paga.
+ *
+ * ⚠️ La salida sigue NOMBRADA —MENÚ, que cancela sin contar una falta—: quien
+ * no piensa pagar tiene que saber que puede irse avisando. Solo deja de estar
+ * en un botón que se toca sin leer.
+ *
+ * ⚠️ La vista NO es `confirmando_reinicio`: con ella, un «1» escrito o tocado
+ * de un mensaje anterior seguiría leyéndose como «Empezar de nuevo».
  */
 export function recordarComprobantePendiente(
   negocio: { name: string },
@@ -909,9 +919,9 @@ export function recordarComprobantePendiente(
     reply: `Tienes un pedido en *${negocio.name}* esperando tu comprobante.\n\n`
       + 'Mándanos aquí la foto de tu transferencia —a tu nombre— y el local empieza a '
       + 'prepararlo 📸\n\n'
-      + 'Si prefieres dejarlo y pedir en otro local, elige *empezar de nuevo*.',
-    options: [SI_REINICIAR, NO_CONTINUAR],
-    vista: { vista: 'confirmando_reinicio', pagina: 0 },
+      + 'Si prefieres dejarlo y pedir en otro local, escribe *MENÚ*.',
+    options: [],
+    vista: { vista: 'negocios', pagina: 0 },
   }
 }
 
@@ -990,20 +1000,12 @@ export function resolverReinicio(
             ? `Tu pedido en *${estado.negocio.name}* está esperando tu comprobante.\n\n`
               + 'Mándanos aquí la foto de tu transferencia —*a tu nombre*— y el '
               + 'local empieza a prepararlo 📸\n\n'
-              // ⚠️ «y te pregunto antes de soltarlo» NO es un adorno
-              // (2026-09-05). Este texto decía «escribe MENÚ» a secas, y MENÚ
-              // con un pedido en marcha PREGUNTA antes de tirarlo. El dueño
-              // escribió MENÚ esperando salir y recibió una pregunta: el
-              // mensaje prometía una salida directa que el sistema no da.
-              //
-              // Se arregla el TEXTO y no la conducta a propósito. Desde el
-              // 2026-09-04 «Empezar de nuevo» CANCELA el pedido de verdad, y
-              // hay un caso que no se puede distinguir: quien ya transfirió y
-              // todavía no mandó la foto se ve igual que quien no ha pagado
-              // nada. Un MENÚ directo le cancelaría el pedido con el dinero ya
-              // enviado. Un toque de más no le cuesta nada a quien sí quería
-              // irse; el error contrario sí se paga.
-              + 'Si prefieres dejarlo, escribe *MENÚ* y te pregunto antes de soltarlo.'
+              // ⚠️ Decía «escribe MENÚ y te pregunto antes de soltarlo», y
+              // dejó de ser verdad el 2026-09-05: MENÚ va DIRECTO y cancela
+              // (decisión del dueño, ver `responderAlMenu`). Prometer una
+              // pregunta que no llega es justo lo que hace que la gente deje
+              // de creerse los textos (corregido el 2026-09-27).
+              + 'Si prefieres dejarlo, escribe *MENÚ*.'
             : `Perfecto, sigues en *${estado.negocio.name}*. Termina tu pedido cuando quieras 👍`,
         options: [],
         vista: { vista: 'negocios', pagina: 0 },

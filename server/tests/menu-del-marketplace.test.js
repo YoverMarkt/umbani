@@ -450,20 +450,28 @@ describe('el recordatorio del comprobante', () => {
     expect(r.reply).toContain('Monster Pizza')
     expect(r.reply.toLowerCase()).toContain('comprobante')
     // La salida tiene que estar NOMBRADA: sin ella, quien quiera pedir en otro
-    // local se queda encerrado sin saber que hay puerta.
-    expect(r.reply.toLowerCase()).toContain('empezar de nuevo')
+    // local se queda encerrado sin saber que hay puerta. Desde el 2026-09-27
+    // es MENÚ escrito, no un botón.
+    expect(r.reply).toContain('MENÚ')
     expect(r.reply.toLowerCase()).not.toContain('termínalo')
   })
 
-  // ⚠️ Las opciones tienen que ser las MISMAS que el otro recordatorio:
-  // `resolverReinicio` las interpreta por su texto, así que un botón distinto
-  // sería un botón que nadie sabe leer.
-  it('ofrece exactamente las mismas dos opciones que el otro recordatorio', async () => {
+  // ⚠️ SIN BOTONES (2026-09-27), igual que el de pago en revisión. El primero
+  // era «✅ Empezar de nuevo» y un toque por error cancelaba el pedido de
+  // quien estaba a punto de pagar —o ya había pagado—. Lo vio el dueño con el
+  // «Hola, te envío el comprobante…» que precarga la mini app.
+  it('no ofrece «Empezar de nuevo» ni ningún otro botón', async () => {
     const menu = await import('../dist/services/marketplace-menu.js')
     const conComprobante = menu.recordarComprobantePendiente({ name: 'X' })
-    const enProceso = menu.recordarPedidoEnProceso({ name: 'X' })
-    expect(conComprobante.options).toEqual(enProceso.options)
-    expect(conComprobante.vista).toEqual(enProceso.vista)
+    expect(conComprobante.options).toEqual([])
+    expect(conComprobante.options).toEqual(menu.recordarPagoEnRevision({ name: 'X' }).options)
+  })
+
+  // Con la vista de la pregunta, un «1» —escrito o de un mensaje anterior—
+  // se seguiría leyendo como «Empezar de nuevo».
+  it('no deja la pregunta de reinicio pendiente', async () => {
+    const menu = await import('../dist/services/marketplace-menu.js')
+    expect(menu.recordarComprobantePendiente({ name: 'X' }).vista.vista).not.toBe('confirmando_reinicio')
   })
 })
 

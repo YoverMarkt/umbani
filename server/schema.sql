@@ -14790,30 +14790,46 @@ begin
     return new;
   end if;
 
-  -- ── Sigue debiendo: el candado se queda ─────────────────────────────────
-  if new.status = any(v_retienen) then
-    -- Pero la conversación tiene que saber en cuál de los dos está, o el bot
-    -- le pedirá la foto a quien acaba de mandarla.
-    if new.status = 'pago_en_revision' and old.status <> 'pago_en_revision' then
-      begin
-        update public.marketplace_conversations as conv
-           set current_state = 'pago_en_revision',
-               version       = conv.version + 1,
-               updated_at    = now()
-         where conv.customer_id = new.customer_id
-           and conv.shopping_locked = true
-           and conv.selected_business_id = new.business_id;
-      exception when others then
-        -- El pedido ya avanzó: un fallo aquí no puede tumbarlo.
-        null;
-      end;
+  if tg_op = 'INSERT' then
+    -- ── Nace sin deber nada: se suelta (2026-09-27) ───────────────────────
+    --
+    -- Efectivo y pago al retirar nacen en `pendiente`, sin pasar nunca por un
+    -- estado que retenga, así que la rama de UPDATE de abajo no los veía y el
+    -- candado se quedaba puesto PARA SIEMPRE: el chat le decía «termínalo» a
+    -- un pedido hecho, y seguía preguntando después de entregado. Lo hacía a
+    -- mano el checkout del chat, y se fue con él en el #360.
+    --
+    -- ⚠️ Solo los de la TIENDA. El de mostrador lo teclea el dueño con la
+    -- persona delante: no tiene nada que ver con su conversación.
+    if coalesce(new.source, '') <> 'storefront' or new.status = any(v_retienen) then
+      return new;
     end if;
-    return new;
-  end if;
+  else
+    -- ── Sigue debiendo: el candado se queda ───────────────────────────────
+    if new.status = any(v_retienen) then
+      -- Pero la conversación tiene que saber en cuál de los dos está, o el
+      -- bot le pedirá la foto a quien acaba de mandarla.
+      if new.status = 'pago_en_revision' and old.status <> 'pago_en_revision' then
+        begin
+          update public.marketplace_conversations as conv
+             set current_state = 'pago_en_revision',
+                 version       = conv.version + 1,
+                 updated_at    = now()
+           where conv.customer_id = new.customer_id
+             and conv.shopping_locked = true
+             and conv.selected_business_id = new.business_id;
+        exception when others then
+          -- El pedido ya avanzó: un fallo aquí no puede tumbarlo.
+          null;
+        end;
+      end if;
+      return new;
+    end if;
 
-  -- ── Salió de los estados que retienen: se suelta ────────────────────────
-  if not (old.status = any(v_retienen)) then
-    return new;
+    -- ── Salió de los estados que retienen: se suelta ──────────────────────
+    if not (old.status = any(v_retienen)) then
+      return new;
+    end if;
   end if;
 
   begin
@@ -14844,7 +14860,10 @@ begin
            version              = conv.version + 1,
            updated_at           = now()
      where conv.customer_id = new.customer_id
-       and conv.shopping_locked = true;
+       and conv.shopping_locked = true
+       -- ⚠️ Al NACER, solo si está en el local de ESTE pedido. Si ya anda
+       -- eligiendo en otro, ese candado es de lo que hace ahora y no se toca.
+       and (tg_op = 'UPDATE' or conv.selected_business_id = new.business_id);
   exception when others then
     null;
   end;
@@ -14855,7 +14874,7 @@ $$;
 
 drop trigger if exists orders_release_shopping_lock on public.orders;
 create trigger orders_release_shopping_lock
-  after update of status on public.orders
+  after insert or update of status on public.orders
   for each row execute function public.orders_release_shopping_lock();
 
 comment on function public.orders_release_shopping_lock() is
@@ -14932,6 +14951,12 @@ begin
   begin
     update public.marketplace_conversations as conv
        set current_state = 'esperando_comprobante',
+           -- ⚠️ La vista se BORRA (2026-09-27). Si el cliente tenía pendiente
+           -- «¿Empezamos de nuevo o sigues?», su «Empezar de nuevo» —el botón
+           -- o un «1» escrito— cancelaba este pedido recién nacido, aunque ya
+           -- hubiera transferido. Esa pregunta era sobre un carrito; ahora hay
+           -- un pedido y manda el candado.
+           flow_state    = null,
            version       = conv.version + 1,
            updated_at    = now()
      where conv.customer_id = new.customer_id
@@ -14956,8 +14981,8 @@ create trigger orders_mark_awaiting_receipt
 
 comment on function public.orders_mark_awaiting_receipt() is
   'Al crear un pedido que espera transferencia, la conversación pasa a '
-  'esperando_comprobante. Sin esto el bot decía «termínalo» a quien ya había '
-  'pedido: el checkout del chat avisaba y el de la mini app no.';
+  'esperando_comprobante y se borra cualquier pregunta pendiente: un «Empezar '
+  'de nuevo» de antes de pedir no puede cancelar el pedido recién nacido.';
 
 -- ── 2. Abandonar a propósito CANCELA, no caduca ────────────────────────────
 create or replace function public.cancel_unpaid_order_on_purpose(
@@ -15010,9 +15035,9 @@ create index if not exists idx_orders_abiertos_por_persona
   where source = 'storefront';
 
 comment on function public.orders_release_shopping_lock() is
-  'Suelta `shopping_locked` cuando un pedido deja de estar abierto y a la '
-  'persona no le quedan otros. Va en disparador para cubrir todos los caminos '
-  'que resuelven pedidos, incluidos los que no existen todavía.';
+  'Suelta `shopping_locked` cuando un pedido deja de estar abierto —o nace sin '
+  'deber nada, como el de efectivo— y a la persona no le quedan otros. Va en '
+  'disparador para cubrir todos los caminos, incluidos los que no existen todavía.';
 
 
 -- ── 2. El bloqueo de PLATAFORMA ────────────────────────────────────────────
