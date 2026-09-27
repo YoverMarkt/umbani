@@ -23,7 +23,7 @@ const armar = () => {
   const enviados = []
   const database = {
     resolveMarketplaceCustomer: vi.fn().mockResolvedValue({ id: 'cli-1', name: null }),
-    isPlatformBlocked: vi.fn().mockResolvedValue(false),
+    claimPlatformBlockState: vi.fn().mockResolvedValue({ bloqueado: false }),
     claimMarketplaceReply: vi.fn().mockResolvedValue({ permitido: true, respuestas: 1 }),
     getConversation: vi.fn(() => conversacion.promise),
     advanceConversation: vi.fn().mockResolvedValue({ conflicto: false }),

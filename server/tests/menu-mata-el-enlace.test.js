@@ -40,7 +40,7 @@ const armar = ({ estado = 'en_local', bloqueado = true } = {}) => {
     }),
     getSchedulesFor: vi.fn().mockResolvedValue(new Map()),
     claimMarketplaceReply: vi.fn().mockResolvedValue({ permitido: true, respuestas: 1 }),
-    isPlatformBlocked: vi.fn().mockResolvedValue(false),
+    claimPlatformBlockState: vi.fn().mockResolvedValue({ bloqueado: false }),
     isContactBlocked: vi.fn().mockResolvedValue(false),
     cancelUnpaidOrderOnPurpose: vi.fn().mockResolvedValue(1),
     revokeStorefrontSessionsOnExit: vi.fn().mockResolvedValue(2),

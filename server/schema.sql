@@ -15071,6 +15071,26 @@ alter table public.customers
   add constraint customers_blocked_reason_check
   check (blocked_reason is null or char_length(btrim(blocked_reason)) between 3 and 200);
 
+-- Insultos en el chat: bloqueo de 15 días que caduca solo (2026-09-27).
+-- Ver `migration-2026-09-27-insultos-bloqueo-15-dias.sql`.
+-- ── 1. Hasta cuándo, por qué, y las dos marcas ─────────────────────────────
+--
+-- `blocked_until` sigue la convención de `business_customers` (2026-09-01):
+-- nulo con `blocked_at` puesto = permanente, con fecha = caduca solo.
+alter table public.customers
+  add column if not exists blocked_until timestamptz,
+  add column if not exists blocked_kind text,
+  -- La advertencia se da UNA vez en la vida: después, directo al bloqueo.
+  add column if not exists insult_warned_at timestamptz,
+  -- Se levantó a mano un bloqueo por insultos: su próximo mensaje lo sabrá.
+  add column if not exists unblock_notice_pending boolean not null default false;
+
+alter table public.customers
+  drop constraint if exists customers_blocked_kind_check;
+alter table public.customers
+  add constraint customers_blocked_kind_check
+  check (blocked_kind is null or blocked_kind in ('manual', 'insultos'));
+
 -- Se consulta en CADA mensaje al número de la plataforma, así que el índice no
 -- es opcional. Parcial: los bloqueados son un puñado entre todos los clientes.
 create index if not exists idx_customers_bloqueados
@@ -15094,7 +15114,11 @@ begin
   if new.customer_id is not null
      and exists (
        select 1 from public.customers
-       where id = new.customer_id and blocked_at is not null
+       where id = new.customer_id
+         and blocked_at is not null
+         -- Un bloqueo de 15 días que ya pasó no rechaza nada, aunque nadie
+         -- haya limpiado todavía la fila.
+         and (blocked_until is null or blocked_until > now())
      ) then
     raise exception using
       errcode = '42501',
@@ -15143,9 +15167,20 @@ begin
   insert into public.customers (phone) values (v_digitos)
   on conflict (phone) do nothing;
 
+  -- ⚠️ En un UPDATE, las columnas de la derecha son las de ANTES: por eso
+  -- `blocked_kind = 'insultos'` pregunta cómo estaba, no cómo queda.
   update public.customers
      set blocked_at = case when p_blocked then now() else null end,
-         blocked_reason = case when p_blocked then nullif(btrim(coalesce(p_reason, '')), '') else null end
+         blocked_reason = case when p_blocked then nullif(btrim(coalesce(p_reason, '')), '') else null end,
+         -- El del superadmin es permanente: lo levanta él.
+         blocked_until = null,
+         blocked_kind = case when p_blocked then 'manual' else null end,
+         -- Levantar a mano un bloqueo por INSULTOS deja el aviso pendiente.
+         unblock_notice_pending = case
+           when p_blocked then false
+           when blocked_at is not null and blocked_kind = 'insultos' then true
+           else unblock_notice_pending
+         end
    where phone = v_digitos
    returning id into v_id;
 
@@ -15156,6 +15191,132 @@ $$;
 revoke all on function public.set_platform_blocked(text, boolean, text)
   from public, anon, authenticated;
 grant execute on function public.set_platform_blocked(text, boolean, text)
+  to service_role;
+
+-- ── 4. Un insulto: advertencia, o bloqueo ──────────────────────────────────
+--
+-- Devuelve `accion`: 'advertido' la primera vez, 'bloqueado' (con `hasta`) la
+-- siguiente, 'ya_bloqueado' si ya lo estaba. Todo en la MISMA fila bloqueada
+-- (`for update`): dos insultos a la vez no pueden dar dos advertencias.
+create or replace function public.register_insult(
+  p_customer_id uuid,
+  p_dias integer default 15
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_fila public.customers%rowtype;
+  v_hasta timestamptz;
+begin
+  if p_customer_id is null then
+    return jsonb_build_object('accion', 'nada');
+  end if;
+
+  select * into v_fila from public.customers where id = p_customer_id for update;
+  if not found then
+    return jsonb_build_object('accion', 'nada');
+  end if;
+
+  if v_fila.blocked_at is not null
+     and (v_fila.blocked_until is null or v_fila.blocked_until > now()) then
+    return jsonb_build_object('accion', 'ya_bloqueado', 'hasta', v_fila.blocked_until);
+  end if;
+
+  if v_fila.insult_warned_at is null then
+    update public.customers
+       set insult_warned_at = now(), updated_at = now()
+     where id = p_customer_id;
+    return jsonb_build_object('accion', 'advertido');
+  end if;
+
+  v_hasta := now() + make_interval(days => greatest(1, least(coalesce(p_dias, 15), 365)));
+  update public.customers
+     set blocked_at = now(),
+         blocked_until = v_hasta,
+         blocked_kind = 'insultos',
+         blocked_reason = 'Insultos en el chat',
+         unblock_notice_pending = false,
+         updated_at = now()
+   where id = p_customer_id;
+  return jsonb_build_object('accion', 'bloqueado', 'hasta', v_hasta);
+end;
+$$;
+
+revoke all on function public.register_insult(uuid, integer)
+  from public, anon, authenticated;
+grant execute on function public.register_insult(uuid, integer)
+  to service_role;
+
+-- ── 5. ¿Está bloqueado? Y si le toca, el aviso de vuelta ───────────────────
+--
+-- Lo pregunta cada mensaje del marketplace. Devuelve `bloqueado` y, cuando le
+-- toca, `avisar_desbloqueo`: su bloqueo por insultos caducó (y aquí mismo se
+-- limpia) o el superadmin lo levantó. El aviso se RECLAMA en la misma
+-- consulta, así que sale una sola vez aunque lleguen dos mensajes seguidos.
+--
+-- ⚠️ Primero se mira SIN bloquear la fila: es el camino de casi todos los
+-- mensajes, y la inmensa mayoría no tiene nada que cambiar.
+create or replace function public.claim_platform_block_state(
+  p_customer_id uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_at timestamptz;
+  v_hasta timestamptz;
+  v_tipo text;
+  v_pendiente boolean;
+begin
+  if p_customer_id is null then
+    return jsonb_build_object('bloqueado', false);
+  end if;
+
+  select blocked_at, blocked_until, blocked_kind, unblock_notice_pending
+    into v_at, v_hasta, v_tipo, v_pendiente
+    from public.customers where id = p_customer_id;
+
+  if v_at is null and not coalesce(v_pendiente, false) then
+    return jsonb_build_object('bloqueado', false);
+  end if;
+  if v_at is not null and (v_hasta is null or v_hasta > now()) then
+    return jsonb_build_object('bloqueado', true, 'tipo', v_tipo, 'hasta', v_hasta);
+  end if;
+
+  -- Hay algo que cambiar: ahora sí, con la fila bloqueada, y se vuelve a mirar
+  -- por si otro mensaje se adelantó.
+  select blocked_at, blocked_until, blocked_kind, unblock_notice_pending
+    into v_at, v_hasta, v_tipo, v_pendiente
+    from public.customers where id = p_customer_id for update;
+
+  if v_at is not null and v_hasta is not null and v_hasta <= now() then
+    update public.customers
+       set blocked_at = null, blocked_until = null, blocked_kind = null,
+           blocked_reason = null, unblock_notice_pending = false, updated_at = now()
+     where id = p_customer_id;
+    return jsonb_build_object('bloqueado', false, 'avisar_desbloqueo', v_tipo = 'insultos');
+  end if;
+  if v_at is null and v_pendiente then
+    update public.customers
+       set unblock_notice_pending = false, updated_at = now()
+     where id = p_customer_id;
+    return jsonb_build_object('bloqueado', false, 'avisar_desbloqueo', true);
+  end if;
+  return jsonb_build_object(
+    'bloqueado', v_at is not null and (v_hasta is null or v_hasta > now()),
+    'tipo', v_tipo, 'hasta', v_hasta
+  );
+end;
+$$;
+
+revoke all on function public.claim_platform_block_state(uuid)
+  from public, anon, authenticated;
+grant execute on function public.claim_platform_block_state(uuid)
   to service_role;
 
 

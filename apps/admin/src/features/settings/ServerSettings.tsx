@@ -4,6 +4,7 @@ import * as cfg from './api'
 import { getPlatformBlocked, setPlatformBlocked } from '../clients/api'
 import { Ban, Bot as BotIcon, Check, Cloud, Plug, Receipt, Search, Store, Undo2, X } from 'lucide-react'
 import { toast } from 'sonner'
+import { Badge } from '@botpanel/ui/components/badge'
 import { Button } from '@botpanel/ui/components/button'
 import { Card } from '@botpanel/ui/components/card'
 import { Input } from '@botpanel/ui/components/input'
@@ -317,7 +318,9 @@ function BloqueoDePlataforma() {
       </h2>
       <p className="text-xs text-muted-foreground mb-3">
         El bot deja de responderle y ningún local acepta su pedido, ni siquiera de mostrador.
-        Nunca se le avisa. Para bloquear solo en un local, lo hace su dueño desde su panel.
+        Al que bloqueas aquí no se le avisa. Los marcados <strong>Insultos</strong> los bloqueó
+        el chat solo, al segundo insulto: caducan a los 15 días y, al volver, se le dice
+        «te hemos desbloqueado». Para bloquear solo en un local, lo hace su dueño desde su panel.
       </p>
       <div className="flex flex-wrap items-end gap-2">
         <div>
@@ -345,8 +348,14 @@ function BloqueoDePlataforma() {
           {lista.map(b => (
             <div key={b.phone} className="flex items-center gap-3 border-b border-border/60 py-2 last:border-0">
               <span className="font-mono text-sm text-foreground/80">{b.phone}</span>
+              {/* ⚠️ Se distinguen a propósito (2026-09-27): el de insultos lo
+                  puso el chat solo y caduca; el manual lo pusiste tú y es para
+                  siempre. Levantarlos es el mismo botón. */}
+              {b.kind === 'insultos' && <Badge variant="destructive">Insultos</Badge>}
               <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-                {b.reason || 'sin motivo anotado'} · {new Date(b.blockedAt).toLocaleDateString('es-EC')}
+                {b.kind === 'insultos'
+                  ? `hasta el ${b.until ? new Date(b.until).toLocaleDateString('es-EC') : '—'}`
+                  : `${b.reason || 'sin motivo anotado'} · ${new Date(b.blockedAt).toLocaleDateString('es-EC')}`}
               </span>
               <Button variant="outline" size="sm"
                 onClick={() => mBlock.mutate({ phone: b.phone, blocked: false })}>

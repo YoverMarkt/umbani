@@ -240,7 +240,7 @@ const armarEntrada = ({ hits = [], buscar, conocido = null } = {}) => {
     getPolicies: vi.fn().mockResolvedValue({ welcome_message: null }),
     claimMarketplaceReply: vi.fn().mockResolvedValue({ permitido: true, respuestas: 1 }),
     isContactBlocked: vi.fn().mockResolvedValue(false),
-    isPlatformBlocked: vi.fn().mockResolvedValue(false),
+    claimPlatformBlockState: vi.fn().mockResolvedValue({ bloqueado: false }),
     claimBlockedNotice: vi.fn().mockResolvedValue(false),
     searchMarketplaceBusinesses: buscar || vi.fn().mockResolvedValue(hits),
     // ⚠️ Desde el 2026-09-18 devuelve {code, label}: el chat enseña la

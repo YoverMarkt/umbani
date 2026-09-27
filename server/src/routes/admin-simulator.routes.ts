@@ -99,6 +99,12 @@ function dependenciasDelSimulador(
       // pantalla vacía, y el superadmin creería que el bot se colgó. Sin
       // huella anotada no hay nada con qué comparar, y cada mensaje responde.
       anotarUltimaRespuesta: async () => undefined,
+      // ⚠️ Ni el bloqueo por insultos (2026-09-27). Con la función real, dos
+      // insultos de prueba bloquearían 15 días al cliente del simulador y el
+      // superadmin se quedaría sin esta pantalla. Se le enseña la ADVERTENCIA,
+      // que es el texto que hay que poder revisar, y nunca se bloquea.
+      claimPlatformBlockState: async () => ({ bloqueado: false }),
+      registerInsult: async () => ({ accion: 'advertido' }),
     } as unknown as MarketplaceEntryDeps['database'],
     issueLink: link.issueStorefrontLink,
     // ⚠️ Aquí SÍ se aplana a títulos, y a propósito: el simulador pinta las

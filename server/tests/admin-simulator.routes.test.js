@@ -74,7 +74,7 @@ describe('simulador del marketplace', () => {
   function mockMarketplace() {
     // El simulador corre el camino real, y ese consulta el bloqueo de
     // plataforma antes que nada.
-    vi.spyOn(db, 'isPlatformBlocked').mockResolvedValue(false)
+    vi.spyOn(db, 'claimPlatformBlockState').mockResolvedValue({ bloqueado: false, avisarDesbloqueo: false })
     vi.spyOn(db, 'resolveMarketplaceCustomer').mockResolvedValue(CLIENTE)
     vi.spyOn(db, 'getConversation').mockResolvedValue(null)
     vi.spyOn(db, 'advanceConversation').mockResolvedValue({ conflicto: false })
@@ -215,7 +215,7 @@ describe('simulador del marketplace', () => {
     // Estado con memoria: `advanceConversation` guarda y `getConversation`
     // devuelve, igual que la base entre dos mensajes.
     let guardada = null
-    vi.spyOn(db, 'isPlatformBlocked').mockResolvedValue(false)
+    vi.spyOn(db, 'claimPlatformBlockState').mockResolvedValue({ bloqueado: false, avisarDesbloqueo: false })
     vi.spyOn(db, 'resolveMarketplaceCustomer').mockResolvedValue(CLIENTE)
     vi.spyOn(db, 'getConversation').mockImplementation(async () => guardada)
     vi.spyOn(db, 'advanceConversation').mockImplementation(async (_id, patch) => {
@@ -245,7 +245,7 @@ describe('simulador del marketplace', () => {
     // El local no tiene bloqueado a este contacto: desde el 2026-08-24 el menú
     // lo comprueba antes de entregar el enlace.
     vi.spyOn(db, 'isContactBlocked').mockResolvedValue(false)
-    vi.spyOn(db, 'isPlatformBlocked').mockResolvedValue(false)
+    vi.spyOn(db, 'claimPlatformBlockState').mockResolvedValue({ bloqueado: false, avisarDesbloqueo: false })
     // Una pizzería se pide en la app: lo decide el TIPO, no el catálogo.
     const emitir = vi.spyOn(link, 'issueStorefrontLink')
       .mockResolvedValue('https://umbani.test/s/token-de-prueba')

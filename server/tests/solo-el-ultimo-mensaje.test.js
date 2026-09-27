@@ -164,7 +164,7 @@ const armarMarketplace = (conversacion) => {
   const enviados = []
   const database = {
     resolveMarketplaceCustomer: vi.fn(async () => ({ id: 'cli-1', name: null })),
-    isPlatformBlocked: vi.fn(async () => false),
+    claimPlatformBlockState: vi.fn(async () => ({ bloqueado: false })),
     claimMarketplaceReply: vi.fn(async () => ({ permitido: true, respuestas: 1 })),
     getConversation: vi.fn(async () => memoria.valor && { ...memoria.valor }),
     advanceConversation: vi.fn(async (_id, patch) => {

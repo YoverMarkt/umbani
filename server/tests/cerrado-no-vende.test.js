@@ -57,7 +57,7 @@ function armar({ horario } = {}) {
       { id: 'b1', slug: 'la-abuelita', name: 'La Abuelita', type: 'almuerzos' },
     ]),
     claimMarketplaceReply: async () => ({ permitido: true, respuestas: 1 }),
-    isPlatformBlocked: async () => false,
+    claimPlatformBlockState: async () => ({ bloqueado: false }),
     isContactBlocked: async () => false,
   }
   if (horario !== undefined) {

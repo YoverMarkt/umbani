@@ -34,7 +34,7 @@ const armar = ({ vista = null, estado = 'navegando' } = {}) => {
     getBusinessById: vi.fn().mockResolvedValue(LOCAL),
     getSchedulesFor: vi.fn().mockResolvedValue(new Map()),
     claimMarketplaceReply: vi.fn().mockResolvedValue({ permitido: true, respuestas: 1 }),
-    isPlatformBlocked: vi.fn().mockResolvedValue(false),
+    claimPlatformBlockState: vi.fn().mockResolvedValue({ bloqueado: false }),
     isContactBlocked: vi.fn().mockResolvedValue(false),
     cancelUnpaidOrderOnPurpose: vi.fn().mockResolvedValue(0),
     revokeStorefrontSessionsOnExit: vi.fn().mockResolvedValue(0),
