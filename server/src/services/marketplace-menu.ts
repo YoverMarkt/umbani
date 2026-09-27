@@ -59,8 +59,16 @@ export interface MarketplaceBusiness {
 
 /** Dónde está el cliente dentro del menú. Se guarda en `flow_state`. */
 export interface MarketplaceView {
-  vista: 'categorias' | 'negocios' | 'busqueda' | 'confirmando_reinicio'
+  vista: 'categorias' | 'negocios' | 'busqueda' | 'confirmando_reinicio' | 'abiertos'
   categoria?: string
+  /**
+   * Las categorías que se le enseñaron al preguntar «¿hay locales abiertos?».
+   *
+   * ⚠️ Se guardan porque la lista NO es la de la portada: un «2» tiene que ser
+   * la segunda de ESTA lista. Recalcularla al tocar podría cambiarla —un local
+   * cierra a esa hora en punto— y el cliente entraría en otra categoría.
+   */
+  codigos?: string[]
   /**
    * Lo que el cliente escribió, cuando la vista es una BÚSQUEDA.
    *
@@ -590,6 +598,164 @@ export function verResultados(
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// «¿HAY LOCALES ABIERTOS?» (2026-09-27)
+//
+// El dueño lo preguntó a las 00:16 y recibió «🙏 Con eso no te puedo ayudar por
+// aquí» con la búsqueda anterior repintada. Nadie reconocía la PREGUNTA,
+// aunque todas las piezas para contestarla existían: el horario de cada local,
+// «abre hoy 12:00 PM», las categorías.
+//
+// Lo que pidió, en su orden:
+//   · primero preguntar QUÉ quiere comer, y según la hora — solo las
+//     categorías que tienen algo abierto AHORA;
+//   · si no hay NADA abierto en toda la app, decirlo, y enseñar los que abren
+//     antes sin importar su categoría;
+//   · «pizza» y el resto de búsquedas, como siempre.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * ¿Pregunta qué hay abierto? «¿hay locales abiertos?», «qué está abierto»,
+ * «quién atiende a esta hora», «qué abre ahora».
+ *
+ * ⚠️ «atiende» y «abre» solos NO bastan —«¿atienden a domicilio?» no pregunta
+ * por la hora—: tienen que venir con una palabra de tiempo.
+ */
+export function esPreguntaPorAbiertos(mensaje: string): boolean {
+  const texto = normalizar(mensaje).replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()
+  // Una frase larga es otra cosa que casualmente dice «abierto».
+  if (!texto || texto.split(' ').length > 12) return false
+  if (/\babiert[oa]s?\b/.test(texto)) return true
+  const deTiempo = /\b(ahora|hora|hoy|todavia|aun|ya|temprano)\b/.test(texto)
+  return deTiempo && /\b(atiende|atienden|atendiendo|abre|abren)\b/.test(texto)
+}
+
+const ZONA = 'America/Guayaquil'
+
+/** La hora de Ecuador (0–23), que es la que manda aquí. */
+const horaDeEcuador = (ahora: Date): number => Number(
+  new Intl.DateTimeFormat('en-US', { timeZone: ZONA, hour: 'numeric', hourCycle: 'h23' })
+    .format(ahora),
+) % 24
+
+/**
+ * Cómo se abre la respuesta según la hora: no es lo mismo preguntar a las
+ * 00:16 que a mediodía.
+ */
+export function momentoDelDia(ahora = new Date()): string {
+  const hora = horaDeEcuador(ahora)
+  if (hora < 5) return '🌙 A esta hora de la madrugada'
+  if (hora < 11) return '☀️ Para el desayuno'
+  if (hora < 15) return '🍽️ Para el almuerzo'
+  if (hora < 19) return '☕ Para la tarde'
+  return '🌆 Para la cena'
+}
+
+const ABIERTAS_AHORA = 'estas categorías tienen locales abiertos ahora.'
+/** Al repintar ya no se saluda por la hora: el cliente sigue en la misma lista. */
+const ABIERTAS_AL_REPINTAR = 'Estas categorías tienen locales abiertos ahora.'
+
+/** La lista de categorías con algo abierto, paginada como cualquier otra. */
+const pintarAbiertas = (
+  abiertas: MarketplaceCategory[],
+  pagina: number,
+  cabecera: string,
+): MarketplaceReply => {
+  const { hayMas, opciones } = paginar(abiertas, pagina, etiquetaCategoria)
+  return {
+    reply: `${cabecera}\n\n¿Qué te gustaría comer? 👇`,
+    options: [...opciones, ...(hayMas ? [VER_MAS] : []), VOLVER],
+    vista: { vista: 'abiertos', codigos: abiertas.map(c => c.code), pagina },
+  }
+}
+
+/** Minutos hasta poder pedir, para ordenar a los que abren antes. */
+const claveDeApertura = (negocio: MarketplaceBusiness): number | null => {
+  const minutos = (hhmm: string): number => {
+    const [h, m] = String(hhmm || '').split(':').map(Number)
+    return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : Number.NaN
+  }
+  const clave = negocio.abierto === false
+    ? (negocio.abre?.open ? negocio.abre.inDays * 1440 + minutos(negocio.abre.open) : Number.NaN)
+    : (negocio.carta_desde ? minutos(negocio.carta_desde) : Number.NaN)
+  return Number.isFinite(clave) ? clave : null
+}
+
+/** Cuántos de los que abren antes se nombran si no hay nada abierto. */
+const PROXIMOS = 5
+
+/**
+ * La respuesta a «¿hay locales abiertos?».
+ *
+ * `negociosPorCategoria` trae los locales de CADA categoría ya marcados con su
+ * horario — lo consulta el llamador, esta función no toca la base.
+ */
+export function verAbiertos(
+  categorias: MarketplaceCategory[],
+  negociosPorCategoria: Map<string, MarketplaceBusiness[]>,
+  ahora = new Date(),
+): MarketplaceReply {
+  if (!categorias.length) return verCategorias(categorias, 0)
+  // Mismo criterio que la luna de las listas: abierto Y con carta a esta hora.
+  // Un «no lo sé» cuenta como abierto, que es el lado que no cuesta ventas.
+  const abiertas = categorias.filter(categoria => (
+    (negociosPorCategoria.get(categoria.code) || []).some(n => !noSePuedePedir(n))
+  ))
+  if (abiertas.length) {
+    return pintarAbiertas(abiertas, 0, `${momentoDelDia(ahora)}, ${ABIERTAS_AHORA}`)
+  }
+
+  // ── Nada abierto en toda la app ────────────────────────────────────
+  //
+  // ⚠️ Se dice claro y se enseña cuándo SÍ: «no hay nada» a secas manda al
+  // cliente a otra app. Los que abren antes van SIN importar su categoría, y
+  // los botones son la portada de siempre: puede mirar cartas para luego.
+  const unicos = new Map<string, MarketplaceBusiness>()
+  for (const lista of negociosPorCategoria.values()) {
+    for (const negocio of lista) unicos.set(negocio.id, negocio)
+  }
+  const proximos = [...unicos.values()]
+    .map(negocio => ({ negocio, clave: claveDeApertura(negocio) }))
+    .filter((x): x is { negocio: MarketplaceBusiness; clave: number } => x.clave !== null)
+    .sort((a, b) => a.clave - b.clave)
+    .slice(0, PROXIMOS)
+    .map(x => x.negocio)
+  const portada = verCategorias(categorias, 0)
+  return {
+    ...portada,
+    reply: '🌙 Ahora mismo no tenemos locales abiertos.'
+      + (proximos.length
+        ? `\n\nLos primeros en abrir:\n${proximos.map(lineaDeCerrado).join('\n')}`
+        : '')
+      + '\n\nMientras tanto puedes mirar sus cartas 👇',
+  }
+}
+
+/**
+ * Lo que se le dice UNA vez al que cruza el techo de mensajes (2026-09-27).
+ *
+ * Hasta hoy se callaba sin más, y el dueño —probando con su teléfono— se quedó
+ * escribiendo MENÚ a un chat mudo: lo leyó como que la app se colgó o que
+ * WhatsApp lo frenaba. Se dice hasta cuándo, en hora de Ecuador, y que el
+ * comprobante y los avisos del pedido SÍ siguen llegando, que es verdad.
+ */
+export function avisoDeSilencio(hasta: string, ahora = new Date()): string {
+  const fin = new Date(hasta)
+  const dia = (fecha: Date) => new Intl.DateTimeFormat('en-CA', {
+    timeZone: ZONA, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(fecha)
+  const hhmm = new Intl.DateTimeFormat('en-GB', {
+    timeZone: ZONA, hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).format(fin)
+  const cuando = Number.isNaN(fin.getTime())
+    ? 'dentro de unas horas'
+    : `${dia(fin) === dia(ahora) ? 'hoy' : 'mañana'} a las ${hora12(hhmm)}`
+  return '⏸️ Recibimos muchos mensajes seguidos, así que pausamos las respuestas '
+    + `un rato.\n\nVuelve a escribirnos desde ${cuando} 🙏\n\n`
+    + 'Si tienes un pedido en curso, sus avisos te siguen llegando por aquí, y la '
+    + 'foto de tu comprobante la recibimos igual.'
+}
+
 export interface PasoInput {
   /**
    * Lo que escribió el cliente.
@@ -715,6 +881,36 @@ export function paso(input: PasoInput): MarketplaceReply {
     // ya está dentro de una categoría, y darle la bienvenida otra vez leería
     // como si hubiera vuelto al principio.
     if (repintar || esSaludo(mensaje) || esConversacion(mensaje)) return repetir
+    return { ...repetir, reply: `${reproche(mensaje)}\n\n${repetir.reply}`, noEntendido: true }
+  }
+
+  // ── Las categorías con algo abierto (2026-09-27) ────────────────────
+  //
+  // Se eligen sobre la lista que SE LE ENSEÑÓ (`vista.codigos`), no sobre la
+  // portada: un «2» es la segunda de esta lista.
+  if (vista.vista === 'abiertos') {
+    const abiertas = (vista.codigos || [])
+      .map(code => categorias.find(c => c.code === code))
+      .filter((c): c is MarketplaceCategory => Boolean(c))
+    // Sus categorías ya no existen: la portada, sin reproche.
+    if (!abiertas.length) return verCategorias(categorias, 0)
+
+    const { mostrados, hayMas, opciones } = paginar(abiertas, vista.pagina, etiquetaCategoria)
+    const elegida = elegir(mensaje, [...opciones, ...(hayMas ? [VER_MAS] : []), VOLVER])
+    const repetir = pintarAbiertas(abiertas, vista.pagina, ABIERTAS_AL_REPINTAR)
+
+    if (elegida === VOLVER) return verCategorias(categorias, 0)
+    if (elegida === VER_MAS) return pintarAbiertas(abiertas, vista.pagina + 1, ABIERTAS_AL_REPINTAR)
+
+    const categoria = mostrados.find(c => etiquetaCategoria(c) === elegida)
+      ?? categoriaEscrita(mensaje, categorias)
+    if (categoria) {
+      return { reply: '', options: [], vista: { vista: 'negocios', categoria: categoria.code, pagina: 0 } }
+    }
+    // Lo mismo que en la portada: un saludo es «empecemos», un «ok» se
+    // contesta, y lo demás quizá es una búsqueda («quiero pizza»).
+    if (esSaludo(mensaje)) return verCategorias(categorias, 0, true)
+    if (repintar || esConversacion(mensaje)) return repetir
     return { ...repetir, reply: `${reproche(mensaje)}\n\n${repetir.reply}`, noEntendido: true }
   }
 

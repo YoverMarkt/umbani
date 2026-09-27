@@ -12424,7 +12424,9 @@ begin
   if v_fila.muted_until is not null and v_fila.muted_until > v_ahora then
     return jsonb_build_object(
       'permitido', false, 'motivo', 'silenciado',
-      'respuestas', coalesce(v_fila.reply_count, 0)
+      'respuestas', coalesce(v_fila.reply_count, 0),
+      -- Hasta cuándo, pero SIN aviso: ya se le dijo al silenciarlo.
+      'hasta', v_fila.muted_until
     );
   end if;
 
@@ -12463,8 +12465,15 @@ begin
        set muted_until = v_ahora + make_interval(hours => p_silencio_horas),
            updated_at = v_ahora
      where id = v_fila.id;
+    -- ⚠️ `aviso` SOLO aquí, en el mensaje que cruza el techo (2026-09-27).
+    -- Es la única vez que se le explica: los siguientes caen en la rama de
+    -- arriba, sin aviso. Callar siempre dejaba al cliente —y al dueño
+    -- probando— escribiendo MENÚ a un chat mudo sin saber por qué ni hasta
+    -- cuándo.
     return jsonb_build_object(
-      'permitido', false, 'motivo', 'silenciado', 'respuestas', v_cuenta
+      'permitido', false, 'motivo', 'silenciado', 'respuestas', v_cuenta,
+      'aviso', true,
+      'hasta', v_ahora + make_interval(hours => p_silencio_horas)
     );
   end if;
 

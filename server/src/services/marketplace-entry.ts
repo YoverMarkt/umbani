@@ -12,6 +12,9 @@ import {
   verResultados,
   resolverReinicio,
   esSaludo,
+  esPreguntaPorAbiertos,
+  verAbiertos,
+  avisoDeSilencio,
   type MarketplaceBusiness,
   type MarketplaceCategory,
   type MarketplaceReply,
@@ -116,7 +119,14 @@ export interface MarketplaceEntryDatabase {
   claimMarketplaceReply?(
     customerId: string,
     messageId?: string | null,
-  ): Promise<{ permitido: boolean; respuestas: number }>
+  ): Promise<{
+    permitido: boolean
+    respuestas: number
+    /** Solo en el mensaje que CRUZA el techo: el único que se explica. */
+    aviso?: boolean
+    /** Hasta cuándo dura el silencio. */
+    hasta?: string | null
+  }>
   /**
    * Buscar locales en TODO el marketplace, sin IA.
    *
@@ -315,10 +325,18 @@ export async function handleMarketplaceMessage(
     // Falla ABIERTO: un fallo de la base no puede dejar mudo al marketplace.
     const reclamo = await database
       .claimMarketplaceReply(customer.id, input.inboundId ?? null)
-      .catch(() => ({ permitido: true, respuestas: 0 }))
+      .catch(() => ({ permitido: true, respuestas: 0, aviso: false, hasta: null }))
     if (!reclamo.permitido) {
-      // Ni una palabra. Avisar al silenciado cuesta justo el mensaje que se
-      // está ahorrando, y le da la reacción que busca.
+      // ⚠️ UNA vez, y solo al cruzar el techo (2026-09-27). Antes: ni una
+      // palabra, «avisar cuesta justo el mensaje que se está ahorrando». Pero
+      // callar siempre dejó al dueño —probando con su teléfono— escribiendo
+      // MENÚ a un chat mudo, sin saber por qué ni hasta cuándo. El resto de
+      // intentos siguen sin respuesta: el aviso lo marca la base, y es uno por
+      // silencio (la misma regla que el aviso al bloqueado).
+      if (reclamo.aviso && reclamo.hasta) {
+        await deps.send(avisoDeSilencio(reclamo.hasta), [])
+          .catch(() => { /* callar era lo de antes: un fallo aquí no rompe nada */ })
+      }
       deps.logger?.log(`🔇 [marketplace] techo alcanzado (${reclamo.respuestas}): no se responde`)
       return
     }
@@ -513,6 +531,44 @@ async function conEstadoDeHorario(
 }
 
 /**
+ * Qué hay abierto ahora, categoría por categoría.
+ *
+ * ⚠️ Los locales se piden con la MISMA consulta que pinta cada categoría, y el
+ * horario con la MISMA función que usa la mini app (`conEstadoDeHorario`): si
+ * aquí se dijera «abierto» y al tocar la categoría saliera con luna, el
+ * cliente dejaría de creerse la lista.
+ *
+ * ⚠️ El horario va en UNA consulta para todos los locales, no una por
+ * categoría. `con_carta` se conserva POR CATEGORÍA, que es como lo calcula la
+ * base (los menús con reloj).
+ *
+ * ⚠️ Falla abierto: una categoría que no se pudo leer cuenta como vacía, y si
+ * el horario no se pudo leer los locales cuentan como abiertos — es lo que ya
+ * hace la lista normal.
+ */
+async function responderAbiertos(
+  deps: MarketplaceEntryDeps,
+  categorias: MarketplaceCategory[],
+): Promise<MarketplaceReply> {
+  const listas = await Promise.all(categorias.map(categoria => (
+    deps.database.getMarketplaceBusinesses(categoria.code).catch(() => [] as MarketplaceBusiness[])
+  )))
+  const unicos = new Map<string, MarketplaceBusiness>()
+  for (const lista of listas) for (const negocio of lista) unicos.set(negocio.id, negocio)
+  const conHorario = new Map(
+    (await conEstadoDeHorario(deps, [...unicos.values()])).map(n => [n.id, n]),
+  )
+  const porCategoria = new Map(categorias.map((categoria, i) => [
+    categoria.code,
+    listas[i].map((negocio) => {
+      const marcado = conHorario.get(negocio.id)
+      return marcado ? { ...negocio, abierto: marcado.abierto, abre: marcado.abre } : negocio
+    }),
+  ]))
+  return verAbiertos(categorias, porCategoria)
+}
+
+/**
  * Los locales que casan con lo que escribió el cliente.
  *
  * ⚠️ Nunca lanza: la búsqueda es una MEJORA sobre «no te entendí», así que un
@@ -681,6 +737,24 @@ async function recorrerElMenu(
   },
 ): Promise<void> {
   const { database, send } = deps
+
+  // ── 5b. «¿Hay locales abiertos?» (2026-09-27) ──────────────────────
+  //
+  // Va antes que el menú porque es una PREGUNTA, no una opción de la lista:
+  // en la portada se trataba como búsqueda («Esto encontré para…») y, sin
+  // resultados, como «Con eso no te puedo ayudar». El dueño la hizo a las
+  // 00:16 y recibió eso.
+  //
+  // ⚠️ Solo sin local elegido, igual que la búsqueda: dentro de un local se
+  // pregunta por ese local, y ahí manda su tienda.
+  if (esPreguntaPorAbiertos(text) && !contexto.negocioElegidoId) {
+    const abiertos = await responderAbiertos(deps, contexto.categorias)
+    deps.logger?.log(`🌙 [marketplace] «${text}» → ${abiertos.vista.vista === 'abiertos' ? `${abiertos.vista.codigos?.length} categoría(s) abierta(s)` : 'nada abierto'}`)
+    await guardar(deps, customer.id, contexto.version, abiertos, { soltarLocal: false })
+    await send(abiertos.reply, abiertos.options)
+    return
+  }
+
   // ── 6. El menú ─────────────────────────────────────────────────────
   //
   // `paso` es una función PURA: no consulta nada. Cuando el cliente elige una

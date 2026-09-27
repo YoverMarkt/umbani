@@ -213,7 +213,7 @@ const claimMarketplaceReply = async (
   customerId: string,
   messageId?: string | null,
   limites?: { tope?: number; silencioHoras?: number },
-): Promise<{ permitido: boolean; respuestas: number }> => {
+): Promise<{ permitido: boolean; respuestas: number; aviso: boolean; hasta: string | null }> => {
   const { data, error } = await db.rpc('claim_marketplace_reply', {
     p_customer_id: customerId,
     p_tope: limites?.tope ?? 25,
@@ -221,10 +221,19 @@ const claimMarketplaceReply = async (
     p_message_id: messageId ?? null,
   })
   if (error) throw new Error(error.message)
-  const reclamo = (data || {}) as { permitido?: boolean; respuestas?: number }
+  const reclamo = (data || {}) as {
+    permitido?: boolean
+    respuestas?: number
+    aviso?: boolean
+    hasta?: string | null
+  }
   return {
     permitido: reclamo.permitido !== false,
     respuestas: Number(reclamo.respuestas) || 0,
+    // Solo el mensaje que CRUZA el techo lo trae: es el único que se explica
+    // (2026-09-27).
+    aviso: reclamo.aviso === true,
+    hasta: reclamo.hasta ?? null,
   }
 }
 
