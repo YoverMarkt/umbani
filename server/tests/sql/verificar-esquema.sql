@@ -3709,6 +3709,13 @@ select '✅ sin funciones duplicadas' as resultado;
 --
 -- Los mismos casos que `tests/motor-de-margen.test.js` ejercita sobre el
 -- espejo en TypeScript. Si los dos motores se separan, uno de los dos falla.
+-- ⚠️ Este bloque cierra el MES EN CURSO con ventas de «ahora». Desde el corte
+-- de la liquidación semanal (2026-09-28) el mes ya no cobra esas ventas, así
+-- que el corte se aparta al futuro mientras corre y se restaura al final.
+create or replace function public.liquidacion_semanal_desde()
+returns date language sql stable set search_path = public, pg_temp
+as $x$ select date '2999-01-01' $x$;
+
 do $$
 declare
   v_biz    uuid;
@@ -4327,6 +4334,10 @@ begin
   delete from public.businesses where id = v_biz;
 end;
 $$;
+
+create or replace function public.liquidacion_semanal_desde()
+returns date language sql stable set search_path = public, pg_temp
+as $x$ select date '2026-09-28' $x$;
 
 select '✅ motor de margen: reglas, frenos, disparador y congelado' as resultado;
 
