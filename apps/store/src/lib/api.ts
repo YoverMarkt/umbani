@@ -1,7 +1,7 @@
 import { clearToken, deviceId, readToken } from './session'
 import type {
   Address, BankAccount, Catalog, Business, CartLine,
-  Fulfillment, Me, OrderResult, PaymentMethod, StoreStatus,
+  CobroConTarjeta, Fulfillment, Me, OrderResult, PaymentMethod, StoreStatus,
   TrackedOrder,
 } from './types'
 
@@ -143,6 +143,17 @@ export const getOrder = (slug: string, orderId: string) =>
   request<TrackedOrder>(`/${slug}/orders/${encodeURIComponent(orderId)}`)
 
 export const getPaymentInfo = (slug: string) => request<BankAccount>(`/${slug}/payment-info`)
+
+/**
+ * Abre el cobro con tarjeta de un pedido YA creado: devuelve la página de
+ * PayPhone. El monto no viaja: lo pone el servidor desde el pedido.
+ */
+export const startCardPayment = (slug: string, orderId: string) =>
+  request<{ url: string }>(`/${slug}/orders/${encodeURIComponent(orderId)}/tarjeta`, { method: 'POST' })
+
+/** ¿En qué quedó el cobro? La respuesta la decide el servidor, no la URL. */
+export const getCardPayment = (slug: string, orderId: string) =>
+  request<CobroConTarjeta>(`/${slug}/orders/${encodeURIComponent(orderId)}/tarjeta`)
 
 export const createAddress = (slug: string, body: {
   label: string

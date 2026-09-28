@@ -106,7 +106,7 @@ export type ChannelHealth = {
 export type PlatformError = {
   id: string
   business_id: string | null
-  category: 'canal' | 'ia' | 'envio' | 'servidor'
+  category: 'canal' | 'ia' | 'envio' | 'servidor' | 'pagos'
   code: string | null
   message: string
   context: Record<string, unknown>
@@ -180,6 +180,8 @@ export type BusinessDetail = BusinessRow & {
   meta_phone_id: string | null
   takes_orders: boolean | null
   storefront_enabled: boolean | null
+  /** Cobro con tarjeta (PayPhone). NULL = apagado. Solo lo toca el superadmin. */
+  card_mode?: 'pruebas' | 'produccion' | null
   monthly_rate: number | null
   client_email: string
   credential_status: Record<'ycloud_api_key' | 'ycloud_webhook_secret' | 'meta_token' | 'telegram_bot_token', boolean>

@@ -2,6 +2,7 @@ import { Suspense, lazy, useState } from 'react'
 import {
   RiErrorWarningLine,
   RiAddLine,
+  RiBankCardLine,
   RiBankLine,
   RiDeleteBin6Line,
   RiEBikeLine,
@@ -37,6 +38,7 @@ const ICONO_PAGO: Record<string, typeof RiBankLine> = {
   transferencia: RiBankLine,
   efectivo: RiMoneyDollarCircleLine,
   pago_al_retirar: RiShoppingBag3Line,
+  tarjeta: RiBankCardLine,
 }
 
 // El carrito y el cierre del pedido, en una sola hoja.
@@ -703,11 +705,15 @@ export default function CartSheet({
                     ? 'Escribe tu nombre'
                     : faltaDireccion
                       ? 'Elige una dirección'
-                      : `Confirmar pedido · ${money(total)}`}
+                      : pagoEfectivo === 'tarjeta'
+                        ? `Pagar con tarjeta · ${money(total)}`
+                        : `Confirmar pedido · ${money(total)}`}
               </Boton>
             )}
         <p className="mt-2.5 text-center text-[11.5px] texto-cuerpo">
-          El negocio confirma tu pedido por WhatsApp y coordina el pago.
+          {pagoEfectivo === 'tarjeta'
+            ? 'Pagas en la página segura de PayPhone. Tus datos de tarjeta no pasan por Umbani.'
+            : 'El negocio confirma tu pedido por WhatsApp y coordina el pago.'}
         </p>
       </div>
       )}

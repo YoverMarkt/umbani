@@ -40,6 +40,12 @@ export interface PedidoParaAvisar {
   currency?: string | null
   /** Decide si «salió» o «está listo para que pases»: no es lo mismo. */
   fulfillment?: string | null
+  /**
+   * Con TARJETA cambian dos textos: el que caduca no «debía un comprobante»,
+   * y el pedido pagado que se cancela lleva el aviso de la devolución.
+   */
+  payment_method?: string | null
+  payment_confirmed_at?: string | null
   order_items?: {
     product_name?: string | null
     variant_name?: string | null
@@ -291,8 +297,11 @@ export const textoDelAviso = (
 
     lineas.push(`⌛ *Tu pedido${numero} se canceló*`)
     lineas.push('')
-    lineas.push('No alcanzamos a recibir tu comprobante de pago, así que '
-      + `${negocio.name} liberó el pedido.`)
+    lineas.push(pedido.payment_method === 'tarjeta'
+      ? `No se completó el pago con tarjeta, así que ${negocio.name} liberó el pedido. `
+        + 'No se te cobró nada.'
+      : 'No alcanzamos a recibir tu comprobante de pago, así que '
+        + `${negocio.name} liberó el pedido.`)
     lineas.push('')
 
     // Cuántas le quedan. Solo cuando ya lleva más de una: decírselo a la
@@ -327,6 +336,14 @@ export const textoDelAviso = (
     // reportes—, no un canal que atienda clientes. Quien llamara ahí no
     // encontraría su pedido, porque el pedido vive en esta conversación.
     // Estaba latente en La Abuelita solo porque el campo estaba vacío.
+    // ⚠️ Ya se le cobró con tarjeta: lo primero que necesita saber es que su
+    // dinero vuelve. La devolución la pone en marcha la base al cancelar
+    // (`orders_card_refund_on_cancel`); el plazo lo pone su banco.
+    if (pedido.payment_method === 'tarjeta' && pedido.payment_confirmed_at) {
+      lineas.push('')
+      lineas.push('💳 Te devolvemos el pago de tu tarjeta. Según tu banco, '
+        + 'puede tardar unos días en verse en tu estado de cuenta.')
+    }
     lineas.push('')
     lineas.push('Si quieres saber qué pasó o volver a pedir, escríbenos por aquí.')
     return lineas.join('\n')

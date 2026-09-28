@@ -22,6 +22,8 @@ import {
   type StorefrontBusiness,
 } from '../services/storefront'
 import { avisarAlDuenoDelPedido } from '../services/owner-order-notice'
+import { metodoTarjeta, pagosConTarjeta, tarjetaDisponible } from '../services/pago-con-tarjeta'
+import { leerConfiguracionPayphone } from '../config/payphone'
 
 // Rutas de la mini app del negocio.
 //
@@ -62,7 +64,7 @@ interface StorefrontRouteDatabase {
     created_at?: string | null
     contact_name?: string | null
   } | null>
-  getBusinessById(businessId: string): Promise<{ slug?: string | null } | null>
+  getBusinessById(businessId: string): Promise<{ slug?: string | null; name?: string | null } | null>
   getStorefrontSessionByHash(tokenHash: string): Promise<StorefrontSessionRow | null>
   bindStorefrontSession(sessionId: string, deviceHash: string): Promise<boolean>
   /** El bloqueo del dueño es total: quien está bloqueado no puede pedir. */
@@ -108,6 +110,13 @@ interface StorefrontRouteDatabase {
     shipping: number | string | null
     total: number | string | null
     status: string | null
+    payment_method: string | null
+  } | null>
+  /** El último intento de cobro con tarjeta de UN pedido de ESTE negocio. */
+  getLatestCardPayment(businessId: string, orderId: string): Promise<{
+    status: string
+    card_brand: string | null
+    card_last_digits: string | null
   } | null>
   createStorefrontOrder(input: Record<string, unknown>): Promise<{
     data: unknown
@@ -153,6 +162,23 @@ const storeLimiter = rateLimit({
 })
 
 // Crear pedidos es mucho más caro y nadie pide 30 veces por minuto.
+/**
+ * Los métodos que ESE local acepta, con la tarjeta si le toca.
+ *
+ * La tarjeta no vive en `business_payment_methods` —esa lista la edita el
+ * dueño, y el dinero de la tarjeta entra en la cuenta de Umbani—, así que se
+ * añade aquí cuando el superadmin la encendió y el servidor cobra en el mismo
+ * modo (`tarjetaDisponible`). Si la consulta falla, lista vacía: el cliente
+ * puede mirar la carta igual y el checkout lo vuelve a comprobar.
+ */
+async function metodosDeLaTienda(business: StorefrontBusiness) {
+  const metodos = await db.getStorefrontPaymentMethods(business.id).catch(() => [])
+  const config = leerConfiguracionPayphone()
+  return config && tarjetaDisponible(business, config)
+    ? [...metodos, metodoTarjeta(config)]
+    : metodos
+}
+
 const orderLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 8,
@@ -297,7 +323,7 @@ router.get('/api/store/:slug', readStorefrontBlock, async (req, res) => {
       // escritos a mano. Si la consulta falla se manda una lista vacía en vez
       // de romper la portada: el cliente puede mirar la carta igual, y el
       // checkout lo volverá a comprobar contra la base.
-      paymentMethods: await db.getStorefrontPaymentMethods(business.id).catch(() => []),
+      paymentMethods: await metodosDeLaTienda(business),
     },
     status,
     canOrder: canOrder(status),
@@ -439,7 +465,7 @@ router.get('/api/store/:slug/catalog', readStorefrontSession, async (req, res) =
     business: business
       ? {
         ...publicBusiness(business, pricing, await getPlatformPhone().catch(() => null)),
-        paymentMethods: await db.getStorefrontPaymentMethods(business.id).catch(() => []),
+        paymentMethods: await metodosDeLaTienda(business),
       }
       : null,
     status,
@@ -683,13 +709,21 @@ router.post('/api/store/:slug/orders', orderLimiter, requireStorefrontSession, a
     ? String(body.fulfillment)
     : null
 
-  // La tarjeta no está: la plataforma no procesa cobros (regla inviolable #6).
   // «pago_al_retirar» no es cómo paga, es CUÁNDO: al pasar por el local. La
   // app solo lo ofrece en modo retiro, y aquí se vuelve a comprobar — una app
   // vieja, o alguien tocando la petición, no puede prometerle al negocio que
   // pasará a recoger un pedido que pidió a domicilio.
+  //
+  // ⚠️ La TARJETA (2026-09-27) solo si este local la tiene y el servidor cobra
+  // en su mismo modo. Y si no, se RECHAZA: los demás métodos desconocidos se
+  // convierten en «sin método», pero quien eligió tarjeta cree que va a pagar
+  // con ella — un pedido creado sin método le haría esperar un cobro que no
+  // existe.
   const metodoPedido = String(body.paymentMethod)
-  const metodoValido = ['transferencia', 'efectivo', 'pago_al_retirar'].includes(metodoPedido)
+  if (metodoPedido === 'tarjeta' && !tarjetaDisponible(business)) {
+    return res.status(409).json({ error: 'El pago con tarjeta no está disponible en este local ahora mismo' })
+  }
+  const metodoValido = ['transferencia', 'efectivo', 'pago_al_retirar', 'tarjeta'].includes(metodoPedido)
     && !(metodoPedido === 'pago_al_retirar' && fulfillment === 'delivery')
   const paymentMethod = metodoValido ? metodoPedido : null
 
@@ -745,9 +779,15 @@ router.post('/api/store/:slug/orders', orderLimiter, requireStorefrontSession, a
   // ⚠️ Sin `await`, como el resto de esta zona: el pedido YA está creado y el
   // cliente tiene que ver su confirmación ahora. Un proveedor externo lento no
   // puede retrasar la pantalla de «pedido recibido».
-  void avisarAlDuenoDelPedido(businessId, (result.data as { id?: string } | null)?.id).catch(() => {
-    /* el pedido ya está: un aviso de cortesía no puede tumbarlo */
-  })
+  //
+  // ⚠️ Con TARJETA no: ese pedido todavía no existe para el local — no suena
+  // su alarma ni avanza hasta que PayPhone confirma el cobro. El aviso sale
+  // desde `pago-con-tarjeta.ts` en ese momento, cuando el dinero ya está.
+  if (paymentMethod !== 'tarjeta') {
+    void avisarAlDuenoDelPedido(businessId, (result.data as { id?: string } | null)?.id).catch(() => {
+      /* el pedido ya está: un aviso de cortesía no puede tumbarlo */
+    })
+  }
 
   // ── El aviso que cierra el ciclo mini app → WhatsApp ─────────────────────
   //
@@ -787,7 +827,8 @@ router.post('/api/store/:slug/orders', orderLimiter, requireStorefrontSession, a
   // corto. Lo vigila la prueba de que los dos números coinciden.
   const creado = (result.data || {}) as Record<string, unknown>
   const oficial = await db.getOrderMoney(businessId, String(creado.id || ''))
-  if (oficial?.status === 'esperando_pago') {
+  // ⚠️ Con tarjeta NO se pide comprobante: no hay transferencia que fotografiar.
+  if (oficial?.status === 'esperando_pago' && oficial.payment_method !== 'tarjeta') {
     void pedirComprobantePorChat(businessId, String(creado.id || ''))
   }
   return res.status(201).json(oficial ? { ...creado, ...oficial } : creado)
@@ -835,6 +876,60 @@ router.get('/api/store/:slug/payment-info', requireStorefrontSession, async (req
   const account = await db.getBusinessBankAccount(req.storefront!.businessId)
   if (!account) return res.status(404).json({ error: 'El negocio no tiene datos de pago cargados' })
   return res.json(account)
+})
+
+// ── Pagar con tarjeta ─────────────────────────────────────────────────────
+//
+// La app pide pagar un pedido YA creado y recibe la URL de la página de
+// PayPhone. ⚠️ El monto no viaja en la petición: sale de `orders.total` en la
+// base (`start_card_payment`), y la pertenencia se comprueba allí con las tres
+// cosas a la vez — negocio, pedido y teléfono de la sesión.
+const RESPUESTA_AL_INICIAR: Record<string, { status: number; error: string }> = {
+  no_disponible: { status: 409, error: 'El pago con tarjeta no está disponible ahora mismo' },
+  no_encontrado: { status: 404, error: 'No encontramos ese pedido' },
+  no_es_tarjeta: { status: 409, error: 'Este pedido no se paga con tarjeta' },
+  ya_pagado: { status: 409, error: 'Este pedido ya está pagado' },
+  no_cobrable: { status: 409, error: 'Este pedido ya no se puede pagar' },
+  demasiados_intentos: { status: 429, error: 'Demasiados intentos de pago. Espera un rato o elige otro método' },
+  fallo_proveedor: { status: 502, error: 'No pudimos abrir el pago con tarjeta. Inténtalo de nuevo' },
+}
+
+router.post('/api/store/:slug/orders/:id/tarjeta', orderLimiter, requireStorefrontSession, async (req, res) => {
+  const { businessId, contactPhone } = req.storefront!
+  const orderId = String(req.params.id || '').trim()
+  const business = await db.getBusinessById(businessId)
+  const inicio = await pagosConTarjeta().iniciar({
+    businessId,
+    orderId,
+    telefono: contactPhone,
+    nombreDelLocal: String(business?.name || 'Umbani'),
+  })
+  if (inicio.resultado === 'ok') return res.json({ url: inicio.url })
+  const respuesta = RESPUESTA_AL_INICIAR[inicio.resultado] || RESPUESTA_AL_INICIAR.no_disponible
+  return res.status(respuesta.status).json({ error: respuesta.error, reason: inicio.resultado })
+})
+
+/**
+ * ¿En qué quedó el cobro? Lo pregunta la pantalla de «confirmando tu pago».
+ *
+ * ⚠️ Primero se comprueba que el pedido es de la persona de la sesión (el
+ * mismo 404 que un pedido que no existe) y solo entonces se lee su cobro.
+ */
+router.get('/api/store/:slug/orders/:id/tarjeta', requireStorefrontSession, async (req, res) => {
+  const { businessId, contactPhone } = req.storefront!
+  const orderId = String(req.params.id || '').trim()
+  const { data, error } = await db.getStorefrontOrder({ businessId, contactPhone, orderId })
+  if (error) return res.status(500).json({ error: 'No pudimos consultar tu pago' })
+  if (!data) return res.status(404).json({ error: 'No encontramos ese pedido' })
+  const pedido = data as { status?: string | null; payment_confirmed_at?: string | null }
+  const cobro = await db.getLatestCardPayment(businessId, orderId).catch(() => null)
+  return res.json({
+    pagado: Boolean(pedido.payment_confirmed_at),
+    estadoDelPedido: pedido.status || null,
+    estado: cobro?.status || null,
+    marca: cobro?.card_brand || null,
+    ultimos: cobro?.card_last_digits || null,
+  })
 })
 
 // ── Comprobante de la transferencia ────────────────────────────────────────

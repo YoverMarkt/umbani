@@ -92,7 +92,7 @@ export type Order = {
   /** Lo que le queda al comercio por los productos, sin envío. */
   merchant_subtotal?: number | string | null
   currency?: string
-  payment_method?: 'transferencia' | 'efectivo' | 'pago_al_retirar' | null
+  payment_method?: 'transferencia' | 'efectivo' | 'pago_al_retirar' | 'tarjeta' | null
   /** Lo que el cliente escribió para ESTE pedido: «llame al llegar». */
   delivery_notes?: string | null
   payment_proof_url?: string | null
@@ -281,6 +281,14 @@ export const siguientePaso = (pedido: Order): {
   avisa?: boolean
 } | null => {
   const reparte = !pedido.fulfillment || pedido.fulfillment === 'delivery'
+
+  // ── Con TARJETA, sin cobro no hay paso adelante ─────────────────────────
+  //
+  // Al revés que la transferencia: aquí no hay pago «por otra vía» que el
+  // dueño pueda haber visto. El dinero solo existe si PayPhone lo confirmó, y
+  // la base rechaza avanzar sin eso (`orders_card_requires_payment`). Un botón
+  // que va a fallar es peor que ningún botón: el pedido espera, o se cancela.
+  if (pedido.payment_method === 'tarjeta' && !pedido.payment_confirmed_at) return null
 
   // ── Aceptar y preparar es UN paso ────────────────────────────────────────
   //

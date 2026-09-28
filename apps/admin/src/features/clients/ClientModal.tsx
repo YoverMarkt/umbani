@@ -43,6 +43,7 @@ const EMPTY = {
   plan: 'micro', monthly_rate: '25',
   monthly_contact_limit: '50', monthly_outbound_message_limit: '250',
   client_email: '', client_password: '', notes: '',
+  card_mode: 'apagado' as 'apagado' | 'pruebas' | 'produccion',
 }
 
 export default function ClientModal({ id, onClose, onSaved }: { id: string | null; onClose: () => void; onSaved: () => void }) {
@@ -83,6 +84,7 @@ export default function ClientModal({ id, onClose, onSaved }: { id: string | nul
           : '',
         client_email: c.client_email ?? '', client_password: '',
         notes: c.notes ?? '',
+        card_mode: c.card_mode ?? 'apagado',
       })
       setCajones(c.marketplace_categories ?? [])
       setLoading(false)
@@ -205,6 +207,8 @@ export default function ClientModal({ id, onClose, onSaved }: { id: string | nul
       storefront_enabled: f.storefront === 'yes' && f.sales !== 'informa',
       notes: f.notes || null,
     }
+    // La tarjeta solo se decide EDITANDO: un local nace sin cobro con tarjeta.
+    if (id) payload.card_mode = f.card_mode === 'apagado' ? null : f.card_mode
     // Solo si hay algo elegido: una lista vacía en el alta significaría
     // «ninguno», y lo que queremos es «los de su tipo».
     if (cajones.length) payload.marketplace_categories = cajones
@@ -389,6 +393,41 @@ export default function ClientModal({ id, onClose, onSaved }: { id: string | nul
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   Lo decide el tipo de negocio. Se puede cambiar después, al editarlo.
+                </p>
+              </div>
+            )}
+
+            {/* ── Cobro con tarjeta (PayPhone) ──────────────────────────
+                Solo aquí y solo editando: el dinero de la tarjeta entra en la
+                cuenta de Umbani, así que no lo enciende el dueño. El servidor
+                la ofrece únicamente si su propio modo (PAYPHONE_MODO) coincide
+                con este: un local en «pruebas» no cobra con el servidor en
+                producción, y uno real nunca recibe pagos de prueba. */}
+            {id && (
+              <div className="mb-4 rounded-lg border border-border/70 p-3">
+                <Label htmlFor="client-card-mode">Cobro con tarjeta (PayPhone)</Label>
+                <Select
+                  value={f.card_mode}
+                  onValueChange={valor => setF(prev => ({ ...prev, card_mode: valor as typeof prev.card_mode }))}
+                >
+                  <SelectTrigger id="client-card-mode" className="mt-1 w-full sm:max-w-md"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="apagado">Apagado — no ofrece tarjeta</SelectItem>
+                    <SelectItem value="pruebas">Pruebas — solo el local de pruebas</SelectItem>
+                    <SelectItem value="produccion">Producción — cobro real</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p
+                  className={f.card_mode === 'apagado'
+                    ? 'mt-2 text-xs text-muted-foreground'
+                    : 'mt-2 text-xs font-medium text-amber-600 dark:text-amber-400'}
+                  data-testid="client-card-mode-help"
+                >
+                  {f.card_mode === 'pruebas'
+                    ? 'En pruebas PayPhone aprueba todo SIN cobrar. Úsalo solo en el local de pruebas, nunca en uno real.'
+                    : f.card_mode === 'produccion'
+                      ? 'Cobro REAL: el dinero entra en la cuenta PayPhone de Umbani. Enciéndelo solo con el contrato firmado con el local.'
+                      : 'El cliente paga en efectivo o por transferencia, como siempre.'}
                 </p>
               </div>
             )}

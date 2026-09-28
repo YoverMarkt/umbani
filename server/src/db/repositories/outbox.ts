@@ -94,6 +94,7 @@ const getOrderForNotice = async (businessId: string, orderId: string) => {
     .from('orders')
     .select(
       'id,order_number,status,fulfillment,contact_phone,contact_name,total,currency,'
+      + 'payment_method,payment_confirmed_at,'
       + 'order_items(*, order_item_options(option_group_name,option_name,quantity,group_sort))',
     )
     .eq('business_id', businessId)

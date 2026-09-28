@@ -87,7 +87,7 @@ entera de verdad, que era el problema cuando todo estaba junto:
 3. **Nunca hardcodear secretos ni claves.** Usa variables de entorno o la tabla `server_settings` mediante `server/src/services/settings.ts`. Las keys de IA y de WhatsApp por cliente se guardan en BD, no en código.
 4. **No reescribir archivos completos por cambios pequeños.** No borrar funciones, campos, endpoints ni validaciones que no se pidió tocar. Edición quirúrgica.
 5. **Las etiquetas/tools del bot siempre operan sobre el `business_id` de la conversación.** El bot resuelve el negocio por el canal (slug de Telegram o número de WhatsApp) y SOLO usa datos de ese negocio (catálogo, horarios, políticas, historial).
-6. **Cobro manual.** El bot calcula el total oficial y el negocio coordina el cobro directamente fuera de esta plataforma.
+6. **Cobro manual, salvo la TARJETA.** Efectivo y transferencia se cobran fuera de la plataforma, como siempre. **Desde el 2026-09-27 la tarjeta se cobra por PayPhone en la cuenta de Umbani** (decisión del dueño): el monto sale de `orders.total` en la base, se confirma en el servidor (nunca en el teléfono) y solo se da por pagado si cuadra AL CENTAVO (`settle_card_payment`). Las credenciales viven SOLO en variables de Railway. Ver [DECISIONES.md](DECISIONES.md#el-pago-con-tarjeta-entra-en-la-cuenta-de-umbani).
 7. **El bot nunca inventa datos.** Precios, productos y horarios salen solo de los datos del negocio inyectados en el prompt.
 8. **El CÓDIGO calcula (núcleo de dinero).** Ningún monto que vea el cliente se redacta: totales, precios y márgenes se calculan SOLO server-side. Desde el 2026-09-16 el núcleo vive **en PostgreSQL**: `create_storefront_order` cierra el pedido revalidando negocio, producto, stock y precio en la misma transacción, `order_markup_by_line` aplica el margen y `quoteCart` (`services/storefront.ts`) cotiza **en centavos enteros** replicando esa misma regla. Los descuentos, si algún día existen, serán regla de código/panel.
    - ⚠️ **`server/src/services/money.ts` se retiró el 2026-09-16**, y es un cambio de puntero, no de principio: calculaba el total del pedido **por chat**, y desde que todo local pide por su mini app ese camino no tiene puerta. Se fue con el modo menú, su único llamador (vía `bot-actions.ts`). Hay **una sola puerta** para crear un pedido y la vigila `las-defensas-son-para-todos.test.js`.
@@ -177,6 +177,7 @@ Cada una existe porque algo falló. Lo que parece complejidad de más suele ser 
 - **El alta por API y sus modos de chat** → [DECISIONES.md](DECISIONES.md#el-alta-por-api-estaba-rota-y-nadie-lo-veía)
 - **El motor de opciones del catálogo** → [DECISIONES.md](DECISIONES.md#el-dueño-configura-la-mini-app-obedece)
 - **Los dos botones del pago** → [DECISIONES.md](DECISIONES.md#los-dos-botones-del-pago-no-hacen-lo-mismo)
+- **El pago con tarjeta (PayPhone): confirmar sin el teléfono, cuadrar al centavo, el modo pruebas** → [DECISIONES.md](DECISIONES.md#el-pago-con-tarjeta-entra-en-la-cuenta-de-umbani)
 - **Cuánto tarda el negocio (prep_time)** → [DECISIONES.md](DECISIONES.md#cuánto-tarda-el-negocio)
 - **Pedidos programados (retirados)** → [DECISIONES.md](DECISIONES.md#pedidos-programados-retirados-el-2026-08-07)
 - **Cómo se suma el margen al precio** → [DECISIONES.md](DECISIONES.md#el-margen-se-suma-al-precio-no-se-le-quita-al-dueño)

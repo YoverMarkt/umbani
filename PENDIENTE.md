@@ -256,6 +256,17 @@ comprador: en comida entregada el local pierde el contracargo casi siempre.
 ⚠️ **`docs.deuna.com` NO es la Deuna del Pichincha** — es otra empresa. La
 buena es `deuna.ec`.
 
+### ✅ 2026-09-27: EN MARCHA — tarjeta por PayPhone, en la cuenta de Umbani
+
+El dueño lo decidió («como las grandes») y ya tiene RUC. El cobro, la
+confirmación sin depender del teléfono y la devolución están construidos
+(ver [DECISIONES.md](DECISIONES.md#el-pago-con-tarjeta-entra-en-la-cuenta-de-umbani)).
+Quedan, en este orden: la tarifa de servicio (igual para todo método), el
+split «al día siguiente» con la liquidación a cada local, el endurecimiento de
+seguridad (2FA del superadmin, auditoría de acciones de dinero) y el paso a
+producción con contador, contrato y split aprobados. Lo de abajo es la
+investigación que llevó hasta aquí.
+
 ### ⚠️ PayPhone NO tiene webhook, y eso decide el diseño
 
 Su **Cajita de Pagos** se incrusta en la mini app y el cliente paga sin salir
