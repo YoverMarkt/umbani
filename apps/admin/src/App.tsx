@@ -18,6 +18,7 @@ const Usage = lazy(() => import('./features/usage/Usage'))
 const Errors = lazy(() => import('./features/errors/Errors'))
 const Finance = lazy(() => import('./features/pricing/Finance'))
 const Pagos = lazy(() => import('./features/pagos/Pagos'))
+const Motorizados = lazy(() => import('./features/motorizados/Motorizados'))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -56,6 +57,7 @@ export default function App() {
               <Route path="/billing" element={<Billing />} />
               <Route path="/finance" element={<Finance />} />
               <Route path="/pagos" element={<Pagos />} />
+              <Route path="/motorizados" element={<Motorizados />} />
               <Route path="/usage" element={<Usage />} />
               <Route path="/umbani" element={<Umbani />} />
               <Route path="/simulator" element={<Simulator />} />

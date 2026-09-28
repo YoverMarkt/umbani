@@ -182,6 +182,8 @@ export type BusinessDetail = BusinessRow & {
   storefront_enabled: boolean | null
   /** Cobro con tarjeta (PayPhone). NULL = apagado. Solo lo toca el superadmin. */
   card_mode?: 'pruebas' | 'produccion' | null
+  /** Quién lleva los pedidos: el local o los motorizados de Umbani. */
+  delivery_by?: 'local' | 'umbani'
   monthly_rate: number | null
   client_email: string
   credential_status: Record<'ycloud_api_key' | 'ycloud_webhook_secret' | 'meta_token' | 'telegram_bot_token', boolean>

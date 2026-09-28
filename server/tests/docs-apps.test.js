@@ -39,7 +39,7 @@ describe('docs/apps/openapi.yaml', () => {
   it('cada ruta que usa la app está documentada con su método', () => {
     const documentadas = rutasDelContrato()
     const faltan = []
-    for (const archivo of ['app-v1.routes', 'storefront.routes', 'pagos.routes']) {
+    for (const archivo of ['app-v1.routes', 'app-motorizado.routes', 'storefront.routes', 'pagos.routes']) {
       const router = require(`../dist/routes/${archivo}`)
       for (const layer of router.stack.filter(l => l.route)) {
         const ruta = layer.route.path.replace(/:(\w+)/g, '{$1}')
@@ -54,7 +54,7 @@ describe('docs/apps/openapi.yaml', () => {
 
   it('no documenta rutas que ya no existen', () => {
     const reales = new Set()
-    for (const archivo of ['app-v1.routes', 'storefront.routes', 'pagos.routes']) {
+    for (const archivo of ['app-v1.routes', 'app-motorizado.routes', 'storefront.routes', 'pagos.routes']) {
       for (const layer of require(`../dist/routes/${archivo}`).stack.filter(l => l.route)) {
         reales.add(layer.route.path.replace(/:(\w+)/g, '{$1}'))
       }
@@ -64,7 +64,7 @@ describe('docs/apps/openapi.yaml', () => {
   })
 
   it('las guías existen y dicen la regla de oro', () => {
-    for (const doc of ['README.md', 'API-UMBANI.md', 'APP-CLIENTE.md']) {
+    for (const doc of ['README.md', 'API-UMBANI.md', 'APP-CLIENTE.md', 'APP-MOTORIZADO.md']) {
       expect(fs.existsSync(`../docs/apps/${doc}`), doc).toBe(true)
     }
     expect(fs.readFileSync('../docs/apps/README.md', 'utf8')).toMatch(/PINTA, nunca calcula/)

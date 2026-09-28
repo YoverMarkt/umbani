@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { session } from '../api/client'
-import { Compass, LayoutDashboard, Users, CreditCard, Landmark, MessageSquare, Plug, Settings, Calculator, LogOut, Crown, Sun, Moon, Menu, Shield, FileText, Gauge, TriangleAlert, Wallet } from 'lucide-react'
+import { Compass, LayoutDashboard, Users, CreditCard, Landmark, MessageSquare, Plug, Settings, Calculator, LogOut, Crown, Sun, Moon, Menu, Shield, FileText, Gauge, TriangleAlert, Wallet, Bike } from 'lucide-react'
 import { useState } from 'react'
 import { getTheme, toggleTheme } from '../lib/theme'
 import { Button } from '@botpanel/ui/components/button'
@@ -15,6 +15,7 @@ const SECTIONS = [
   { to: '/billing',     label: 'Facturación',   icon: CreditCard },
   { to: '/finance',     label: 'Finanzas',      icon: Landmark },
   { to: '/pagos',       label: 'Pagos',         icon: Wallet },
+  { to: '/motorizados', label: 'Motorizados',   icon: Bike },
   { to: '/simulator',   label: 'Simulador',     icon: MessageSquare },
   { to: '/connections', label: 'Conexiones',    icon: Plug },
   { to: '/errors',      label: 'Errores',       icon: TriangleAlert },

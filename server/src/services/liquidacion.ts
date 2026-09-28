@@ -58,7 +58,12 @@ export async function cerrarSemanaAnterior() {
   const db = require('../db') as typeof import('../db')
   const { recordError } = require('./error-log') as typeof import('./error-log')
   return crearCierreSemanal({
-    cerrar: semana => db.closeWeeklySettlements(semana),
+    // Los locales y, con la misma semana, los motorizados.
+    cerrar: async (semana) => {
+      const locales = await db.closeWeeklySettlements(semana)
+      const motorizados = await db.closeWeeklyCourierSettlements(semana)
+      return { creadas: locales.creadas + motorizados.creadas, motivo: locales.motivo }
+    },
     alertar: mensaje => recordError({ businessId: null, category: 'pagos', code: 'liquidacion_semanal', message: mensaje }),
     registrar: linea => console.log(linea),
   })()

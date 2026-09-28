@@ -263,6 +263,8 @@ const ALLOWED_BUSINESS_FIELDS = [
   // Cobro con tarjeta (PayPhone). SOLO aquí: el dinero entra en la cuenta de
   // Umbani, así que no lo enciende el dueño desde su panel.
   'card_mode',
+  // Quién lleva los pedidos: el local (como hoy) o los motorizados de Umbani.
+  'delivery_by',
 ] as const
 
 function assertDatabaseResult(result: DatabaseResult, operation: string): void {
@@ -777,6 +779,9 @@ router.put('/api/admin/clients/:id', auth.authAdmin, async (req, res) => {
   }
   if ('plan' in body && !normalizePlanId(body.plan)) {
     return res.status(400).json({ error: 'Selecciona uno de los seis planes disponibles' })
+  }
+  if ('delivery_by' in body && body.delivery_by !== 'local' && body.delivery_by !== 'umbani') {
+    return res.status(400).json({ error: 'Quién reparte: el local o Umbani' })
   }
   // Apagado, pruebas o producción; nada más. El CHECK de la base lo repite.
   if ('card_mode' in body) {
