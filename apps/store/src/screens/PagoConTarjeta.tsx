@@ -6,7 +6,7 @@ import {
   RiLoader4Line,
   RiTimeLine,
 } from '@remixicon/react'
-import { getCardPayment, startCardPayment } from '../lib/api'
+import { getCardPayment, irAPayPhone, startCardPayment } from '../lib/api'
 import { money } from '../lib/format'
 import type { CobroConTarjeta } from '../lib/types'
 
@@ -107,10 +107,10 @@ export default function PagoConTarjeta({
     setFase('abriendo')
     try {
       const { url } = await startCardPayment(slug, orderId)
-      // ⚠️ `assign` y no un `<a target=_blank>`: PayPhone no admite abrirse
-      // dentro de otra página, y al volver tiene que caer en ESTA pestaña,
-      // donde vive la sesión del cliente.
-      window.location.assign(url)
+      // ⚠️ En ESTA pestaña y no en otra: al volver tiene que caer donde vive
+      // la sesión del cliente. Y con el origen como `Referer`, o PayPhone
+      // responde «NO AUTORIZADO» (ver `irAPayPhone`).
+      irAPayPhone(url)
     } catch (fallo) {
       if (!vivo.current) return
       setError(fallo instanceof Error ? fallo.message : 'No pudimos abrir el pago')

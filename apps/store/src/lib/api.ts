@@ -151,6 +151,26 @@ export const getPaymentInfo = (slug: string) => request<BankAccount>(`/${slug}/p
 export const startCardPayment = (slug: string, orderId: string) =>
   request<{ url: string }>(`/${slug}/orders/${encodeURIComponent(orderId)}/tarjeta`, { method: 'POST' })
 
+/**
+ * Lleva al cliente a la página de PayPhone diciendo DE DÓNDE viene.
+ *
+ * ⚠️ PayPhone solo acepta el pago si el navegador llega desde el dominio
+ * registrado en su consola, y lo sabe por la cabecera `Referer`. La app entera
+ * manda `Referrer-Policy: no-referrer` (la dirección de la tienda puede llevar
+ * la sesión del cliente), así que con `location.assign` PayPhone recibía el
+ * salto sin origen y respondía «NO AUTORIZADO» (primera prueba real,
+ * 2026-09-27). Este enlace manda SOLO el origen —sin ruta ni parámetros—: lo
+ * que PayPhone necesita comprobar, y nada que filtre la sesión.
+ */
+export const irAPayPhone = (url: string) => {
+  const enlace = document.createElement('a')
+  enlace.href = url
+  enlace.referrerPolicy = 'origin'
+  document.body.appendChild(enlace)
+  enlace.click()
+  enlace.remove()
+}
+
 /** ¿En qué quedó el cobro? La respuesta la decide el servidor, no la URL. */
 export const getCardPayment = (slug: string, orderId: string) =>
   request<CobroConTarjeta>(`/${slug}/orders/${encodeURIComponent(orderId)}/tarjeta`)

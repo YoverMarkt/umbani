@@ -561,6 +561,24 @@ describe('el camino real: lo nuevo está conectado', () => {
     expect(tienda).toMatch(/if \(paymentMethod !== 'tarjeta'\) \{\s*void avisarAlDuenoDelPedido/)
   })
 
+  it('⚠️ el salto a PayPhone lleva el ORIGEN, o PayPhone responde «NO AUTORIZADO»', () => {
+    // Primera prueba real (2026-09-27): la app entera manda `no-referrer`, y
+    // PayPhone solo acepta el pago si el navegador llega desde el dominio
+    // registrado. Se manda el origen SOLO en ese salto, sin ruta ni sesión.
+    const api = fs.readFileSync('../apps/store/src/lib/api.ts', 'utf8')
+    const salto = api.slice(api.indexOf('export const irAPayPhone'))
+    expect(salto).toMatch(/referrerPolicy = 'origin'/)
+    for (const pantalla of ['FoodStore.tsx', 'PagoConTarjeta.tsx']) {
+      const fuente = fs.readFileSync(`../apps/store/src/screens/${pantalla}`, 'utf8')
+      expect(fuente, pantalla).toMatch(/irAPayPhone\(url\)/)
+      expect(fuente, pantalla).not.toMatch(/location\.assign\(url\)/)
+    }
+    // Y el resto de la app sigue sin mandar Referer: la tienda puede llevar la
+    // sesión en su dirección.
+    const cabeceras = fs.readFileSync('src/middleware/security-headers.ts', 'utf8')
+    expect(cabeceras).toMatch(/'Referrer-Policy', 'no-referrer'/)
+  })
+
   it('pedir con tarjeta donde no se ofrece se RECHAZA, no se crea «sin método»', () => {
     const rechazo = tienda.indexOf("metodoPedido === 'tarjeta' && !tarjetaDisponible(business)")
     const creacion = tienda.indexOf('db.createStorefrontOrder(')
