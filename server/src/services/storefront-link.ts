@@ -61,6 +61,8 @@ interface LinkDatabase {
     customerId: string,
     keepSessionId: string,
   ): Promise<number>
+  /** Ata la sesión a un dispositivo. La usa la app, cuyo teléfono ya probó WhatsApp. */
+  bindStorefrontSession?(sessionId: string, deviceHash: string): Promise<boolean>
   /** La estricta: también cae el enlace viejo del mismo local. */
   revokeStorefrontSessionsExcept?(
     customerId: string,
@@ -292,10 +294,54 @@ export function createStorefrontLinkService(dependencies: {
     }
   }
 
-  return { issueLink, shouldSend }
+  /**
+   * La sesión de tienda para la APP (2026-09-28): lo mismo que `issueLink`
+   * —mismo cliente, misma sesión, misma revocación de las de otros locales—
+   * pero devuelve el TOKEN en vez de la URL, y sin enfriamiento: la app la pide
+   * al entrar en un local, no se manda por WhatsApp.
+   *
+   * ⚠️ Con eso la app usa la MISMA API de la tienda (`/api/store/:slug/*`) y
+   * hereda todas sus defensas —bloqueos, un pedido a la vez, sesión atada al
+   * dispositivo— sin duplicar una sola regla.
+   */
+  async function issueSession(input: {
+    business: LinkBusiness
+    phone: string
+    /** La huella del dispositivo de la app (`deviceFingerprint`). */
+    deviceHash: string
+  }): Promise<string | null> {
+    const { business, phone } = input
+    if (!storefrontAvailable(business) || !phone) return null
+    try {
+      const customer = await database.resolveCustomer({ businessId: business.id, phone, name: null })
+      const { token, tokenHash } = createSessionToken()
+      const sesion = await database.createStorefrontSession({
+        businessId: business.id,
+        customerId: customer.id,
+        tokenHash,
+        contactPhone: phone,
+        expiresAt: null,
+      })
+      if (!sesion?.id) return null
+      // El teléfono ya lo probó WhatsApp al iniciar sesión en la app: la sesión
+      // nace atada a ESTE dispositivo y no pide el número otra vez.
+      if (!database.bindStorefrontSession || !await database.bindStorefrontSession(sesion.id, input.deviceHash)) {
+        return null
+      }
+      if (database.revokeOtherStorefrontSessions) {
+        await database.revokeOtherStorefrontSessions(customer.id, sesion.id).catch(() => 0)
+      }
+      return token
+    } catch {
+      return null
+    }
+  }
+
+  return { issueLink, shouldSend, issueSession }
 }
 
 const database: LinkDatabase = require('../db') as typeof import('../db')
 const service = createStorefrontLinkService({ database })
 
 export const issueStorefrontLink = service.issueLink
+export const issueStorefrontSession = service.issueSession

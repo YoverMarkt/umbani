@@ -22,6 +22,7 @@ import productOptions = require('./repositories/product-options')
 import pricingRules = require('./repositories/pricing-rules')
 import payments = require('./repositories/payments')
 import settlements = require('./repositories/settlements')
+import appLogin = require('./repositories/app-login')
 
 // SIN anotación a propósito: aquí TypeScript infiere el tipo REAL de los 20
 // repositorios juntos. Estuvo anotado como `Record<string, unknown>` y eso
@@ -53,6 +54,7 @@ const database = {
   ...pricingRules,
   ...payments,
   ...settlements,
+  ...appLogin,
 }
 
 export = database

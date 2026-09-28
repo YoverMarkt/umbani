@@ -905,7 +905,16 @@ router.post('/api/store/:slug/orders/:id/tarjeta', orderLimiter, requireStorefro
     telefono: contactPhone,
     nombreDelLocal: String(business?.name || 'Umbani'),
   })
-  if (inicio.resultado === 'ok') return res.json({ url: inicio.url })
+  if (inicio.resultado === 'ok') {
+    // `urlApp`: para la app de Flutter, que abre el navegador del sistema sin
+    // origen; pasa por nuestra página (`/pagos/payphone/ir`) para que PayPhone
+    // vea el dominio registrado.
+    const base = String(process.env.BASE_URL || '').replace(/\/+$/, '')
+    return res.json({
+      url: inicio.url,
+      urlApp: base ? `${base}/pagos/payphone/ir?destino=${encodeURIComponent(inicio.url)}` : null,
+    })
+  }
   const respuesta = RESPUESTA_AL_INICIAR[inicio.resultado] || RESPUESTA_AL_INICIAR.no_disponible
   return res.status(respuesta.status).json({ error: respuesta.error, reason: inicio.resultado })
 })

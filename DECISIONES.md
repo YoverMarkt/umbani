@@ -44,6 +44,7 @@ un módulo concreto, no en cada sesión.
 - [El pago con tarjeta entra en la cuenta de Umbani](#el-pago-con-tarjeta-entra-en-la-cuenta-de-umbani)
 - [Las cuentas de cada uno y el cierre semanal](#las-cuentas-de-cada-uno-y-el-cierre-semanal)
 - [La tarifa de servicio](#la-tarifa-de-servicio)
+- [La API de las apps Flutter](#la-api-de-las-apps-flutter)
 
 ---
 
@@ -1550,4 +1551,32 @@ La app la pide a la base para enseñarla (un minuto en memoria), así el número
 del carrito y el que se cobra salen del mismo sitio. Se ve en el carrito como
 su propia línea ANTES de confirmar. Nace en 0; se enciende en Superadmin →
 Configuración.
+
+## La API de las apps Flutter
+
+**Pedido del dueño (2026-09-27):** dejar todo listo para que sus amigos
+construyan las apps (cliente y motorizado) sin tocar el servidor: «que les
+pidan a Claude que de ese reporte se cree la app». Vive en `docs/apps/`
+(README, API-UMBANI, APP-CLIENTE, `openapi.yaml`) y `docs-apps.test.js` exige
+que cada ruta real esté en el contrato con su método — y que no queden rutas
+fantasma.
+
+⚠️ **La app usa la MISMA API de la tienda** (`/api/store/:slug/*`), no una
+copia: pide una sesión de tienda por local (`POST /api/v1/locales/:slug/sesion`)
+y hereda todas las defensas (bloqueos, un pedido a la vez, sesión atada al
+dispositivo, una sesión viva a la vez). Duplicar la API sería duplicar cada
+regla, y la segunda copia es la que se olvida.
+
+⚠️ **Iniciar sesión con WhatsApp, sin SMS ni plantilla:** la app da un código y
+un enlace wa.me con «Mi código de Umbani: XXXXXX»; el bot lo verifica con el
+REMITENTE (lo prueba WhatsApp) después de los tres frenos (bloqueo, techo,
+insultos) y antes del menú, sin mover la conversación. Gratis: lo inicia el
+cliente. El token (`role: cliente_app`, audiencia `umbani-app`) no abre ningún
+panel. ⚠️ Riesgo conocido, el de todo OTP: si alguien convence a otro de
+mandar SU código, inicia sesión como él. Mitigación pendiente para el PR de
+seguridad (aviso con «cerrar sesión»).
+
+⚠️ **La tarjeta desde la app** pasa por `/pagos/payphone/ir` (en `urlApp`):
+el navegador del sistema no manda `Referer` y PayPhone respondería «NO
+AUTORIZADO». Esa página solo lleva a PayPhone (sin redirección abierta).
 

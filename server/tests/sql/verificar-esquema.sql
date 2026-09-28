@@ -7048,3 +7048,36 @@ end;
 $tarifa$;
 
 select '✅ tarifa de servicio: apagada no cambia nada, suma al total, es de Umbani, se congela y el mostrador no la paga' as resultado;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- INICIAR SESIÓN EN LA APP CON WHATSAPP: LAS REGLAS DEL CÓDIGO (2026-09-28)
+-- ═══════════════════════════════════════════════════════════════════════════
+do $login$
+declare v_falló boolean;
+begin
+  insert into app_login_codes (code, expires_at) values ('K7P2QX', now() + interval '10 minutes');
+  -- Con letras que se confunden (0, O, 1, I) no se guarda.
+  v_falló := false;
+  begin insert into app_login_codes (code, expires_at) values ('K0P2QX', now());
+  exception when check_violation then v_falló := true; end;
+  if not v_falló then raise exception 'se guardó un código con letras ambiguas'; end if;
+  -- Verificado SIN teléfono no existe: el teléfono es lo que se verifica.
+  v_falló := false;
+  begin update app_login_codes set verified_at = now() where code = 'K7P2QX';
+  exception when check_violation then v_falló := true; end;
+  if not v_falló then raise exception 'se verificó un código sin el teléfono del remitente'; end if;
+  -- Y no se usa sin verificar.
+  v_falló := false;
+  begin update app_login_codes set used_at = now() where code = 'K7P2QX';
+  exception when check_violation then v_falló := true; end;
+  if not v_falló then raise exception 'se canjeó un código que nadie verificó'; end if;
+  -- El mismo código dos veces, no.
+  v_falló := false;
+  begin insert into app_login_codes (code, expires_at) values ('K7P2QX', now());
+  exception when unique_violation then v_falló := true; end;
+  if not v_falló then raise exception 'se guardó dos veces el mismo código'; end if;
+  delete from app_login_codes where code = 'K7P2QX';
+end;
+$login$;
+
+select '✅ inicio de sesión de la app: código sin ambigüedad, único, y verificado solo con el teléfono' as resultado;

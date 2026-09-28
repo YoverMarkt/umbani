@@ -1,3 +1,4 @@
+import { codigoEnElMensaje } from './sesion-app'
 import {
   esComandoMenu,
   paso,
@@ -56,6 +57,11 @@ import {
  */
 
 export interface MarketplaceEntryDatabase {
+  /**
+   * Inicio de sesión de la app (2026-09-28): verifica el código con el
+   * REMITENTE de WhatsApp. Opcional: el simulador y el canario no lo tienen.
+   */
+  verifyAppLoginCode?(code: string, phone: string): Promise<boolean>
   /**
    * Los horarios de varios locales de una vez, para marcar cuáles están
    * cerrados en el menú. Opcional: sin ella la lista sale sin marcar, que es
@@ -283,6 +289,28 @@ const vistaDe = (flowState: Record<string, unknown> | null): MarketplaceView => 
  * citan en otros sitios. Que falte uno es, de hecho, la señal que destapó que
  * esta función ya no cabía en la cabeza de nadie.
  */
+const SESION_DE_APP_INICIADA = '✅ Listo: ya iniciaste sesión en la app de Umbani con este número. '
+  + 'Vuelve a la app para seguir.'
+const CODIGO_DE_APP_VENCIDO = '⌛ Ese código ya no es válido. Pide uno nuevo en la app de Umbani.'
+
+/**
+ * El código para iniciar sesión en la app (2026-09-28).
+ *
+ * Va DESPUÉS de los tres frenos (bloqueo, techo, insultos): un bloqueado no
+ * inicia sesión y el spam sigue frenado. Y ANTES del menú: el mensaje es para
+ * la app, no para el chat — no mueve la conversación ni el candado. El
+ * teléfono es el REMITENTE: lo prueba WhatsApp.
+ */
+async function atenderCodigoDeLaApp(deps: MarketplaceEntryDeps, text: string, from: string): Promise<boolean> {
+  const codigo = codigoEnElMensaje(text)
+  if (!codigo || !deps.database.verifyAppLoginCode) return false
+  const valido = await deps.database.verifyAppLoginCode(codigo, from).catch(() => false)
+  await deps.send(valido ? SESION_DE_APP_INICIADA : CODIGO_DE_APP_VENCIDO, [])
+    .catch(() => { /* la app verá el resultado igual al preguntar */ })
+  deps.logger?.log(`📱 [marketplace] código de la app ${valido ? 'verificado' : 'no válido'}`)
+  return true
+}
+
 export async function handleMarketplaceMessage(
   input: {
     from: string
@@ -376,6 +404,9 @@ export async function handleMarketplaceMessage(
   // DESPUÉS del techo —la advertencia se paga— y ANTES que MENÚ. El detalle
   // vive en `atenderInsulto`.
   if (!esMarcadorDeComprobante && await atenderInsulto(deps, text, customer.id)) return
+
+  // El código de la app: DESPUÉS de los tres frenos y ANTES del menú.
+  if (await atenderCodigoDeLaApp(deps, text, from)) return
 
   // ⚠️ A LA VEZ, no una tras otra (2026-09-25): conversación, categorías y el
   // local elegido son lecturas independientes, y cada ida a la base se paga

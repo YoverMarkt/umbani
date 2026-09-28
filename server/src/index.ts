@@ -51,6 +51,7 @@ import catalogStructureRouter = require('./routes/catalog-structure.routes')
 import storefrontRouter = require('./routes/storefront.routes')
 import pagosRouter = require('./routes/pagos.routes')
 import misPagosRouter = require('./routes/mis-pagos.routes')
+import appV1Router = require('./routes/app-v1.routes')
 import healthRouter = require('./routes/health.routes')
 import { cachearEstaticos, enviarHtmlDeSpa } from './lib/cache-estaticos'
 import { alEntrarUnMensaje } from './lib/despertador-de-la-cola'
@@ -276,6 +277,8 @@ app.use(catalogStructureRouter)
 app.use(storefrontRouter)
 // La vuelta de PayPhone tras pagar con tarjeta. Pública: la decide la base.
 app.use(pagosRouter)
+// La API de la app del cliente (Flutter). Ver docs/apps/.
+app.use(appV1Router)
 app.use(ordersRouter)
 app.use(webhooksRouter)
 // ⚠️ EL FRENO VA ANTES QUE EL ROUTER, y no es cuestión de estilo: Express
