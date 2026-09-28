@@ -8,7 +8,7 @@
 // esa pantalla pondría el token de SU cuenta y se quedaría con los cobros sin
 // tocar una línea de código. Y un respaldo de la base filtrado no lo lleva.
 //
-// ⚠️ FALLA CERRADO. Sin las tres variables, o con un modo que no sea
+// ⚠️ FALLA CERRADO. Sin el token y el modo, o con un modo que no sea
 // exactamente `pruebas` o `produccion`, no hay tarjeta: el método no se
 // ofrece y ningún cobro arranca. El modo NO tiene valor por defecto a
 // propósito — adivinar «pruebas» dejaría producción aprobando pagos sin
@@ -18,7 +18,13 @@ export type ModoPayphone = 'pruebas' | 'produccion'
 
 export interface ConfiguracionPayphone {
   token: string
-  storeId: string
+  /**
+   * OPCIONAL (2026-09-27). PayPhone lo marca opcional al preparar el cobro:
+   * sin él usa la tienda por defecto del token. Con el «Identificador» de la
+   * pestaña Credenciales respondió «La tienda asociada no existe» (error 100):
+   * ese campo no es el Store ID. Vacío = no se envía.
+   */
+  storeId: string | null
   modo: ModoPayphone
 }
 
@@ -34,9 +40,9 @@ export function leerConfiguracionPayphone(
   const token = String(env[VARIABLES_PAYPHONE.token] || '').trim()
   const storeId = String(env[VARIABLES_PAYPHONE.storeId] || '').trim()
   const modo = String(env[VARIABLES_PAYPHONE.modo] || '').trim().toLowerCase()
-  if (!token || !storeId) return null
+  if (!token) return null
   if (modo !== 'pruebas' && modo !== 'produccion') return null
-  return { token, storeId, modo }
+  return { token, storeId: storeId || null, modo }
 }
 
 /**

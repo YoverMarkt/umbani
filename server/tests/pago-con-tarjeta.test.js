@@ -106,10 +106,19 @@ const REF = 'abcdef1234567890abcdef1234567890'
 
 // ═══════════════════════════════════════════════════════════════════════════
 describe('las credenciales: solo variables de entorno y fallan cerrado', () => {
-  it('sin las tres, no hay tarjeta', () => {
+  it('sin token o sin modo, no hay tarjeta', () => {
     expect(leerConfiguracionPayphone({})).toBeNull()
     expect(leerConfiguracionPayphone({ PAYPHONE_TOKEN: 't', PAYPHONE_STORE_ID: 's' })).toBeNull()
-    expect(leerConfiguracionPayphone({ PAYPHONE_TOKEN: 't', PAYPHONE_MODO: 'pruebas' })).toBeNull()
+    expect(leerConfiguracionPayphone({ PAYPHONE_STORE_ID: 's', PAYPHONE_MODO: 'pruebas' })).toBeNull()
+  })
+
+  it('el Store ID es OPCIONAL: sin él, PayPhone usa la tienda del token', () => {
+    // 2026-09-27: con el «Identificador» de la consola, PayPhone respondió
+    // «La tienda asociada no existe» (error 100). Ese campo no era el Store ID.
+    expect(leerConfiguracionPayphone({ PAYPHONE_TOKEN: 't', PAYPHONE_MODO: 'pruebas' }))
+      .toEqual({ token: 't', storeId: null, modo: 'pruebas' })
+    expect(leerConfiguracionPayphone({ PAYPHONE_TOKEN: 't', PAYPHONE_STORE_ID: '  ', PAYPHONE_MODO: 'pruebas' })?.storeId)
+      .toBeNull()
   })
 
   it('el modo no se adivina: solo «pruebas» o «produccion», exactos', () => {
@@ -183,6 +192,17 @@ describe('el cliente de PayPhone', () => {
     expect(body).toMatchObject({ amount: 1518, amountWithoutTax: 1518, currency: 'USD', clientTransactionId: REF, storeId: 'st' })
     expect(body.amountWithTax).toBeUndefined()
     expect(config.headers.Authorization).toBe('Bearer tok')
+  })
+
+  it('sin Store ID no se manda el campo; con él, sí', async () => {
+    const sin = httpFalso({ payWithCard: `${PAYPHONE_URL}/Anonymous/Index?paymentId=P1` })
+    await crearClientePayphone({ token: 'tok', storeId: null, http: sin.http })
+      .preparar({ referencia: REF, centavos: 100, urlRespuesta: 'x', urlCancelacion: 'y', motivo: 'm' })
+    expect('storeId' in sin.llamadas[0].body).toBe(false)
+    const con = httpFalso({ payWithCard: `${PAYPHONE_URL}/Anonymous/Index?paymentId=P1` })
+    await crearClientePayphone({ token: 'tok', storeId: 'st', http: con.http })
+      .preparar({ referencia: REF, centavos: 100, urlRespuesta: 'x', urlCancelacion: 'y', motivo: 'm' })
+    expect(con.llamadas[0].body.storeId).toBe('st')
   })
 
   it('jamás manda al cliente a una URL que no sea de PayPhone', async () => {
