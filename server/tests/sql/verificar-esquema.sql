@@ -6809,3 +6809,161 @@ end;
 $tarjeta$;
 
 select '✅ tarjeta: cobra el total en centavos, no confirma lo que no cuadra, un solo pago por pedido, y el modo pruebas no paga locales reales' as resultado;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- CUENTAS Y LIQUIDACIÓN SEMANAL: CADA PEDIDO CUADRA Y CADA SEMANA SE CIERRA SOLA (2026-09-28)
+-- ═══════════════════════════════════════════════════════════════════════════
+-- El corte se mueve a un lunes de enero YA TERMINADO para poder cerrar semanas
+-- completas hoy, y se restaura al final.
+create or replace function public.liquidacion_semanal_desde()
+returns date language sql stable set search_path = public, pg_temp
+as $$ select date '2026-01-05' $$;
+
+do $liq$
+declare
+  v_local   uuid;
+  v_tarjeta uuid;
+  v_efe     uuid;
+  v_efe2    uuid;
+  v_antes   uuid;
+  v_venta   uuid;
+  v_r       jsonb;
+  v_s       public.settlements%rowtype;
+  v_falló   boolean;
+begin
+  insert into businesses (slug, name, type, whatsapp_provider, whatsapp_number,
+    ycloud_number, takes_orders, storefront_enabled, card_mode, monthly_rate)
+  values ('verif-liquidacion', 'Liquidación', 'pizzería', 'ycloud',
+    '+593900888001', '+593900888001', true, true, 'pruebas', 10)
+  returning id into v_local;
+
+  -- Dos pedidos iguales ($11,98 + $2,00 de carrera + $1,20 de comisión = $15,18):
+  -- uno con tarjeta y otro en efectivo. Y uno de ANTES del corte.
+  insert into orders (business_id, contact_phone, source, status, subtotal, shipping, total, payment_method, payment_confirmed_at)
+  values (v_local, '593900888100', 'manual', 'pendiente', 11.98, 2, 15.18, 'tarjeta', now()) returning id into v_tarjeta;
+  insert into orders (business_id, contact_phone, source, status, subtotal, shipping, total, payment_method)
+  values (v_local, '593900888100', 'manual', 'pendiente', 11.98, 2, 15.18, 'efectivo') returning id into v_efe;
+  insert into orders (business_id, contact_phone, source, status, subtotal, shipping, total, payment_method)
+  values (v_local, '593900888100', 'manual', 'pendiente', 11.98, 2, 15.18, 'efectivo') returning id into v_efe2;
+  insert into orders (business_id, contact_phone, source, status, subtotal, shipping, total, payment_method)
+  values (v_local, '593900888100', 'manual', 'pendiente', 11.98, 2, 15.18, 'efectivo') returning id into v_antes;
+  update orders set platform_markup = 1.20 where business_id = v_local;
+
+  -- ── 1. Al entregarse, el libro cuadra al centavo ────────────────────────
+  insert into sales (business_id, order_id, total, shipping, platform_markup, status, source, sold_at)
+  values (v_local, v_tarjeta, 15.18, 2, 1.20, 'completada', 'storefront', '2026-01-07 15:00-05') returning id into v_venta;
+  insert into sales (business_id, order_id, total, shipping, platform_markup, status, source, sold_at)
+  values (v_local, v_efe, 15.18, 2, 1.20, 'completada', 'storefront', '2026-01-08 15:00-05');
+  -- Antes del corte: se cobra en la factura mensual, NO entra en el libro.
+  insert into sales (business_id, order_id, total, shipping, platform_markup, status, source, sold_at)
+  values (v_local, v_antes, 15.18, 2, 1.20, 'completada', 'storefront', '2026-01-02 15:00-05');
+
+  if (select local_cents || '|' || reparto_cents || '|' || umbani_cents || '|' || en_mano || '|' || provider_fee_cents
+        from order_ledger where order_id = v_tarjeta) <> '1198|200|120|umbani|87' then
+    raise exception 'el libro de la tarjeta no cuadra: %',
+      (select row_to_json(l) from order_ledger l where order_id = v_tarjeta);
+  end if;
+  if (select en_mano || '|' || provider_fee_cents from order_ledger where order_id = v_efe) <> 'local|0' then
+    raise exception 'en efectivo el dinero lo tiene el LOCAL y PayPhone no cobra nada';
+  end if;
+  if exists (select 1 from order_ledger where order_id = v_antes) then
+    raise exception 'una venta de ANTES del corte entró en el libro: se cobraría dos veces';
+  end if;
+
+  -- ── 2. Si no cuadra, la venta NO se registra ────────────────────────────
+  v_falló := false;
+  begin
+    insert into sales (business_id, order_id, total, shipping, platform_markup, status, source, sold_at)
+    values (v_local, v_efe2, 1.00, 2, 1.20, 'completada', 'storefront', '2026-01-08 16:00-05');
+  exception when check_violation then v_falló := true;
+  end;
+  if not v_falló then
+    raise exception 'una venta cuyo reparto no cuadra se registró igual';
+  end if;
+
+  -- ── 3. El saldo en curso: Umbani le debe $13,98 − $1,20 = $12,78 ────────
+  if (select neto_cents from public.settlement_balances(v_local)) <> 1278 then
+    raise exception 'el saldo en curso no es 1278: %', (select row_to_json(b) from public.settlement_balances(v_local) b);
+  end if;
+
+  -- ── 4. El cierre semanal descuenta la cuota pendiente si alcanza ────────
+  insert into billing (business_id, amount, currency, period_start, period_end, status)
+  values (v_local, 10, 'USD', '2026-01-01', '2026-01-31', 'pending');
+  v_falló := false;
+  begin perform public.close_weekly_settlements('2026-01-06');
+  exception when invalid_parameter_value then v_falló := true; end;
+  if not v_falló then raise exception 'se cerró una semana que no empieza en lunes'; end if;
+
+  v_r := public.close_weekly_settlements('2026-01-05');
+  select * into v_s from settlements where business_id = v_local and period_start = '2026-01-05';
+  if v_s.derecho_cents <> 2796 or v_s.en_mano_cents <> 1518 or v_s.cuota_cents <> 1000
+     or v_s.neto_cents <> 278 or v_s.status <> 'por_pagar' or v_s.orders_count <> 2 then
+    raise exception 'la liquidación de la semana no cuadra: %', row_to_json(v_s);
+  end if;
+  if (select status from billing where business_id = v_local and period_start = '2026-01-01') <> 'paid' then
+    raise exception 'la cuota descontada del depósito no quedó pagada';
+  end if;
+  if exists (select 1 from order_ledger where business_id = v_local and settlement_id is null) then
+    raise exception 'quedaron pedidos de la semana sin su liquidación';
+  end if;
+  -- Idempotente: cerrar otra vez no crea nada.
+  if (public.close_weekly_settlements('2026-01-05') ->> 'creadas')::int <> 0 then
+    raise exception 'cerrar dos veces la misma semana creó otra liquidación';
+  end if;
+
+  -- ── 5. Semana 2, solo efectivo: el local DEBE, y la deuda se arrastra ────
+  insert into sales (business_id, order_id, total, shipping, platform_markup, status, source, sold_at)
+  values (v_local, v_efe2, 15.18, 2, 1.20, 'completada', 'storefront', '2026-01-13 15:00-05');
+  perform public.close_weekly_settlements('2026-01-12');
+  if (select neto_cents || '|' || status from settlements where business_id = v_local and period_start = '2026-01-12')
+     <> '-120|por_cobrar' then
+    raise exception 'el local que cobró en efectivo no quedó debiendo su comisión';
+  end if;
+  perform public.close_weekly_settlements('2026-01-19');
+  if (select arrastre_cents || '|' || neto_cents || '|' || status from settlements
+        where business_id = v_local and period_start = '2026-01-19') <> '-120|-120|por_cobrar'
+     or (select status from settlements where business_id = v_local and period_start = '2026-01-12') <> 'compensada' then
+    raise exception 'la deuda de la semana anterior no se arrastró';
+  end if;
+
+  -- ── 6. Marcar cobrada exige referencia ──────────────────────────────────
+  v_falló := false;
+  begin perform public.mark_settlement_paid(v_s.id, 'x');
+  exception when invalid_parameter_value then v_falló := true; end;
+  if not v_falló then raise exception 'se marcó pagada una liquidación sin referencia'; end if;
+  if public.mark_settlement_paid(v_s.id, 'TRF-0001') ->> 'status' <> 'pagada'
+     or public.mark_settlement_paid(v_s.id, 'TRF-0001') ->> 'result' <> 'not_pending' then
+    raise exception 'marcar pagada no quedó firme o se pudo marcar dos veces';
+  end if;
+
+  -- ── 7. Venta anulada YA liquidada: reverso que resta en la siguiente ─────
+  update sales set status = 'anulada' where id = v_venta;
+  if (select total_cents || '|' || local_cents from order_ledger where order_id = v_tarjeta and kind = 'reverso')
+     <> '-1518|-1198' then
+    raise exception 'anular una venta ya liquidada no dejó su reverso';
+  end if;
+
+  -- ── 8. La factura mensual se detiene en el corte ────────────────────────
+  -- La factura de enero vuelve a pendiente (borrarla dejaría su reserva de mes).
+  update billing set status = 'pending', paid_at = null, commission_amount = 0
+   where business_id = v_local and period_start = '2026-01-01';
+  perform public.settle_month_commission('2026-01-01');
+  if (select commission_amount from billing where business_id = v_local and period_start = '2026-01-01') <> 1.20 then
+    raise exception 'la factura mensual no cobró SOLO la comisión de antes del corte: %',
+      (select commission_amount from billing where business_id = v_local and period_start = '2026-01-01');
+  end if;
+
+  delete from order_ledger where business_id = v_local;
+  delete from settlements where business_id = v_local;
+  delete from sales where business_id = v_local;
+  delete from billing where business_id = v_local;
+  delete from orders where business_id = v_local;
+  delete from businesses where id = v_local;
+end;
+$liq$;
+
+create or replace function public.liquidacion_semanal_desde()
+returns date language sql stable set search_path = public, pg_temp
+as $$ select date '2026-09-28' $$;
+
+select '✅ cuentas: cada pedido cuadra, la semana se cierra sola, el efectivo resta, la deuda se arrastra y el mes no cobra dos veces' as resultado;

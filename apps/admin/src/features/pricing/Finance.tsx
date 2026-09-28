@@ -298,7 +298,7 @@ export default function Finance() {
                     <TableHead className="text-right">Vendido</TableHead>
                     <TableHead className="text-right">Reparto</TableHead>
                     <TableHead className="text-right">Pagó el cliente</TableHead>
-                    <TableHead className="text-right">Nos debe</TableHead>
+                    <TableHead className="text-right">Comisión</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>

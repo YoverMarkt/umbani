@@ -8,6 +8,7 @@ import simulatorRouter = require('./admin-simulator.routes')
 import usageRouter = require('./admin-usage.routes')
 import pricingRouter = require('./admin-pricing.routes')
 import cartaRouter = require('./admin-carta.routes')
+import pagosRouter = require('./admin-pagos.routes')
 
 const router = createRouter()
 
@@ -20,5 +21,6 @@ router.use(simulatorRouter)
 router.use(usageRouter)
 router.use(pricingRouter)
 router.use(cartaRouter)
+router.use(pagosRouter)
 
 export = router

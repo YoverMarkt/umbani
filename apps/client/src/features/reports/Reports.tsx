@@ -117,7 +117,7 @@ export default function Reports() {
               <div>
                 <div className="text-xs text-muted-foreground">Comisión Umbani</div>
                 <div className="text-xl font-bold tabular-nums text-primary">{money(fees.margen)}</div>
-                <div className="text-xs text-muted-foreground">se suma a tu cuota mensual</div>
+                <div className="text-xs text-muted-foreground">se liquida cada lunes con tus pagos</div>
               </div>
             </div>
             <p className="mt-3 text-xs text-muted-foreground">
