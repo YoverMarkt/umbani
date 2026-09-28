@@ -31,7 +31,7 @@ afterEach(() => {
 /** Una consulta encadenable que termina en lo que se le diga. */
 function consulta(resultado) {
   const q = {}
-  for (const m of ['select', 'eq', 'order', 'limit', 'in', 'or', 'not']) q[m] = vi.fn(() => q)
+  for (const m of ['select', 'eq', 'order', 'limit', 'in', 'or', 'not', 'is']) q[m] = vi.fn(() => q)
   q.maybeSingle = vi.fn(async () => resultado)
   q.then = (ok, mal) => Promise.resolve(resultado).then(ok, mal)
   return q
@@ -105,6 +105,18 @@ describe('repositorio de liquidaciones', () => {
     expect(await db.getSettlementBalances(null)).toEqual([{ business_id: 'b1', neto_cents: 1278 }])
     rpc.mockResolvedValueOnce({ data: { result: 'updated', status: 'pagada' }, error: null })
     expect(await db.markSettlementPaid('id', 'TRF-1')).toEqual({ result: 'updated', status: 'pagada' })
+  })
+
+  it('el libro de UN local: siempre filtrado por su negocio', async () => {
+    const q = consulta({ data: [{ id: 'l1' }], error: null })
+    vi.spyOn(client, 'from').mockReturnValue(q)
+    expect(await db.listLedger('b1', { soloSinLiquidar: true, limite: 9999 })).toEqual([{ id: 'l1' }])
+    expect(q.eq).toHaveBeenCalledWith('business_id', 'b1')
+    expect(q.is).toHaveBeenCalledWith('settlement_id', null)
+    expect(q.limit).toHaveBeenCalledWith(500)
+    await db.listLedger('b1')
+    client.from.mockReturnValue(consulta({ data: null, error: { message: 'caída' } }))
+    await expect(db.listLedger('b1')).rejects.toThrow('caída')
   })
 
   it('lista liquidaciones (con o sin negocio) y cobros con tope', async () => {
