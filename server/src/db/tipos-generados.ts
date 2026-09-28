@@ -1810,6 +1810,88 @@ export type Database = {
           },
         ]
       }
+      order_ledger: {
+        Row: {
+          business_id: string
+          courier_id: string | null
+          created_at: string
+          en_mano: string
+          id: string
+          kind: string
+          local_cents: number
+          order_id: string
+          payment_method: string | null
+          provider_fee_cents: number
+          reparto_cents: number
+          reparto_para: string
+          sale_id: string | null
+          settlement_id: string | null
+          sold_at: string
+          total_cents: number
+          umbani_cents: number
+        }
+        Insert: {
+          business_id: string
+          courier_id?: string | null
+          created_at?: string
+          en_mano: string
+          id?: string
+          kind?: string
+          local_cents: number
+          order_id: string
+          payment_method?: string | null
+          provider_fee_cents?: number
+          reparto_cents: number
+          reparto_para?: string
+          sale_id?: string | null
+          settlement_id?: string | null
+          sold_at: string
+          total_cents: number
+          umbani_cents: number
+        }
+        Update: {
+          business_id?: string
+          courier_id?: string | null
+          created_at?: string
+          en_mano?: string
+          id?: string
+          kind?: string
+          local_cents?: number
+          order_id?: string
+          payment_method?: string | null
+          provider_fee_cents?: number
+          reparto_cents?: number
+          reparto_para?: string
+          sale_id?: string | null
+          settlement_id?: string | null
+          sold_at?: string
+          total_cents?: number
+          umbani_cents?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_ledger_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_ledger_order_fk"
+            columns: ["order_id", "business_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id", "business_id"]
+          },
+          {
+            foreignKeyName: "order_ledger_settlement_fk"
+            columns: ["settlement_id", "business_id"]
+            isOneToOne: false
+            referencedRelation: "settlements"
+            referencedColumns: ["id", "business_id"]
+          },
+        ]
+      }
       orders: {
         Row: {
           address_id: string | null
@@ -2970,6 +3052,77 @@ export type Database = {
         }
         Relationships: []
       }
+      settlements: {
+        Row: {
+          arrastre_cents: number
+          billing_id: string | null
+          business_id: string
+          courier_id: string | null
+          created_at: string
+          cuota_cents: number
+          derecho_cents: number
+          en_mano_cents: number
+          id: string
+          neto_cents: number
+          orders_count: number
+          paid_at: string | null
+          party: string
+          period_end: string
+          period_start: string
+          reference: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          arrastre_cents?: number
+          billing_id?: string | null
+          business_id: string
+          courier_id?: string | null
+          created_at?: string
+          cuota_cents?: number
+          derecho_cents?: number
+          en_mano_cents?: number
+          id?: string
+          neto_cents: number
+          orders_count?: number
+          paid_at?: string | null
+          party?: string
+          period_end: string
+          period_start: string
+          reference?: string | null
+          status: string
+          updated_at?: string
+        }
+        Update: {
+          arrastre_cents?: number
+          billing_id?: string | null
+          business_id?: string
+          courier_id?: string | null
+          created_at?: string
+          cuota_cents?: number
+          derecho_cents?: number
+          en_mano_cents?: number
+          id?: string
+          neto_cents?: number
+          orders_count?: number
+          paid_at?: string | null
+          party?: string
+          period_end?: string
+          period_start?: string
+          reference?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "settlements_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       storefront_sessions: {
         Row: {
           business_id: string
@@ -3246,6 +3399,11 @@ export type Database = {
         Args: { p_business_id: string; p_customer_id: string }
         Returns: undefined
       }
+      close_weekly_settlements: {
+        Args: { p_week_start: string }
+        Returns: Json
+      }
+      comision_payphone_bps: { Args: never; Returns: number }
       complete_outbox_event: {
         Args: { p_id: string; p_token: string }
         Returns: boolean
@@ -3440,6 +3598,7 @@ export type Database = {
         }
         Returns: Json
       }
+      liquidacion_semanal_desde: { Args: never; Returns: string }
       local_embudo: {
         Args: { p_business_id: string; p_dias?: number }
         Returns: {
@@ -3463,6 +3622,10 @@ export type Database = {
           p_order_id: string
           p_user_id?: string
         }
+        Returns: Json
+      }
+      mark_settlement_paid: {
+        Args: { p_reference: string; p_settlement_id: string }
         Returns: Json
       }
       marketplace_alias_parecido: {
@@ -3717,6 +3880,21 @@ export type Database = {
       settle_month_commission: {
         Args: { p_period_start: string }
         Returns: Json
+      }
+      settlement_balances: {
+        Args: { p_business_id?: string }
+        Returns: {
+          arrastre_cents: number
+          business_id: string
+          business_name: string
+          derecho_cents: number
+          en_mano_cents: number
+          neto_cents: number
+          payphone_cents: number
+          pedidos: number
+          pedidos_tarjeta: number
+          umbani_cents: number
+        }[]
       }
       sincronizar_plantilla_en_grupo: {
         Args: { p_group_id: string }

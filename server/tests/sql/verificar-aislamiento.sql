@@ -507,9 +507,13 @@ begin
   -- Guardan códigos de autorización y los últimos dígitos de tarjetas. RLS
   -- sin políticas ya lo cierra; esto vigila además que nadie les devuelva el
   -- permiso de tabla por descuido.
+  -- Y lo mismo el libro de cada pedido y las liquidaciones: son el dinero
+  -- de cada local.
   for v_rol in select unnest(array['anon', 'authenticated']) loop
-    if has_table_privilege(v_rol, 'public.payments', 'select') then
-      raise exception 'FUGA GRAVE: el rol % puede leer los pagos con tarjeta', v_rol;
+    if has_table_privilege(v_rol, 'public.payments', 'select')
+       or has_table_privilege(v_rol, 'public.order_ledger', 'select')
+       or has_table_privilege(v_rol, 'public.settlements', 'select') then
+      raise exception 'FUGA GRAVE: el rol % puede leer pagos, el libro o las liquidaciones', v_rol;
     end if;
   end loop;
   if exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'payments') then

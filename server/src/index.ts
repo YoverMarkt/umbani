@@ -25,6 +25,7 @@ import {
 import { getPlatformChannel } from './services/platform-channel'
 import { expireUnpaidOrders } from './services/order-expiry'
 import { pagosConTarjeta } from './services/pago-con-tarjeta'
+import { cerrarSemanaAnterior } from './services/liquidacion'
 import { vigilarElCaminoDelCliente, ultimaVueltaDelCanario } from './services/canario'
 import { providerStatusClient } from './integrations/provider-status'
 import { activeClientGuard } from './middleware/auth'
@@ -620,6 +621,14 @@ httpServer = app.listen(port, () => {
     setInterval(() => {
       void pagosConTarjeta().procesarPendientes(5).catch(() => { /* registra ella misma */ })
     }, 20_000)
+
+    // 💰 El cierre de la semana: cada lunes se liquida la anterior.
+    //
+    // Cada 6 h y no solo el lunes: si el servidor estaba caído el lunes a la
+    // hora justa, el cierre saldría igual unas horas después. Repetido no hace
+    // nada — la base no crea dos liquidaciones para la misma semana.
+    setTimeout(() => { void cerrarSemanaAnterior() }, 15_000)
+    setInterval(() => { void cerrarSemanaAnterior() }, 6 * 60 * 60 * 1000)
 
     // 🐤 ¿Puede un cliente comprar AHORA MISMO?
     //

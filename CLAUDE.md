@@ -178,6 +178,7 @@ Cada una existe porque algo falló. Lo que parece complejidad de más suele ser 
 - **El motor de opciones del catálogo** → [DECISIONES.md](DECISIONES.md#el-dueño-configura-la-mini-app-obedece)
 - **Los dos botones del pago** → [DECISIONES.md](DECISIONES.md#los-dos-botones-del-pago-no-hacen-lo-mismo)
 - **El pago con tarjeta (PayPhone): confirmar sin el teléfono, cuadrar al centavo, el modo pruebas** → [DECISIONES.md](DECISIONES.md#el-pago-con-tarjeta-entra-en-la-cuenta-de-umbani)
+- **Las cuentas de cada uno y el cierre semanal (libro por pedido, liquidaciones, el corte del 28-sep)** → [DECISIONES.md](DECISIONES.md#las-cuentas-de-cada-uno-y-el-cierre-semanal)
 - **Cuánto tarda el negocio (prep_time)** → [DECISIONES.md](DECISIONES.md#cuánto-tarda-el-negocio)
 - **Pedidos programados (retirados)** → [DECISIONES.md](DECISIONES.md#pedidos-programados-retirados-el-2026-08-07)
 - **Cómo se suma el margen al precio** → [DECISIONES.md](DECISIONES.md#el-margen-se-suma-al-precio-no-se-le-quita-al-dueño)

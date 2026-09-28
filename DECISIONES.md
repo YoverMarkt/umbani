@@ -42,6 +42,7 @@ un módulo concreto, no en cada sesión.
 - [Cómo usa la gente el menú de Umbani](#cómo-usa-la-gente-el-menú-de-umbani)
 - [Los reportes del dueño hablan del modelo de hoy](#los-reportes-del-dueño-hablan-del-modelo-de-hoy)
 - [El pago con tarjeta entra en la cuenta de Umbani](#el-pago-con-tarjeta-entra-en-la-cuenta-de-umbani)
+- [Las cuentas de cada uno y el cierre semanal](#las-cuentas-de-cada-uno-y-el-cierre-semanal)
 
 ---
 
@@ -1486,4 +1487,44 @@ el pago» y sin foto podía caducar con el dinero del cliente dentro.
 comisión y la tarifa; el resto es «por cuenta de terceros»), el contrato con
 cada local, la aprobación del split por PayPhone y qué pasa con un contracargo
 después del reparto.
+
+## Las cuentas de cada uno y el cierre semanal
+
+**Decidido por el dueño el 2026-09-27, «como las grandes».** Con la tarjeta el
+dinero entra en la cuenta de Umbani; con el efectivo y la transferencia lo
+tiene el local. Un solo mecanismo para los dos —y para el motorizado cuando
+exista—: cada pedido ENTREGADO escribe su libro (`order_ledger`, por
+disparador sobre `sales`) con a qué tiene DERECHO cada uno y QUIÉN TIENE EL
+DINERO EN LA MANO. Saldo = derecho − en mano. Cada lunes
+`close_weekly_settlements` cierra la semana anterior (lun–dom, hora EC): al
+que tiene saldo a favor se le paga; al que debe, su deuda se ARRASTRA a la
+semana siguiente y se resta de su depósito. Todo en centavos, por conjuntos,
+idempotente y con candado para dos servidores.
+
+⚠️ **El invariante** `local + reparto + Umbani = total` es un CHECK del libro:
+si no cuadra, la venta no se registra (falla cerrado; un pedido entregado sin
+su libro sería dinero que nadie liquida). El del local se deduce RESTANDO.
+
+⚠️ **El corte: lunes 2026-09-28** (`liquidacion_semanal_desde()`). Lo vendido
+antes se cobra en la factura mensual, como siempre; desde el corte, la
+comisión va al libro. `settle_month_commission` se detiene en el corte: sin
+ese tope se cobraría dos veces. Es `stable` y no `immutable` a propósito: una
+inmutable se congela dentro de los planes guardados.
+
+⚠️ **Facturación queda para la CUOTA** ($25/mes por estar en Umbani). La
+factura pendiente más vieja se descuenta del depósito semanal solo si el
+saldo la cubre ENTERA; si no, se cobra aparte.
+
+⚠️ **Una semana cerrada no se reescribe** (el mismo criterio que el mes
+`paid`): una venta anulada ya liquidada deja un REVERSO que resta en la
+siguiente; sin liquidar, simplemente sale del libro.
+
+**La comisión de PayPhone** (`comision_payphone_bps()`, 575 por defecto en
+`server_settings.payphone_fee_bps`) es una ESTIMACIÓN y es costo de Umbani:
+no entra en el invariante ni se le descuenta al local.
+
+**Listo para el motorizado:** `reparto_para`, `courier_id`, `en_mano =
+'motorizado'` y `settlements.party` existen desde hoy. Sus reglas decididas:
+guarda el efectivo y liquida los lunes, tope de $150, se le retiene la carrera
+si se le cae la comida y el local cobra igual.
 
