@@ -3709,6 +3709,13 @@ select '✅ sin funciones duplicadas' as resultado;
 --
 -- Los mismos casos que `tests/motor-de-margen.test.js` ejercita sobre el
 -- espejo en TypeScript. Si los dos motores se separan, uno de los dos falla.
+-- ⚠️ Este bloque cierra el MES EN CURSO con ventas de «ahora». Desde el corte
+-- de la liquidación semanal (2026-09-28) el mes ya no cobra esas ventas, así
+-- que el corte se aparta al futuro mientras corre y se restaura al final.
+create or replace function public.liquidacion_semanal_desde()
+returns date language sql stable set search_path = public, pg_temp
+as $x$ select date '2999-01-01' $x$;
+
 do $$
 declare
   v_biz    uuid;
@@ -4327,6 +4334,10 @@ begin
   delete from public.businesses where id = v_biz;
 end;
 $$;
+
+create or replace function public.liquidacion_semanal_desde()
+returns date language sql stable set search_path = public, pg_temp
+as $x$ select date '2026-09-28' $x$;
 
 select '✅ motor de margen: reglas, frenos, disparador y congelado' as resultado;
 
@@ -6967,3 +6978,73 @@ returns date language sql stable set search_path = public, pg_temp
 as $$ select date '2026-09-28' $$;
 
 select '✅ cuentas: cada pedido cuadra, la semana se cierra sola, el efectivo resta, la deuda se arrastra y el mes no cobra dos veces' as resultado;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- LA TARIFA DE SERVICIO: LA PAGA EL CLIENTE, ES DE UMBANI Y SE CONGELA (2026-09-28)
+-- ═══════════════════════════════════════════════════════════════════════════
+do $tarifa$
+declare
+  v_local   uuid;
+  v_prod    uuid;
+  v_regla   uuid;
+  v_pedido  uuid;
+  v_o       public.orders%rowtype;
+begin
+  insert into businesses (slug, name, type, whatsapp_provider, whatsapp_number,
+    ycloud_number, takes_orders, storefront_enabled)
+  values ('verif-tarifa', 'Tarifa', 'pizzería', 'ycloud', '+593900999001', '+593900999001', true, true)
+  returning id into v_local;
+  insert into products (business_id, name, price) values (v_local, 'Pizza', 10.00) returning id into v_prod;
+
+  -- ── 1. Apagada: nada cambia ──────────────────────────────────────────────
+  delete from server_settings where key = 'service_fee';
+  v_pedido := (public.create_storefront_order(v_local, null, '593900999100', 'Ana', null, 'pickup',
+    jsonb_build_array(jsonb_build_object('product_id', v_prod, 'quantity', 1))) ->> 'id')::uuid;
+  select * into v_o from orders where id = v_pedido;
+  if v_o.service_fee <> 0 or v_o.total <> 10.00 then
+    raise exception 'con la tarifa apagada el pedido cambió: fee % total %', v_o.service_fee, v_o.total;
+  end if;
+
+  -- ── 2. Encendida en $0,25, con margen 10 % sumado al precio ──────────────
+  insert into server_settings (key, value) values ('service_fee', '0.25')
+    on conflict (key) do update set value = excluded.value;
+  insert into pricing_rules (scope, business_id, strategy, percentage, markup_mode, status)
+  values ('business', v_local, 'percentage', 10, 'on_top', 'active') returning id into v_regla;
+  v_pedido := (public.create_storefront_order(v_local, null, '593900999100', 'Ana', null, 'pickup',
+    jsonb_build_array(jsonb_build_object('product_id', v_prod, 'quantity', 1)), null, null, 'verif-tarifa-2') ->> 'id')::uuid;
+  select * into v_o from orders where id = v_pedido;
+  -- $10 del local + $1 de comisión + $0,25 de tarifa = $11,25
+  if v_o.total <> 11.25 or v_o.service_fee <> 0.25 or v_o.platform_markup <> 1.25 or v_o.merchant_subtotal <> 10.00 then
+    raise exception 'la tarifa no cuadra: total % fee % umbani % local %',
+      v_o.total, v_o.service_fee, v_o.platform_markup, v_o.merchant_subtotal;
+  end if;
+
+  -- ── 3. Congelada: cambiar la tarifa no reescribe lo vendido ──────────────
+  update server_settings set value = '0.50' where key = 'service_fee';
+  update orders set status = status where id = v_pedido;
+  if (select service_fee from orders where id = v_pedido) <> 0.25 then
+    raise exception 'subir la tarifa reescribió un pedido ya hecho';
+  end if;
+
+  -- ── 4. El mostrador no la paga ───────────────────────────────────────────
+  insert into orders (business_id, contact_phone, source, status, subtotal, total)
+  values (v_local, '593900999100', 'manual', 'pendiente', 0, 0) returning id into v_pedido;
+  update orders set subtotal = 8, total = 8 where id = v_pedido;
+  if (select service_fee from orders where id = v_pedido) <> 0 then
+    raise exception 'un pedido de MOSTRADOR pagó tarifa de servicio';
+  end if;
+
+  -- ── 5. Un valor roto en el ajuste no cobra nada; uno enorme se topa ──────
+  update server_settings set value = 'cinco' where key = 'service_fee';
+  if public.tarifa_de_servicio() <> 0 then raise exception 'un ajuste roto cobró tarifa'; end if;
+  update server_settings set value = '99' where key = 'service_fee';
+  if public.tarifa_de_servicio() <> 5 then raise exception 'la tarifa no se topó en $5'; end if;
+
+  delete from server_settings where key = 'service_fee';
+  delete from pricing_rules where id = v_regla;
+  delete from orders where business_id = v_local;
+  delete from businesses where id = v_local;
+end;
+$tarifa$;
+
+select '✅ tarifa de servicio: apagada no cambia nada, suma al total, es de Umbani, se congela y el mostrador no la paga' as resultado;

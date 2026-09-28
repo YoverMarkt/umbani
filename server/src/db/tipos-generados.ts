@@ -1926,6 +1926,7 @@ export type Database = {
           pricing_rule_id: string | null
           pricing_rule_version: number | null
           scheduled_for: string | null
+          service_fee: number
           shipping: number
           source: string
           status: string
@@ -1966,6 +1967,7 @@ export type Database = {
           pricing_rule_id?: string | null
           pricing_rule_version?: number | null
           scheduled_for?: string | null
+          service_fee?: number
           shipping?: number
           source?: string
           status?: string
@@ -2006,6 +2008,7 @@ export type Database = {
           pricing_rule_id?: string | null
           pricing_rule_version?: number | null
           scheduled_for?: string | null
+          service_fee?: number
           shipping?: number
           source?: string
           status?: string
@@ -3927,6 +3930,7 @@ export type Database = {
           requires_proof: boolean
         }[]
       }
+      tarifa_de_servicio: { Args: never; Returns: number }
       update_business_plan_billing: {
         Args: {
           p_business_id: string

@@ -64,7 +64,7 @@ const tieneUbicacion = (direccion: Address): boolean =>
   && direccion.longitude !== null && direccion.longitude !== undefined
 
 export default function CartSheet({
-  abierta, onCerrar, lines, onCantidad, onEditar, me, puedePedir, enviando, error, deliveryFee,
+  abierta, onCerrar, lines, onCantidad, onEditar, me, puedePedir, enviando, error, deliveryFee, serviceFee,
   minOrderAmount, entrega, paymentMethods, onEntrega, onConfirmar, onNuevaDireccion,
   onUbicarDireccion, onBorrarDireccion,
 }: {
@@ -83,6 +83,8 @@ export default function CartSheet({
   enviando: boolean
   error: string | null
   deliveryFee: number
+  /** La tarifa de servicio. Se enseña ANTES de confirmar, como su propia línea. */
+  serviceFee: number
   /** Lo mínimo que el local prepara, sin el envío. Cero = sin mínimo. */
   minOrderAmount: number
   /**
@@ -256,7 +258,8 @@ export default function CartSheet({
   // productos. Los dos sitios tienen que contar lo mismo o el desglose no
   // sumaría el total que hay justo debajo.
   const envio = lines.length && needsAddress(entrega) ? deliveryFee : 0
-  const total = orderTotal(lines, entrega, deliveryFee)
+  const tarifa = lines.length ? serviceFee : 0
+  const total = orderTotal(lines, entrega, deliveryFee, tarifa)
 
   const enCarrito = paso === 'carrito'
   const enDireccion = paso === 'direccion'
@@ -667,6 +670,15 @@ export default function CartSheet({
               {entrega === 'pickup' ? 'Retiras en el local' : envio > 0 ? money(envio) : 'Gratis'}
             </span>
           </div>
+          {/* La tarifa de servicio va en su PROPIA línea y antes de confirmar:
+              es lo que hacen las grandes, y un cargo que aparece al final se
+              lee como un engaño. Igual para todo método de pago. */}
+          {tarifa > 0 && (
+            <div className="flex items-baseline justify-between text-[13.5px] texto-cuerpo">
+              <span>Tarifa de servicio</span>
+              <span className="tabular-nums">{money(tarifa)}</span>
+            </div>
+          )}
           <div className="flex items-baseline justify-between border-t borde-tema pt-2.5">
             <span className="text-[15px] font-bold tracking-tight">Total</span>
             <span className="text-[24px] font-extrabold tracking-tight tabular-nums">{money(total)}</span>

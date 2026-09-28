@@ -700,7 +700,7 @@ export default function FoodStore({
   // Con el envío ya incluido: el modo de entrega se elige arriba, así que la
   // barra puede decir el número final en vez de uno que crecerá al abrir el
   // carrito. Es el mismo que enseña el desglose del checkout.
-  const total = orderTotal(lineas, entrega, business.deliveryFee)
+  const total = orderTotal(lineas, entrega, business.deliveryFee, business.serviceFee)
   const unidades = cartCount(lineas)
   const horario = catalogo.todaysHours
   // Solo viene con la tienda cerrada; abierta es `null` y manda el rango.
@@ -1328,6 +1328,7 @@ export default function FoodStore({
         enviando={enviando}
         error={error}
         deliveryFee={business.deliveryFee}
+        serviceFee={business.serviceFee || 0}
         minOrderAmount={business.minOrderAmount}
         entrega={entrega}
         onEntrega={setEntrega}

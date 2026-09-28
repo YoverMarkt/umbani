@@ -96,7 +96,16 @@ const listLedger = async (businessId: string, input: { soloSinLiquidar?: boolean
   return data || []
 }
 
+/** La tarifa de servicio vigente, tal como la cobra la base. */
+const getServiceFee = async (): Promise<number> => {
+  const { data, error } = await db.rpc('tarifa_de_servicio')
+  if (error) throw new Error(error.message)
+  const tarifa = Number(data)
+  return Number.isFinite(tarifa) && tarifa > 0 ? tarifa : 0
+}
+
 export {
+  getServiceFee,
   listLedger,
   closeWeeklySettlements,
   getSettlementBalances,

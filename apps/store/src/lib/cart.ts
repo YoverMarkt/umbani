@@ -362,6 +362,8 @@ export const orderTotal = (
   lines: CartLine[],
   fulfillment: Fulfillment,
   deliveryFee: number,
+  /** La tarifa de servicio: la cobra la base igual, aquí solo se anticipa. */
+  serviceFee = 0,
 ): number => {
   // ⚠️ Un carrito VACÍO no paga envío. Sin esta salida el total de un carrito
   // sin nada era el precio del envío —«Total $2.00» sobre cero productos—, y
@@ -374,7 +376,7 @@ export const orderTotal = (
   // ver un cobro que nadie va a hacerle.
   if (!lines.length) return 0
   const envio = needsAddress(fulfillment) ? Math.max(0, deliveryFee || 0) : 0
-  return Math.round((cartTotal(lines) + envio) * 100) / 100
+  return Math.round((cartTotal(lines) + envio + Math.max(0, serviceFee || 0)) * 100) / 100
 }
 
 /** Agrupa los extras por su título para pintarlos en bloques. */

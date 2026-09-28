@@ -589,9 +589,13 @@ export function publicBusiness(
   business: StorefrontBusiness,
   pricing?: MarkupRule | null,
   platformPhone?: string | null,
+  /** La tarifa de servicio vigente (`tarifa_de_servicio()` en la base). */
+  serviceFee?: number | null,
 ) {
   return {
     id: business.id,
+    // Se enseña en el carrito ANTES de confirmar; la cobra la base.
+    serviceFee: Math.max(0, Math.round((Number(serviceFee) || 0) * 100) / 100),
     name: business.name || '',
     slug: business.slug || '',
     type: business.type || null,
@@ -745,11 +749,13 @@ export interface CartQuote {
   /** El porcentaje aplicado, para poder explicarlo después. */
   markupPercentage: number | null
   shipping: number
+  /** La tarifa de servicio: la paga el cliente, es de Umbani. Va DENTRO de `platformMarkup`. */
+  serviceFee: number
   total: number
 }
 
 const vacia = (error: string): CartQuote => ({
-  error, lines: [], subtotal: 0, shipping: 0, total: 0,
+  error, lines: [], subtotal: 0, shipping: 0, total: 0, serviceFee: 0,
   merchantSubtotal: 0, platformMarkup: 0, customerSubtotal: 0, markupPercentage: null,
 })
 
@@ -765,6 +771,8 @@ export function quoteCart(input: {
   pricing?: MarkupRule | null
   /** El momento que se cotiza. Se inyecta en las pruebas de las franjas. */
   now?: Date
+  /** La tarifa de servicio vigente. La base la suma igual en `orders_stamp_pricing`. */
+  serviceFee?: number | null
 }): CartQuote {
   const porProducto = new Map(input.products.map(producto => [producto.id, producto]))
   const porVariante = new Map(input.variants.map(variante => [variante.id, variante]))
@@ -1008,7 +1016,10 @@ export function quoteCart(input: {
     ? margen.customerSubtotal
     : Math.round((subtotal + markup) * 100) / 100
   const merchantSubtotal = porLinea === null ? margen.merchantSubtotal : subtotal
-  const total = Math.round((customerSubtotal + shipping) * 100) / 100
+  // La tarifa de servicio: la paga el cliente y es de Umbani, igual que en la
+  // base (va DENTRO de su parte). Un carrito vacío no la paga.
+  const tarifa = lines.length ? Math.max(0, Math.round((Number(input.serviceFee) || 0) * 100)) / 100 : 0
+  const total = Math.round((customerSubtotal + shipping + tarifa) * 100) / 100
 
   return {
     lines,
@@ -1016,7 +1027,8 @@ export function quoteCart(input: {
     shipping,
     total,
     merchantSubtotal,
-    platformMarkup: markup,
+    platformMarkup: Math.round((markup + tarifa) * 100) / 100,
+    serviceFee: tarifa,
     customerSubtotal,
     markupPercentage: input.pricing?.strategy === 'percentage'
       ? (Number(input.pricing.percentage) || 0)

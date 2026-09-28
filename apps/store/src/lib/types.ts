@@ -45,6 +45,8 @@ export interface Business {
   coverUrl: string | null
   /** Costo fijo de envío a domicilio. Informativo: el oficial lo calcula la base. */
   deliveryFee: number
+  /** La tarifa de servicio por pedido. La cobra el servidor; aquí solo se enseña. */
+  serviceFee?: number
   /** Minutos hasta tener el pedido listo. Lo pone el dueño en su panel. */
   prepTimeMinutes: number
   /** Minutos que suma llevarlo a domicilio. Cero = entrega en su cuadra. */
