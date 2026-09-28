@@ -61,6 +61,36 @@ export type Database = {
           },
         ]
       }
+      app_login_codes: {
+        Row: {
+          code: string
+          created_at: string
+          expires_at: string
+          id: string
+          phone: string | null
+          used_at: string | null
+          verified_at: string | null
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          expires_at: string
+          id?: string
+          phone?: string | null
+          used_at?: string | null
+          verified_at?: string | null
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          phone?: string | null
+          used_at?: string | null
+          verified_at?: string | null
+        }
+        Relationships: []
+      }
       billing: {
         Row: {
           amount: number | null

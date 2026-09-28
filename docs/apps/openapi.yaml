@@ -1,0 +1,304 @@
+openapi: 3.1.0
+info:
+  title: API de Umbani para las apps
+  version: 1.0.0
+  description: |
+    La app PINTA, nunca calcula: todo importe llega del servidor.
+    Reglas completas en docs/apps/API-UMBANI.md. Tipos detallados de la carta
+    y del pedido en apps/store/src/lib/types.ts (la mini app web usa esta misma API).
+servers:
+  - url: https://web-production-3433c.up.railway.app
+    description: Producción (NO desarrollar contra ella)
+
+components:
+  securitySchemes:
+    sesionApp:
+      type: http
+      scheme: bearer
+      description: Token de POST /api/v1/auth/whatsapp/verificar. Dura 30 días.
+    sesionTienda:
+      type: apiKey
+      in: header
+      name: x-storefront-token
+      description: Token de POST /api/v1/locales/{slug}/sesion. Va SIEMPRE con x-storefront-device, User-Agent y Accept-Language fijos.
+  parameters:
+    slug:
+      name: slug
+      in: path
+      required: true
+      schema: { type: string }
+    id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+    dispositivo:
+      name: x-storefront-device
+      in: header
+      required: true
+      schema: { type: string, minLength: 8 }
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: { type: string, description: Texto listo para enseñar al cliente }
+        reason: { type: string }
+    ItemDelPedido:
+      type: object
+      required: [productId, quantity]
+      properties:
+        productId: { type: string }
+        variantId: { type: string }
+        quantity: { type: integer, minimum: 1, maximum: 99 }
+        note: { type: string, maxLength: 200 }
+        options:
+          type: array
+          items:
+            type: object
+            properties:
+              optionId: { type: string }
+              quantity: { type: integer, minimum: 1 }
+    Cotizacion:
+      type: object
+      properties:
+        error: { type: string, description: Si viene, el carrito no se puede pedir así }
+        subtotal: { type: number }
+        shipping: { type: number, description: Envío }
+        serviceFee: { type: number, description: Tarifa de servicio (0 = no se cobra) }
+        total: { type: number }
+        lines: { type: array, items: { type: object } }
+
+paths:
+  /api/v1/auth/whatsapp:
+    post:
+      summary: Pide un código para iniciar sesión con WhatsApp
+      responses:
+        '201':
+          description: Código y enlace de WhatsApp con el mensaje escrito
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  codigo: { type: string, example: K7P2QX }
+                  enlace: { type: string, example: 'https://wa.me/593991716574?text=Mi%20c%C3%B3digo%20de%20Umbani%3A%20K7P2QX' }
+                  expiraEn: { type: string, format: date-time }
+  /api/v1/auth/whatsapp/verificar:
+    post:
+      summary: Canjea el código por la sesión de la app (preguntar cada 2–3 s)
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, required: [codigo], properties: { codigo: { type: string } } }
+      responses:
+        '200':
+          description: Sesión iniciada
+          content:
+            application/json:
+              schema: { type: object, properties: { token: { type: string }, telefono: { type: string } } }
+        '202': { description: 'Todavía no llegó el mensaje: { pendiente: true }' }
+        '410': { description: El código venció o ya se usó }
+  /api/v1/yo:
+    get:
+      summary: El teléfono de la sesión
+      security: [{ sesionApp: [] }]
+      responses:
+        '200': { description: '{ telefono }' }
+        '401': { description: Sesión vencida }
+  /api/v1/marketplace:
+    get:
+      summary: Categorías y sus locales
+      responses:
+        '200':
+          description: Lista para la pantalla de inicio
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  categorias:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        codigo: { type: string }
+                        nombre: { type: string }
+                        emoji: { type: [string, 'null'] }
+                        locales:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              slug: { type: string }
+                              nombre: { type: string }
+                              tipo: { type: string }
+                              minutos: { type: [integer, 'null'] }
+                              abierto: { type: [boolean, 'null'], description: null = no se sabe (pintar abierto) }
+                              conCarta: { type: [boolean, 'null'] }
+                              cartaDesde: { type: [string, 'null'] }
+  /api/v1/locales/{slug}/sesion:
+    post:
+      summary: La sesión de tienda para entrar en un local
+      security: [{ sesionApp: [] }]
+      parameters: [{ $ref: '#/components/parameters/slug' }, { $ref: '#/components/parameters/dispositivo' }]
+      responses:
+        '201': { description: '{ token } para x-storefront-token' }
+        '400': { description: Falta x-storefront-device }
+        '404': { description: No existe ese local }
+        '409': { description: El local no recibe pedidos }
+
+  /api/store/{slug}:
+    get:
+      summary: Portada del local (logo, horario, estado, métodos de pago, envío, tarifa)
+      parameters: [{ $ref: '#/components/parameters/slug' }]
+      responses:
+        '200': { description: '{ business: { name, logoUrl, deliveryFee, serviceFee, paymentMethods[{ code, label, help_text, test_mode }] … }, status, canOrder, todaysHours, nextOpen }' }
+  /api/store/{slug}/session/verify:
+    post:
+      summary: (Solo la mini app web) confirmar el teléfono de un enlace. La app no la necesita.
+      parameters: [{ $ref: '#/components/parameters/slug' }]
+      responses:
+        '200': { description: Sesión confirmada }
+  /api/store/{slug}/catalog:
+    get:
+      summary: La carta (categorías, productos, variantes, grupos de opciones)
+      security: [{ sesionTienda: [] }]
+      parameters: [{ $ref: '#/components/parameters/slug' }]
+      responses:
+        '200': { description: Ver Catalog en apps/store/src/lib/types.ts }
+  /api/store/{slug}/me:
+    get:
+      summary: Nombre y direcciones guardadas del cliente en este local
+      security: [{ sesionTienda: [] }]
+      parameters: [{ $ref: '#/components/parameters/slug' }]
+      responses:
+        '200': { description: Ver Me en apps/store/src/lib/types.ts }
+  /api/store/{slug}/addresses:
+    post:
+      summary: Guarda una dirección (el pin es opcional)
+      security: [{ sesionTienda: [] }]
+      parameters: [{ $ref: '#/components/parameters/slug' }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                label: { type: string }
+                address: { type: string }
+                reference: { type: string }
+                isDefault: { type: boolean }
+                latitude: { type: number }
+                longitude: { type: number }
+                accuracy: { type: number }
+      responses:
+        '201': { description: La dirección creada, con su id }
+  /api/store/{slug}/addresses/{id}:
+    delete:
+      summary: Quita una dirección
+      security: [{ sesionTienda: [] }]
+      parameters: [{ $ref: '#/components/parameters/slug' }, { $ref: '#/components/parameters/id' }]
+      responses:
+        '200': { description: Quitada }
+  /api/store/{slug}/addresses/{id}/location:
+    put:
+      summary: Pone el pin a una dirección
+      security: [{ sesionTienda: [] }]
+      parameters: [{ $ref: '#/components/parameters/slug' }, { $ref: '#/components/parameters/id' }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, properties: { latitude: { type: number }, longitude: { type: number }, accuracy: { type: number } } }
+      responses:
+        '200': { description: Guardado }
+  /api/store/{slug}/quote:
+    post:
+      summary: Cotiza el carrito (el desglose oficial que se enseña antes de confirmar)
+      parameters: [{ $ref: '#/components/parameters/slug' }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                items: { type: array, items: { $ref: '#/components/schemas/ItemDelPedido' } }
+                fulfillment: { type: string, enum: [delivery, pickup] }
+      responses:
+        '200':
+          description: El desglose
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Cotizacion' }
+  /api/store/{slug}/orders:
+    post:
+      summary: Crea el pedido (el total lo pone la base)
+      security: [{ sesionTienda: [] }]
+      parameters: [{ $ref: '#/components/parameters/slug' }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items, fulfillment]
+              properties:
+                items: { type: array, items: { $ref: '#/components/schemas/ItemDelPedido' } }
+                fulfillment: { type: string, enum: [delivery, pickup] }
+                addressId: { type: string }
+                name: { type: string }
+                paymentMethod: { type: string, enum: [transferencia, efectivo, pago_al_retirar, tarjeta] }
+                deliveryNotes: { type: string, maxLength: 300 }
+                idempotencyKey: { type: string, description: Una por carrito; reintentar con la misma no crea otro pedido }
+      responses:
+        '201': { description: '{ id, order_number, subtotal, shipping, total, status, payment_method }' }
+        '403': { description: El cliente está bloqueado en este local }
+        '409': { description: Local cerrado, o la tarjeta no está disponible }
+    get:
+      summary: Los pedidos del cliente en este local
+      security: [{ sesionTienda: [] }]
+      parameters: [{ $ref: '#/components/parameters/slug' }]
+      responses:
+        '200': { description: Ver TrackedOrder en apps/store/src/lib/types.ts }
+  /api/store/{slug}/orders/{id}:
+    get:
+      summary: Un pedido del cliente
+      security: [{ sesionTienda: [] }]
+      parameters: [{ $ref: '#/components/parameters/slug' }, { $ref: '#/components/parameters/id' }]
+      responses:
+        '200': { description: Ver TrackedOrder }
+        '404': { description: No existe o no es suyo }
+  /api/store/{slug}/payment-info:
+    get:
+      summary: La cuenta del local para transferir
+      security: [{ sesionTienda: [] }]
+      parameters: [{ $ref: '#/components/parameters/slug' }]
+      responses:
+        '200': { description: '{ bank_name, account_type, account_number, holder_name, holder_id }' }
+  /api/store/{slug}/orders/{id}/tarjeta:
+    post:
+      summary: Abre el pago con tarjeta de un pedido ya creado
+      security: [{ sesionTienda: [] }]
+      parameters: [{ $ref: '#/components/parameters/slug' }, { $ref: '#/components/parameters/id' }]
+      responses:
+        '200': { description: '{ url, urlApp } — la app abre urlApp en el navegador del sistema' }
+        '409': { description: Ya pagado, no disponible o ya no se puede pagar }
+        '429': { description: Demasiados intentos para este pedido }
+    get:
+      summary: En qué quedó el cobro (preguntar cada 2 s al volver)
+      security: [{ sesionTienda: [] }]
+      parameters: [{ $ref: '#/components/parameters/slug' }, { $ref: '#/components/parameters/id' }]
+      responses:
+        '200': { description: '{ pagado, estadoDelPedido, estado, marca, ultimos }' }
+
+  /pagos/payphone/ir:
+    get:
+      summary: Página intermedia hacia PayPhone (la abre la app en el navegador del sistema; viene en urlApp)
+      parameters:
+        - { name: destino, in: query, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Página con el botón «Continuar al pago» }
+        '404': { description: El destino no es PayPhone }
+  /pagos/payphone/retorno:
+    get:
+      summary: (Interna) PayPhone vuelve aquí tras pagar; la app no la llama
+      responses:
+        '303': { description: Redirige a la tienda web }

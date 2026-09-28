@@ -1,6 +1,7 @@
 import rateLimit from 'express-rate-limit'
 import { createRouter } from '../middleware/async'
 import { ID_PAYPHONE_VALIDO, REFERENCIA_VALIDA, pagosConTarjeta } from '../services/pago-con-tarjeta'
+import { PAYPHONE_URL } from '../integrations/payphone'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // LA VUELTA DE PAYPHONE
@@ -64,6 +65,31 @@ router.get('/pagos/payphone/retorno', retornoLimiter, async (req, res) => {
   // A su tienda, con el pedido que acaba de pagar. La tienda pregunta el
   // resultado con la sesión del cliente; aquí no se afirma nada.
   return res.redirect(303, `/t/${encodeURIComponent(negocio.slug)}?pago=${encodeURIComponent(cobro.order_id)}`)
+})
+
+// ── El salto a PayPhone desde la APP ──────────────────────────────────────
+//
+// PayPhone solo acepta el pago si el navegador llega desde el dominio
+// registrado (lo sabe por el `Referer`). La app abre el navegador del sistema
+// SIN origen, y PayPhone respondería «NO AUTORIZADO». Esta página, servida
+// desde nuestro dominio, tiene UN enlace con `referrerpolicy="origin"`.
+//
+// ⚠️ Solo lleva a PayPhone: cualquier otro destino es 404. Sin eso sería una
+// redirección abierta con la marca de Umbani.
+const escaparAtributo = (valor: string) => valor
+  .replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+
+router.get('/pagos/payphone/ir', retornoLimiter, (req, res) => {
+  res.setHeader('Cache-Control', 'no-store')
+  const destino = String(req.query.destino || '')
+  if (!destino.startsWith(`${PAYPHONE_URL}/`)) return res.status(404).type('html').send(SIN_DESTINO)
+  return res.type('html').send('<!doctype html><html lang="es"><meta charset="utf-8">'
+    + '<meta name="viewport" content="width=device-width,initial-scale=1"><title>Pago seguro · Umbani</title>'
+    + '<body style="font-family:system-ui;padding:32px 24px;text-align:center">'
+    + '<p style="font-size:17px">Vas a pagar en la página segura de PayPhone.</p>'
+    + `<a href="${escaparAtributo(destino)}" referrerpolicy="origin" `
+    + 'style="display:inline-block;margin-top:16px;padding:14px 22px;border-radius:14px;background:#111;color:#fff;'
+    + 'font-weight:700;text-decoration:none">Continuar al pago</a></body></html>')
 })
 
 export = router
