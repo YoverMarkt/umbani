@@ -1,11 +1,10 @@
 import rateLimit from 'express-rate-limit'
-import type { Request, RequestHandler } from 'express'
 import { createRouter } from '../middleware/async'
 import { getPlatformPhone } from '../services/platform-channel'
 import { deviceFingerprint } from '../services/storefront-session'
 import { issueStorefrontSession } from '../services/storefront-link'
 import {
-  CODIGO_VALIDO, VIGENCIA_DEL_CODIGO_MS, firmarSesionApp, generarCodigo, leerSesionApp, mensajeDelCodigo,
+  CODIGO_VALIDO, VIGENCIA_DEL_CODIGO_MS, authApp, firmarSesionApp, generarCodigo, mensajeDelCodigo, telefonoDe,
 } from '../services/sesion-app'
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -31,15 +30,6 @@ const codigoLimiter = limitador(5, 'Demasiados códigos pedidos, espera un momen
 const verificarLimiter = limitador(60, 'Demasiados intentos, espera un momento')
 const appLimiter = limitador(90, 'Demasiadas peticiones, espera un momento')
 
-/** El teléfono de la sesión de la app, o 401. */
-const authApp: RequestHandler = (req, res, next) => {
-  const cabecera = String(req.headers.authorization || '')
-  const telefono = cabecera.startsWith('Bearer ') ? leerSesionApp(cabecera.slice(7).trim()) : null
-  if (!telefono) return res.status(401).json({ error: 'Inicia sesión otra vez' })
-  ;(req as Request & { telefonoApp?: string }).telefonoApp = telefono
-  return next()
-}
-const telefonoDe = (req: Request) => String((req as Request & { telefonoApp?: string }).telefonoApp || '')
 
 // ── Iniciar sesión con WhatsApp ───────────────────────────────────────────
 router.post('/api/v1/auth/whatsapp', codigoLimiter, async (_req, res) => {

@@ -582,6 +582,7 @@ export type Database = {
           chat_mode: string
           cover_url: string | null
           created_at: string | null
+          delivery_by: string
           delivery_extra_minutes: number
           delivery_fee: number
           description: string | null
@@ -636,6 +637,7 @@ export type Database = {
           chat_mode?: string
           cover_url?: string | null
           created_at?: string | null
+          delivery_by?: string
           delivery_extra_minutes?: number
           delivery_fee?: number
           description?: string | null
@@ -690,6 +692,7 @@ export type Database = {
           chat_mode?: string
           cover_url?: string | null
           created_at?: string | null
+          delivery_by?: string
           delivery_extra_minutes?: number
           delivery_fee?: number
           description?: string | null
@@ -883,6 +886,112 @@ export type Database = {
           {
             foreignKeyName: "conversation_tags_business_id_fkey"
             columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      courier_settlements: {
+        Row: {
+          arrastre_cents: number
+          courier_id: string
+          created_at: string
+          derecho_cents: number
+          en_mano_cents: number
+          id: string
+          neto_cents: number
+          orders_count: number
+          paid_at: string | null
+          period_end: string
+          period_start: string
+          reference: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          arrastre_cents?: number
+          courier_id: string
+          created_at?: string
+          derecho_cents?: number
+          en_mano_cents?: number
+          id?: string
+          neto_cents: number
+          orders_count?: number
+          paid_at?: string | null
+          period_end: string
+          period_start: string
+          reference?: string | null
+          status: string
+          updated_at?: string
+        }
+        Update: {
+          arrastre_cents?: number
+          courier_id?: string
+          created_at?: string
+          derecho_cents?: number
+          en_mano_cents?: number
+          id?: string
+          neto_cents?: number
+          orders_count?: number
+          paid_at?: string | null
+          period_end?: string
+          period_start?: string
+          reference?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "courier_settlements_courier_id_fkey"
+            columns: ["courier_id"]
+            isOneToOne: false
+            referencedRelation: "couriers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      couriers: {
+        Row: {
+          active: boolean
+          available: boolean
+          cash_limit_cents: number
+          created_at: string
+          fleet_business_id: string | null
+          id: string
+          name: string
+          phone: string
+          updated_at: string
+          vehicle: string | null
+        }
+        Insert: {
+          active?: boolean
+          available?: boolean
+          cash_limit_cents?: number
+          created_at?: string
+          fleet_business_id?: string | null
+          id?: string
+          name: string
+          phone: string
+          updated_at?: string
+          vehicle?: string | null
+        }
+        Update: {
+          active?: boolean
+          available?: boolean
+          cash_limit_cents?: number
+          created_at?: string
+          fleet_business_id?: string | null
+          id?: string
+          name?: string
+          phone?: string
+          updated_at?: string
+          vehicle?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "couriers_fleet_business_id_fkey"
+            columns: ["fleet_business_id"]
             isOneToOne: false
             referencedRelation: "businesses"
             referencedColumns: ["id"]
@@ -1844,6 +1953,7 @@ export type Database = {
         Row: {
           business_id: string
           courier_id: string | null
+          courier_settlement_id: string | null
           created_at: string
           en_mano: string
           id: string
@@ -1854,6 +1964,8 @@ export type Database = {
           provider_fee_cents: number
           reparto_cents: number
           reparto_para: string
+          retenido: boolean
+          retenido_motivo: string | null
           sale_id: string | null
           settlement_id: string | null
           sold_at: string
@@ -1863,6 +1975,7 @@ export type Database = {
         Insert: {
           business_id: string
           courier_id?: string | null
+          courier_settlement_id?: string | null
           created_at?: string
           en_mano: string
           id?: string
@@ -1873,6 +1986,8 @@ export type Database = {
           provider_fee_cents?: number
           reparto_cents: number
           reparto_para?: string
+          retenido?: boolean
+          retenido_motivo?: string | null
           sale_id?: string | null
           settlement_id?: string | null
           sold_at: string
@@ -1882,6 +1997,7 @@ export type Database = {
         Update: {
           business_id?: string
           courier_id?: string | null
+          courier_settlement_id?: string | null
           created_at?: string
           en_mano?: string
           id?: string
@@ -1892,6 +2008,8 @@ export type Database = {
           provider_fee_cents?: number
           reparto_cents?: number
           reparto_para?: string
+          retenido?: boolean
+          retenido_motivo?: string | null
           sale_id?: string | null
           settlement_id?: string | null
           sold_at?: string
@@ -1904,6 +2022,20 @@ export type Database = {
             columns: ["business_id"]
             isOneToOne: false
             referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_ledger_courier_fk"
+            columns: ["courier_id"]
+            isOneToOne: false
+            referencedRelation: "couriers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_ledger_courier_settlement_id_fkey"
+            columns: ["courier_settlement_id"]
+            isOneToOne: false
+            referencedRelation: "courier_settlements"
             referencedColumns: ["id"]
           },
           {
@@ -1928,6 +2060,8 @@ export type Database = {
           business_id: string
           contact_name: string | null
           contact_phone: string
+          courier_assigned_at: string | null
+          courier_id: string | null
           created_at: string | null
           currency: string
           customer_id: string | null
@@ -1969,6 +2103,8 @@ export type Database = {
           business_id: string
           contact_name?: string | null
           contact_phone: string
+          courier_assigned_at?: string | null
+          courier_id?: string | null
           created_at?: string | null
           currency?: string
           customer_id?: string | null
@@ -2010,6 +2146,8 @@ export type Database = {
           business_id?: string
           contact_name?: string | null
           contact_phone?: string
+          courier_assigned_at?: string | null
+          courier_id?: string | null
           created_at?: string | null
           currency?: string
           customer_id?: string | null
@@ -2059,6 +2197,13 @@ export type Database = {
             columns: ["business_id"]
             isOneToOne: false
             referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_courier_id_fkey"
+            columns: ["courier_id"]
+            isOneToOne: false
+            referencedRelation: "couriers"
             referencedColumns: ["id"]
           },
           {
@@ -3432,6 +3577,10 @@ export type Database = {
         Args: { p_business_id: string; p_customer_id: string }
         Returns: undefined
       }
+      close_weekly_courier_settlements: {
+        Args: { p_week_start: string }
+        Returns: Json
+      }
       close_weekly_settlements: {
         Args: { p_week_start: string }
         Returns: Json
@@ -3444,6 +3593,17 @@ export type Database = {
       complete_webhook_event: {
         Args: { p_event_id: string; p_lease_token: string }
         Returns: boolean
+      }
+      courier_advance_order: {
+        Args: { p_courier_id: string; p_order_id: string; p_status: string }
+        Returns: Json
+      }
+      courier_balance: { Args: { p_courier_id: string }; Returns: Json }
+      courier_cash_in_hand: { Args: { p_courier_id: string }; Returns: number }
+      courier_orders: { Args: { p_courier_id: string }; Returns: Json }
+      courier_take_order: {
+        Args: { p_courier_id: string; p_order_id: string }
+        Returns: Json
       }
       crear_venta_desde_pedido: {
         Args: { p_business_id: string; p_order_id: string }
@@ -3657,6 +3817,10 @@ export type Database = {
         }
         Returns: Json
       }
+      mark_courier_settlement_paid: {
+        Args: { p_reference: string; p_settlement_id: string }
+        Returns: Json
+      }
       mark_settlement_paid: {
         Args: { p_reference: string; p_settlement_id: string }
         Returns: Json
@@ -3858,6 +4022,10 @@ export type Database = {
       }
       request_new_payment_proof: {
         Args: { p_business_id: string; p_order_id: string }
+        Returns: Json
+      }
+      retain_courier_fee: {
+        Args: { p_motivo: string; p_order_id: string }
         Returns: Json
       }
       revoke_other_storefront_sessions: {

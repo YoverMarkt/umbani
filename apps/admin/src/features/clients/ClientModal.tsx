@@ -44,6 +44,7 @@ const EMPTY = {
   monthly_contact_limit: '50', monthly_outbound_message_limit: '250',
   client_email: '', client_password: '', notes: '',
   card_mode: 'apagado' as 'apagado' | 'pruebas' | 'produccion',
+  delivery_by: 'local' as 'local' | 'umbani',
 }
 
 export default function ClientModal({ id, onClose, onSaved }: { id: string | null; onClose: () => void; onSaved: () => void }) {
@@ -85,6 +86,7 @@ export default function ClientModal({ id, onClose, onSaved }: { id: string | nul
         client_email: c.client_email ?? '', client_password: '',
         notes: c.notes ?? '',
         card_mode: c.card_mode ?? 'apagado',
+        delivery_by: c.delivery_by ?? 'local',
       })
       setCajones(c.marketplace_categories ?? [])
       setLoading(false)
@@ -209,6 +211,7 @@ export default function ClientModal({ id, onClose, onSaved }: { id: string | nul
     }
     // La tarjeta solo se decide EDITANDO: un local nace sin cobro con tarjeta.
     if (id) payload.card_mode = f.card_mode === 'apagado' ? null : f.card_mode
+    if (id) payload.delivery_by = f.delivery_by
     // Solo si hay algo elegido: una lista vacía en el alta significaría
     // «ninguno», y lo que queremos es «los de su tipo».
     if (cajones.length) payload.marketplace_categories = cajones
@@ -429,6 +432,22 @@ export default function ClientModal({ id, onClose, onSaved }: { id: string | nul
                       ? 'Cobro REAL: el dinero entra en la cuenta PayPhone de Umbani. Enciéndelo solo con el contrato firmado con el local.'
                       : 'El cliente paga en efectivo o por transferencia, como siempre.'}
                 </p>
+              </div>
+            )}
+
+            {/* ── Quién reparte ─────────────────────────────────────────
+                Con «Umbani», sus pedidos se les ofrecen a los motorizados de
+                la plataforma, que guardan el efectivo y liquidan los lunes. */}
+            {id && (
+              <div className="mb-4 rounded-lg border border-border/70 p-3">
+                <Label htmlFor="client-delivery-by">Quién reparte</Label>
+                <Select value={f.delivery_by} onValueChange={v => setF(prev => ({ ...prev, delivery_by: v as typeof prev.delivery_by }))}>
+                  <SelectTrigger id="client-delivery-by" className="mt-1 w-full sm:max-w-md"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="local">El local, con su gente (como hoy)</SelectItem>
+                    <SelectItem value="umbani">Motorizados de Umbani</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             )}
 

@@ -238,10 +238,13 @@ describe('la vuelta de PayPhone', () => {
 describe('la tarea real del cierre', () => {
   it('pide cerrar la última semana terminada y no lanza si la base falla', async () => {
     const { cerrarSemanaAnterior } = require('../dist/services/liquidacion')
-    const cerrar = vi.spyOn(db, 'closeWeeklySettlements').mockResolvedValue({ creadas: 0, motivo: 'antes_del_corte' })
+    const cerrar = vi.spyOn(db, 'closeWeeklySettlements').mockResolvedValue({ creadas: 1, motivo: undefined })
+    // La misma tarea cierra también la semana de los motorizados.
+    const motos = vi.spyOn(db, 'closeWeeklyCourierSettlements').mockResolvedValue({ creadas: 2 })
     vi.spyOn(console, 'log').mockImplementation(() => {})
     const r = await cerrarSemanaAnterior()
-    expect(r.creadas).toBe(0)
+    expect(r.creadas).toBe(3)
+    expect(motos.mock.calls[0][0]).toBe(cerrar.mock.calls[0][0])
     expect(cerrar.mock.calls[0][0]).toMatch(/^\d{4}-\d{2}-\d{2}$/)
     cerrar.mockRejectedValue(new Error('caída'))
     vi.spyOn(db, 'recordPlatformError').mockResolvedValue(undefined)

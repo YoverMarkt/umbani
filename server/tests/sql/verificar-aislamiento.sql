@@ -513,7 +513,9 @@ begin
     if has_table_privilege(v_rol, 'public.payments', 'select')
        or has_table_privilege(v_rol, 'public.order_ledger', 'select')
        or has_table_privilege(v_rol, 'public.settlements', 'select')
-       or has_table_privilege(v_rol, 'public.app_login_codes', 'select') then
+       or has_table_privilege(v_rol, 'public.app_login_codes', 'select')
+       or has_table_privilege(v_rol, 'public.couriers', 'select')
+       or has_table_privilege(v_rol, 'public.courier_settlements', 'select') then
       raise exception 'FUGA GRAVE: el rol % puede leer pagos, el libro o las liquidaciones', v_rol;
     end if;
   end loop;

@@ -147,6 +147,59 @@ paths:
         '404': { description: No existe ese local }
         '409': { description: El local no recibe pedidos }
 
+  /api/v1/motorizado/yo:
+    get:
+      summary: El motorizado de la sesión y su semana en curso
+      security: [{ sesionApp: [] }]
+      responses:
+        '200': { description: '{ nombre, vehiculo, flota, disponible, topeEfectivoCents, semana{ pedidos, carrerasCents, retenidasCents, efectivoCobradoCents, deAntesCents, efectivoEncimaCents } }' }
+        '403': { description: El teléfono no es de un motorizado activo }
+  /api/v1/motorizado/disponible:
+    put:
+      summary: Disponible o no para tomar pedidos
+      security: [{ sesionApp: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, properties: { disponible: { type: boolean } } }
+      responses:
+        '200': { description: '{ disponible }' }
+  /api/v1/motorizado/pedidos:
+    get:
+      summary: Los pedidos que puede tomar y los suyos en curso
+      security: [{ sesionApp: [] }]
+      responses:
+        '200': { description: '{ pedidos[{ id, numero, estado, mio, totalCents, carreraCents, cobrarEnEfectivo, recoger{local,direccion,lat,lng}, entregar{cliente,direccion,referencia,notas,lat,lng} }] }' }
+  /api/v1/motorizado/pedidos/{id}/tomar:
+    post:
+      summary: Toma un pedido (atómico; respeta el tope de efectivo)
+      security: [{ sesionApp: [] }]
+      parameters: [{ $ref: '#/components/parameters/id' }]
+      responses:
+        '200': { description: Es tuyo }
+        '409': { description: 'reason: ya_tomado | tope_de_efectivo | no_disponible' }
+  /api/v1/motorizado/pedidos/{id}/recogido:
+    post:
+      summary: Lo recogió (sale en camino). Exige que el local haya empacado todo.
+      security: [{ sesionApp: [] }]
+      parameters: [{ $ref: '#/components/parameters/id' }]
+      responses:
+        '200': { description: En camino }
+        '409': { description: Falta empacar algo, o no se puede ahora }
+  /api/v1/motorizado/pedidos/{id}/entregado:
+    post:
+      summary: Lo entregó (y cobró el efectivo si tocaba)
+      security: [{ sesionApp: [] }]
+      parameters: [{ $ref: '#/components/parameters/id' }]
+      responses:
+        '200': { description: Entregado }
+  /api/v1/motorizado/liquidaciones:
+    get:
+      summary: Sus liquidaciones semanales
+      security: [{ sesionApp: [] }]
+      responses:
+        '200': { description: '{ liquidaciones[{ period_start, period_end, orders_count, derecho_cents, en_mano_cents, arrastre_cents, neto_cents, status, reference }] }' }
+
   /api/store/{slug}:
     get:
       summary: Portada del local (logo, horario, estado, métodos de pago, envío, tarifa)

@@ -7081,3 +7081,148 @@ end;
 $login$;
 
 select '✅ inicio de sesión de la app: código sin ambigüedad, único, y verificado solo con el teléfono' as resultado;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- LOS MOTORIZADOS: TOMAR, TOPE DE EFECTIVO, RETENER Y LIQUIDAR (2026-09-28)
+-- ═══════════════════════════════════════════════════════════════════════════
+create or replace function public.liquidacion_semanal_desde()
+returns date language sql stable set search_path = public, pg_temp
+as $x$ select date '2026-01-05' $x$;
+
+do $moto$
+declare
+  v_local uuid; v_otro uuid; v_moto uuid; v_ajeno uuid; v_ped uuid; v_ped2 uuid;
+  v_r jsonb; v_falló boolean; v_s public.courier_settlements%rowtype;
+begin
+  insert into businesses (slug, name, type, whatsapp_provider, whatsapp_number, ycloud_number, takes_orders, storefront_enabled)
+  values ('verif-moto', 'Moto', 'pizzería', 'ycloud', '+593900111001', '+593900111001', true, true) returning id into v_local;
+  insert into businesses (slug, name, type, whatsapp_provider, whatsapp_number, ycloud_number, takes_orders, storefront_enabled)
+  values ('verif-moto-otro', 'Otro', 'pizzería', 'ycloud', '+593900111002', '+593900111002', true, true) returning id into v_otro;
+  insert into couriers (phone, name) values ('593900111100', 'Luis') returning id into v_moto;
+  insert into couriers (phone, name, fleet_business_id) values ('593900111101', 'Pedro', v_otro) returning id into v_ajeno;
+
+  insert into orders (business_id, contact_phone, source, status, fulfillment, subtotal, shipping, total, payment_method)
+  values (v_local, '593900111200', 'manual', 'preparacion', 'delivery', 11.98, 2, 15.18, 'efectivo') returning id into v_ped;
+  update orders set platform_markup = 1.20 where id = v_ped;
+
+  -- ── 1. Apagado: el local reparte él, nadie de Umbani lo toma ─────────────
+  if public.courier_take_order(v_moto, v_ped) ->> 'result' <> 'no_disponible' then
+    raise exception 'un motorizado de Umbani tomó un pedido de un local que reparte él mismo';
+  end if;
+  update businesses set delivery_by = 'umbani' where id = v_local;
+
+  -- ── 2. Uno de la flota de OTRO local no puede, ni por la puerta de atrás ─
+  if public.courier_take_order(v_ajeno, v_ped) ->> 'result' <> 'no_disponible' then
+    raise exception 'el repartidor de otro local tomó el pedido';
+  end if;
+  v_falló := false;
+  begin update orders set courier_id = v_ajeno where id = v_ped;
+  exception when insufficient_privilege then v_falló := true; end;
+  if not v_falló then raise exception 'se asignó a mano un repartidor de OTRO local'; end if;
+
+  -- ── 3. El tope de efectivo ───────────────────────────────────────────────
+  update couriers set cash_limit_cents = 1000 where id = v_moto;
+  if public.courier_take_order(v_moto, v_ped) ->> 'result' <> 'tope_de_efectivo' then
+    raise exception 'con $10 de tope tomó un pedido de $15,18 en efectivo';
+  end if;
+  update couriers set cash_limit_cents = 15000 where id = v_moto;
+
+  -- ── 4. Lo toma, y el segundo llega tarde ──────────────────────────────────
+  if public.courier_take_order(v_moto, v_ped) ->> 'result' <> 'ok' then raise exception 'no pudo tomar el pedido'; end if;
+  if public.courier_cash_in_hand(v_moto) <> 1518 then raise exception 'el efectivo por cobrar no cuenta: %', public.courier_cash_in_hand(v_moto); end if;
+  insert into couriers (phone, name) values ('593900111102', 'Ana') returning id into v_ajeno;
+  if public.courier_take_order(v_ajeno, v_ped) ->> 'result' <> 'ya_tomado' then raise exception 'dos motorizados tomaron el mismo pedido'; end if;
+  if public.courier_advance_order(v_ajeno, v_ped, 'en_camino') ->> 'result' <> 'not_found' then
+    raise exception 'otro motorizado movió un pedido que no es suyo';
+  end if;
+
+  -- La app ve el pedido como suyo, con dónde recoger y cuánto cobrar.
+  if not (select bool_or((p ->> 'mio')::boolean and (p ->> 'cobrarEnEfectivo')::boolean
+                         and (p ->> 'totalCents')::int = 1518)
+          from jsonb_array_elements(public.courier_orders(v_moto)) p) then
+    raise exception 'la app del motorizado no ve su pedido: %', public.courier_orders(v_moto);
+  end if;
+  if jsonb_array_length(public.courier_orders(v_ajeno)) <> 0 then
+    raise exception 'otro motorizado ve un pedido ya tomado';
+  end if;
+
+  -- ── 5. Lo entrega: el libro dice que el efectivo lo tiene ÉL ──────────────
+  perform public.courier_advance_order(v_moto, v_ped, 'en_camino');
+  perform public.courier_advance_order(v_moto, v_ped, 'completado');
+  if (select reparto_para || '|' || en_mano || '|' || courier_id::text from order_ledger where order_id = v_ped)
+     <> 'motorizado|motorizado|' || v_moto::text then
+    raise exception 'el libro no reconoció al motorizado: %', (select row_to_json(l) from order_ledger l where order_id = v_ped);
+  end if;
+  -- Las ventas de «ahora» se mueven a una semana de enero ya cerrada.
+  update order_ledger set sold_at = '2026-01-07 15:00-05' where order_id = v_ped;
+
+  -- Un segundo pedido suyo, con la comida caída: su carrera se retiene.
+  insert into orders (business_id, contact_phone, source, status, fulfillment, subtotal, shipping, total, payment_method, courier_id)
+  values (v_local, '593900111200', 'manual', 'preparacion', 'delivery', 11.98, 2, 15.18, 'transferencia', v_moto) returning id into v_ped2;
+  update orders set platform_markup = 1.20 where id = v_ped2;
+  insert into sales (business_id, order_id, total, shipping, platform_markup, status, source, sold_at)
+  values (v_local, v_ped2, 15.18, 2, 1.20, 'completada', 'manual', '2026-01-08 15:00-05');
+end;
+$moto$;
+
+do $moto2$
+declare
+  v_local uuid := (select id from businesses where slug = 'verif-moto');
+  v_moto uuid := (select id from couriers where phone = '593900111100');
+  v_ped2 uuid;
+  v_s public.courier_settlements%rowtype;
+begin
+  select id into v_ped2 from orders where business_id = v_local and payment_method = 'transferencia';
+  -- Sin motivo no se retiene nada.
+  begin
+    perform public.retain_courier_fee(v_ped2, 'x');
+    raise exception 'se retuvo una carrera sin motivo';
+  exception when invalid_parameter_value then null;
+  end;
+  if public.retain_courier_fee(v_ped2, 'Se le cayó la pizza') ->> 'result' <> 'retenida' then
+    raise exception 'no se pudo retener la carrera';
+  end if;
+
+  -- ── 6. La semana del motorizado: carreras (sin la retenida) − su efectivo ─
+  perform public.close_weekly_courier_settlements('2026-01-05');
+  select * into v_s from courier_settlements where courier_id = v_moto and period_start = '2026-01-05';
+  -- Derecho: 200 (una carrera; la otra retenida). En mano: 1518 (el efectivo). Neto: −1318.
+  if v_s.derecho_cents <> 200 or v_s.en_mano_cents <> 1518 or v_s.neto_cents <> -1318 or v_s.status <> 'por_cobrar' then
+    raise exception 'la liquidación del motorizado no cuadra: %', row_to_json(v_s);
+  end if;
+  if (public.courier_balance(v_moto) ->> 'pedidos')::int <> 0 then
+    raise exception 'tras liquidar, su semana en curso debía quedar vacía: %', public.courier_balance(v_moto);
+  end if;
+  if (public.close_weekly_courier_settlements('2026-01-05') ->> 'creadas')::int <> 0 then
+    raise exception 'cerrar dos veces la semana del motorizado creó otra';
+  end if;
+
+  -- ── 7. Y el LOCAL: su comida entera, aunque el efectivo lo tenga el motorizado ─
+  perform public.close_weekly_settlements('2026-01-05');
+  -- Efectivo: derecho 1198 (sus productos), en mano 0 → Umbani le paga.
+  -- Transferencia: derecho 1198, en mano 1518 (le transfirieron a él) → debe 320.
+  if (select derecho_cents || '|' || en_mano_cents || '|' || neto_cents from settlements
+        where business_id = v_local and period_start = '2026-01-05') <> '2396|1518|878' then
+    raise exception 'el local no cobró su comida entera: %',
+      (select row_to_json(s) from settlements s where business_id = v_local and period_start = '2026-01-05');
+  end if;
+
+  if public.mark_courier_settlement_paid(v_s.id, 'EFECTIVO-01') ->> 'status' <> 'cobrada' then
+    raise exception 'no se pudo marcar cobrada la deuda del motorizado';
+  end if;
+
+  delete from order_ledger where business_id = v_local;
+  delete from settlements where business_id = v_local;
+  delete from courier_settlements where courier_id = v_moto;
+  delete from sales where business_id = v_local;
+  delete from orders where business_id = v_local;
+  delete from couriers where phone like '5939001111%';
+  delete from businesses where slug in ('verif-moto', 'verif-moto-otro');
+end;
+$moto2$;
+
+create or replace function public.liquidacion_semanal_desde()
+returns date language sql stable set search_path = public, pg_temp
+as $x$ select date '2026-09-28' $x$;
+
+select '✅ motorizados: solo toma lo que le toca, respeta el tope, el efectivo lo tiene él, la carrera se retiene y el local cobra entero' as resultado;

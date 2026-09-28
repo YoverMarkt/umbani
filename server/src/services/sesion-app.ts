@@ -1,5 +1,6 @@
 import { randomInt } from 'node:crypto'
 import jwt from 'jsonwebtoken'
+import type { Request, RequestHandler } from 'express'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // LA SESIÓN DEL CLIENTE EN LA APP (Flutter)
@@ -54,3 +55,14 @@ export function leerSesionApp(token: string): string | null {
     return null
   }
 }
+
+/** El teléfono de la sesión de la app, o 401. Lo usan la app del cliente y la del motorizado. */
+export const authApp: RequestHandler = (req, res, next) => {
+  const cabecera = String(req.headers.authorization || '')
+  const telefono = cabecera.startsWith('Bearer ') ? leerSesionApp(cabecera.slice(7).trim()) : null
+  if (!telefono) return res.status(401).json({ error: 'Inicia sesión otra vez' })
+  ;(req as Request & { telefonoApp?: string }).telefonoApp = telefono
+  return next()
+}
+
+export const telefonoDe = (req: Request): string => String((req as Request & { telefonoApp?: string }).telefonoApp || '')

@@ -45,6 +45,7 @@ un módulo concreto, no en cada sesión.
 - [Las cuentas de cada uno y el cierre semanal](#las-cuentas-de-cada-uno-y-el-cierre-semanal)
 - [La tarifa de servicio](#la-tarifa-de-servicio)
 - [La API de las apps Flutter](#la-api-de-las-apps-flutter)
+- [Los motorizados](#los-motorizados)
 
 ---
 
@@ -1579,4 +1580,39 @@ seguridad (aviso con «cerrar sesión»).
 ⚠️ **La tarjeta desde la app** pasa por `/pagos/payphone/ir` (en `urlApp`):
 el navegador del sistema no manda `Referer` y PayPhone respondería «NO
 AUTORIZADO». Esa página solo lleva a PayPhone (sin redirección abierta).
+
+## Los motorizados
+
+**Decidido por el dueño el 2026-09-27, «como las grandes».** CONSTRUIDO Y
+APAGADO: `businesses.delivery_by` nace en `local` y ningún pedido se le ofrece
+a un motorizado de Umbani hasta cambiarlo en la ficha del local.
+
+- **Guarda el efectivo y liquida los lunes** (`close_weekly_courier_settlements`,
+  la misma tarea que los locales): sus carreras − el efectivo que cobró +
+  lo que debía. El local recibe su comida entera aunque el efectivo lo tenga él.
+- **Tope de efectivo** (`cash_limit_cents`, $150): `courier_take_order` no le
+  deja tomar un pedido en efectivo si lo cobrado sin liquidar + lo por cobrar
+  lo pasaría.
+- **Se le cae la comida → `retain_courier_fee`**: su carrera sale de su
+  liquidación y se queda en Umbani; el local cobra igual. Solo sin liquidar.
+- **Solo toma lo que el local YA aceptó** (`confirmado/aceptado/preparacion`),
+  y recoger/entregar pasan por `set_order_status` (respeta la checklist y crea
+  la venta y el libro).
+- **Flota propia del local** (`fleet_business_id`): para Umbani lo llevó el
+  local; la carrera y el efectivo son del local.
+
+⚠️ **Sin `business_id` a propósito** (`couriers`, `courier_settlements`): los de
+Umbani no son de ningún local, y un `business_id` nulo en las foráneas
+compuestas debilitaría justo la frontera que impide cruzar dinero. La frontera
+la pone `orders_courier_permitido` (disparador): nadie lleva el pedido de un
+local que no le toca, ni asignándolo a mano.
+
+⚠️ **Cazado por la prueba antes de salir:** `fleet_business_id = business_id`
+es NULL con un motorizado de Umbani, y `not (… or NULL)` también — el `if` lo
+dejaba pasar. Todo va con `coalesce(…, false)`.
+
+**App del motorizado:** `/api/v1/motorizado/*`, mismo login por WhatsApp, y
+`docs/apps/APP-MOTORIZADO.md`. Pendiente: el botón de «retener carrera» en el
+panel (hoy es la ruta `POST /api/admin/motorizados/retener`) y cómo asigna el
+local a su propia flota desde su panel.
 

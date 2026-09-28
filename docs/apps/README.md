@@ -8,10 +8,10 @@ a esta API.
 |---|---|
 | [API-UMBANI.md](API-UMBANI.md) | Las reglas de la API: sesión, cabeceras, errores, dinero, tarjeta. **Léelo primero.** |
 | [APP-CLIENTE.md](APP-CLIENTE.md) | La app del cliente, pantalla por pantalla, con qué endpoint llama cada una. |
+| [APP-MOTORIZADO.md](APP-MOTORIZADO.md) | La app del motorizado: disponible, tomar, recoger, entregar y sus liquidaciones. |
 | [openapi.yaml](openapi.yaml) | El contrato exacto (OpenAPI 3.1). De aquí se genera el cliente de Dart. |
 | `apps/store/src/lib/types.ts` | Los tipos detallados de la carta y del pedido. La mini app web usa la MISMA API. |
 
-La app del motorizado llega con su propio documento cuando se construya su API.
 
 ## Cómo pedírselo a Claude
 
