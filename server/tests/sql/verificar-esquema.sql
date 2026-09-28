@@ -6591,3 +6591,221 @@ end;
 $$;
 
 select '✅ insultos: advertencia, 15 días fuera de toda la app, caduca solo y avisa UNA vez al volver' as resultado;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- PAGO CON TARJETA (PAYPHONE): CADA CENTAVO CUADRA, O NO SE CONFIRMA (2026-09-27)
+-- ═══════════════════════════════════════════════════════════════════════════
+do $tarjeta$
+declare
+  v_local    uuid;
+  v_real     uuid;
+  v_producto uuid;
+  v_cliente  uuid;
+  v_pedido   uuid;
+  v_otro     uuid;
+  v_r        jsonb;
+  v_ref      text;
+  v_ref2     text;
+  v_estado   text;
+  v_falló    boolean;
+begin
+  insert into businesses (slug, name, type, whatsapp_provider, whatsapp_number,
+    ycloud_number, takes_orders, storefront_enabled)
+  values ('verif-tarjeta', 'Pruebas de pago', 'pizzería', 'ycloud',
+    '+593900777001', '+593900777001', true, true)
+  returning id into v_local;
+  insert into products (business_id, name, price) values (v_local, 'Pizza', 3.50)
+  returning id into v_producto;
+  insert into public.customers (phone) values ('593900777100') returning id into v_cliente;
+  insert into public.marketplace_conversations (
+    customer_id, selected_business_id, shopping_locked, current_state, flow_state
+  ) values (v_cliente, v_local, true, 'en_local', '{"vista":"empezar_de_nuevo"}'::jsonb);
+
+  -- ── 1. Sin tarjeta encendida por el superadmin, no se puede pedir con ella ─
+  v_falló := false;
+  begin
+    perform public.create_storefront_order(
+      v_local, v_cliente, '593900777100', 'Ana', null, 'pickup',
+      jsonb_build_array(jsonb_build_object('product_id', v_producto, 'quantity', 1)),
+      null, 'tarjeta');
+  exception when invalid_parameter_value then v_falló := true;
+  end;
+  if not v_falló then
+    raise exception 'un local SIN card_mode aceptó un pedido con tarjeta';
+  end if;
+
+  -- ── 2. Con ella, el pedido nace DEBIENDO y el chat no pide comprobante ────
+  update businesses set card_mode = 'pruebas' where id = v_local;
+  v_r := public.create_storefront_order(
+    v_local, v_cliente, '593900777100', 'Ana', null, 'pickup',
+    jsonb_build_array(jsonb_build_object('product_id', v_producto, 'quantity', 1)),
+    null, 'tarjeta');
+  v_pedido := (v_r ->> 'id')::uuid;
+  select status into v_estado from orders where id = v_pedido;
+  if v_estado <> 'esperando_pago' then
+    raise exception 'el pedido con tarjeta nació en % y no en esperando_pago', v_estado;
+  end if;
+  select current_state into v_estado from marketplace_conversations where customer_id = v_cliente;
+  if v_estado = 'esperando_comprobante' then
+    raise exception 'con tarjeta el chat quedó pidiendo una FOTO de comprobante';
+  end if;
+  if (select flow_state from marketplace_conversations where customer_id = v_cliente) is not null then
+    raise exception 'la pregunta pendiente sobrevivió: «Empezar de nuevo» cancelaría el pedido';
+  end if;
+
+  -- ── 3. Sin cobro no avanza: nadie lo manda a la cocina ────────────────────
+  v_falló := false;
+  begin
+    perform public.set_order_status(v_local, v_pedido, 'preparacion');
+  exception when invalid_parameter_value then v_falló := true;
+  end;
+  if not v_falló then
+    raise exception 'un pedido con tarjeta SIN cobrar pasó a preparación';
+  end if;
+
+  -- ── 4. Iniciar: solo el dueño del pedido, y en el MISMO modo del local ────
+  if public.start_card_payment(v_local, v_pedido, '593900999999', 'pruebas') ->> 'result' <> 'not_found' then
+    raise exception 'OTRO teléfono pudo iniciar el cobro de un pedido ajeno';
+  end if;
+  if public.start_card_payment(v_local, v_pedido, '593900777100', 'produccion') ->> 'result' <> 'card_unavailable' then
+    raise exception 'un local en pruebas aceptó un cobro de PRODUCCIÓN';
+  end if;
+  v_r := public.start_card_payment(v_local, v_pedido, '593900777100', 'pruebas');
+  if v_r ->> 'result' <> 'ok' or (v_r ->> 'amount_cents')::int <> 350 then
+    raise exception 'el cobro no salió del total del pedido en centavos: %', v_r;
+  end if;
+  v_ref := v_r ->> 'client_transaction_id';
+
+  -- Un segundo intento (el cliente volvió a tocar «Pagar»)
+  v_ref2 := public.start_card_payment(v_local, v_pedido, '593900777100', 'pruebas') ->> 'client_transaction_id';
+
+  -- ── 5. Un aviso de PayPhone sin respuesta firme no toca nada ──────────────
+  if public.claim_card_payment(v_ref, '9001') ->> 'result' <> 'confirm' then
+    raise exception 'un pedido cobrable no se dejó confirmar';
+  end if;
+  if public.settle_card_payment(v_ref, '9001', 1, 350, 'USD') ->> 'result' <> 'pending' then
+    raise exception 'un «pendiente» de PayPhone se dio por resuelto';
+  end if;
+  -- Un id de PayPhone distinto al que ya teníamos: la URL la armó alguien a mano.
+  if public.settle_card_payment(v_ref, '6666', 3, 350, 'USD') ->> 'result' <> 'mismatch' then
+    raise exception 'se aceptó un cobro con otro id de PayPhone';
+  end if;
+
+  -- ── 6. Aprobado y cuadrado al centavo: pagado y a la bandeja del local ────
+  v_r := public.settle_card_payment(v_ref, '9001', 3, 350, 'usd', 'A123', 'Visa', '4242');
+  if v_r ->> 'result' <> 'approved' then
+    raise exception 'un cobro cuadrado no se aprobó: %', v_r;
+  end if;
+  select status into v_estado from orders where id = v_pedido;
+  if v_estado <> 'pendiente'
+     or (select payment_confirmed_at from orders where id = v_pedido) is null then
+    raise exception 'el pedido pagado quedó en % sin marca de pago', v_estado;
+  end if;
+  if not exists (select 1 from order_events where order_id = v_pedido
+                 and from_status = 'esperando_pago' and to_status = 'pendiente'
+                 and note like 'Pagado con tarjeta · Visa ···4242%') then
+    raise exception 'el cobro no dejó rastro en el historial del pedido';
+  end if;
+  -- Idempotente: la redirección y la tarea pueden llegar las dos.
+  if public.settle_card_payment(v_ref, '9001', 3, 350, 'USD') ->> 'result' <> 'final' then
+    raise exception 'asentar dos veces el mismo cobro no fue inocuo';
+  end if;
+
+  -- ── 7. EL DOBLE COBRO: el segundo intento ya NO se confirma ───────────────
+  if public.claim_card_payment(v_ref2, '9002') ->> 'result' <> 'dont_confirm' then
+    raise exception 'un segundo intento de un pedido YA pagado se iba a confirmar';
+  end if;
+  if (select status from payments where client_transaction_id = v_ref2) <> 'no_confirmado' then
+    raise exception 'el segundo intento no quedó como no_confirmado (PayPhone lo devuelve solo)';
+  end if;
+  if public.start_card_payment(v_local, v_pedido, '593900777100', 'pruebas') ->> 'result' <> 'already_paid' then
+    raise exception 'se pudo iniciar otro cobro de un pedido ya pagado';
+  end if;
+
+  -- ── 8. Pagado y cancelado por el local → a devolver ───────────────────────
+  perform public.set_order_status(v_local, v_pedido, 'cancelado');
+  if (select status from payments where client_transaction_id = v_ref) <> 'por_devolver' then
+    raise exception 'cancelar un pedido YA cobrado no dejó la devolución en marcha';
+  end if;
+  if not public.finish_card_refund(v_ref, true) then
+    raise exception 'la devolución no se pudo cerrar';
+  end if;
+  if (select status || '|' || (reversed_at is not null)::text from payments
+       where client_transaction_id = v_ref) <> 'devuelto|true' then
+    raise exception 'la devolución no quedó registrada con su hora';
+  end if;
+
+  -- ── 9. DESCUADRE: PayPhone cobró otra cifra → no se marca nada ───────────
+  v_r := public.create_storefront_order(
+    v_local, v_cliente, '593900777100', 'Ana', null, 'pickup',
+    jsonb_build_array(jsonb_build_object('product_id', v_producto, 'quantity', 2)),
+    null, 'tarjeta', 'verif-tarjeta-2');
+  v_otro := (v_r ->> 'id')::uuid;
+  v_ref := public.start_card_payment(v_local, v_otro, '593900777100', 'pruebas') ->> 'client_transaction_id';
+  perform public.claim_card_payment(v_ref, '9101');
+  v_r := public.settle_card_payment(v_ref, '9101', 3, 1, 'USD');
+  if v_r ->> 'result' <> 'refund' then
+    raise exception 'un cobro de 1 centavo por un pedido de 700 no se mandó a devolver: %', v_r;
+  end if;
+  if (select status from orders where id = v_otro) <> 'esperando_pago'
+     or (select payment_confirmed_at from orders where id = v_otro) is not null then
+    raise exception 'un cobro DESCUADRADO marcó el pedido como pagado';
+  end if;
+
+  -- ── 10. La caducidad no toca un cobro en curso ────────────────────────────
+  update orders set created_at = now() - interval '3 hours' where id = v_otro;
+  v_ref2 := public.start_card_payment(v_local, v_otro, '593900777100', 'pruebas') ->> 'client_transaction_id';
+  if exists (select 1 from public.expire_unpaid_orders(20) where order_id = v_otro) then
+    raise exception 'caducó un pedido con el cliente PAGANDO en PayPhone';
+  end if;
+  if public.expire_card_payment(v_ref2) then
+    raise exception 'caducó un intento de cobro recién abierto';
+  end if;
+  update payments set created_at = now() - interval '11 minutes' where client_transaction_id = v_ref2;
+  if not public.expire_card_payment(v_ref2) then
+    raise exception 'un intento de más de 10 minutos sin pagar no caducó';
+  end if;
+  if not exists (select 1 from public.expire_unpaid_orders(20) where order_id = v_otro) then
+    raise exception 'sin cobro vivo, el pedido abandonado no caducó';
+  end if;
+
+  -- ── 11. EL MODO PRUEBAS NUNCA PAGA UN LOCAL REAL ──────────────────────────
+  insert into businesses (slug, name, type, whatsapp_provider, whatsapp_number,
+    ycloud_number, takes_orders, storefront_enabled, card_mode)
+  values ('verif-tarjeta-real', 'Local real', 'pizzería', 'ycloud',
+    '+593900777002', '+593900777002', true, true, 'pruebas')
+  returning id into v_real;
+  insert into products (business_id, name, price) values (v_real, 'Pizza', 5.00)
+  returning id into v_producto;
+  v_r := public.create_storefront_order(
+    v_real, v_cliente, '593900777100', 'Ana', null, 'pickup',
+    jsonb_build_array(jsonb_build_object('product_id', v_producto, 'quantity', 1)),
+    null, 'tarjeta');
+  v_otro := (v_r ->> 'id')::uuid;
+  v_ref := public.start_card_payment(v_real, v_otro, '593900777100', 'pruebas') ->> 'client_transaction_id';
+  -- El superadmin lo pasa a producción mientras el cliente paga en PRUEBAS.
+  update businesses set card_mode = 'produccion' where id = v_real;
+  if public.claim_card_payment(v_ref, '9201') ->> 'result' <> 'dont_confirm' then
+    raise exception 'un cobro de PRUEBAS se iba a confirmar en un local de producción';
+  end if;
+  if (select payment_confirmed_at from orders where id = v_otro) is not null then
+    raise exception 'un cobro de PRUEBAS pagó un pedido de un local real: comida gratis';
+  end if;
+
+  -- ── 12. La cola de la tarea: reserva lo que toca y lo aparta ─────────────
+  update payments set next_check_at = now() - interval '1 second' where status = 'por_devolver';
+  if not exists (select 1 from public.lease_card_payments(10, 45) where status = 'por_devolver') then
+    raise exception 'la cola no entregó el cobro por devolver';
+  end if;
+  if exists (select 1 from public.lease_card_payments(10, 45) where status = 'por_devolver') then
+    raise exception 'la cola entregó DOS veces el mismo cobro dentro de su reserva';
+  end if;
+
+  delete from orders where business_id in (v_local, v_real);
+  delete from businesses where id in (v_local, v_real);
+  delete from public.marketplace_conversations where customer_id = v_cliente;
+  delete from public.customers where id = v_cliente;
+end;
+$tarjeta$;
+
+select '✅ tarjeta: cobra el total en centavos, no confirma lo que no cuadra, un solo pago por pedido, y el modo pruebas no paga locales reales' as resultado;

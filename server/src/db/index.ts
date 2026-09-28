@@ -20,6 +20,7 @@ import storefront = require('./repositories/storefront')
 import catalog = require('./repositories/catalog')
 import productOptions = require('./repositories/product-options')
 import pricingRules = require('./repositories/pricing-rules')
+import payments = require('./repositories/payments')
 
 // SIN anotación a propósito: aquí TypeScript infiere el tipo REAL de los 20
 // repositorios juntos. Estuvo anotado como `Record<string, unknown>` y eso
@@ -49,6 +50,7 @@ const database = {
   ...catalog,
   ...productOptions,
   ...pricingRules,
+  ...payments,
 }
 
 export = database

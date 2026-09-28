@@ -60,7 +60,7 @@ export interface Business {
 }
 
 /** Cómo dice el cliente que va a pagar. La plataforma NO cobra (regla #6). */
-export type PaymentMethod = 'transferencia' | 'efectivo' | 'pago_al_retirar'
+export type PaymentMethod = 'transferencia' | 'efectivo' | 'pago_al_retirar' | 'tarjeta'
 
 export type StoreStatus = 'abierta' | 'cerrada' | 'no_disponible' | 'suspendida'
 
@@ -325,6 +325,8 @@ export interface TrackedOrder {
    * mayoría. Por eso no se puede deducir del estado.
    */
   payment_confirmed_at?: string | null
+  /** Con tarjeta, el aviso de la portada lleva a pagar en PayPhone, no a transferir. */
+  payment_method?: PaymentMethod | null
   /**
    * Lo que pidió, tal como lo congeló la base al crear el pedido.
    *
@@ -360,6 +362,17 @@ export type StorePaymentMethod = {
   help_text: string | null
   is_prepaid: boolean
   requires_proof: boolean
+  /** Solo en la tarjeta: PayPhone en modo PRUEBAS, no se cobra dinero real. */
+  test_mode?: boolean
+}
+
+/** En qué quedó el cobro con tarjeta de un pedido. Lo decide el servidor. */
+export interface CobroConTarjeta {
+  pagado: boolean
+  estadoDelPedido: string | null
+  estado: string | null
+  marca: string | null
+  ultimos: string | null
 }
 
 /**

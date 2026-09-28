@@ -49,6 +49,11 @@ export interface StorefrontBusiness {
   delivery_extra_minutes?: number | string | null
   /** 0 = sin mínimo. Lo pone el dueño según su producto más barato. */
   min_order_amount?: number | string | null
+  /**
+   * Cobro con tarjeta: NULL, `pruebas` o `produccion`. Lo decide el
+   * superadmin y NUNCA sale a la app (no está en `publicBusiness`).
+   */
+  card_mode?: string | null
 }
 
 // El color lo escribe el dueño en su panel y acaba pintando la mini app, así

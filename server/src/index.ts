@@ -24,6 +24,7 @@ import {
 } from './services/credential-monitor'
 import { getPlatformChannel } from './services/platform-channel'
 import { expireUnpaidOrders } from './services/order-expiry'
+import { pagosConTarjeta } from './services/pago-con-tarjeta'
 import { vigilarElCaminoDelCliente, ultimaVueltaDelCanario } from './services/canario'
 import { providerStatusClient } from './integrations/provider-status'
 import { activeClientGuard } from './middleware/auth'
@@ -47,6 +48,7 @@ import menuModifiersRouter = require('./routes/menu-modifiers.routes')
 import productOptionsRouter = require('./routes/product-options.routes')
 import catalogStructureRouter = require('./routes/catalog-structure.routes')
 import storefrontRouter = require('./routes/storefront.routes')
+import pagosRouter = require('./routes/pagos.routes')
 import healthRouter = require('./routes/health.routes')
 import { cachearEstaticos, enviarHtmlDeSpa } from './lib/cache-estaticos'
 import { alEntrarUnMensaje } from './lib/despertador-de-la-cola'
@@ -268,6 +270,8 @@ app.use(productOptionsRouter)
 app.use(catalogStructureRouter)
 // Rutas públicas de la mini app: sin JWT, la credencial es el enlace del bot.
 app.use(storefrontRouter)
+// La vuelta de PayPhone tras pagar con tarjeta. Pública: la decide la base.
+app.use(pagosRouter)
 app.use(ordersRouter)
 app.use(webhooksRouter)
 // ⚠️ EL FRENO VA ANTES QUE EL ROUTER, y no es cuestión de estilo: Express
@@ -605,6 +609,17 @@ httpServer = app.listen(port, () => {
     // un despliegue con la base todavía fría empezaría cancelando pedidos.
     setTimeout(expireUnpaidOrders, 30_000)
     setInterval(expireUnpaidOrders, 10 * 60 * 1000)
+
+    // 💳 Los cobros con tarjeta que nadie ha confirmado todavía.
+    //
+    // PayPhone devuelve el dinero si nadie confirma en 5 minutos, y la
+    // confirmación NO puede depender de que el teléfono del cliente vuelva.
+    // Cada 20 s: da tiempo de sobra dentro de esos 5 minutos, y con 5 cobros
+    // por vuelta se queda muy por debajo de las 30 consultas/minuto de PayPhone.
+    // Sin credenciales de PayPhone no consulta nada, ni la base.
+    setInterval(() => {
+      void pagosConTarjeta().procesarPendientes(5).catch(() => { /* registra ella misma */ })
+    }, 20_000)
 
     // 🐤 ¿Puede un cliente comprar AHORA MISMO?
     //

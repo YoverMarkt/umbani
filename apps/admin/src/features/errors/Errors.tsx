@@ -15,6 +15,7 @@ const CATEGORIES = [
   { id: 'ia', label: 'IA' },
   { id: 'envio', label: 'Envío' },
   { id: 'servidor', label: 'Servidor' },
+  { id: 'pagos', label: 'Pagos' },
 ] as const
 
 const CATEGORY_STYLE: Record<PlatformError['category'], string> = {
@@ -22,6 +23,8 @@ const CATEGORY_STYLE: Record<PlatformError['category'], string> = {
   ia: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
   envio: 'bg-blue-500/10 text-blue-600 dark:text-blue-400',
   servidor: 'bg-muted text-muted-foreground',
+  // El dinero: un descuadre o una devolución pendiente se ve de lejos.
+  pagos: 'bg-violet-500/10 text-violet-600 dark:text-violet-400',
 }
 
 const fmt = (iso: string) => new Date(iso).toLocaleString('es-EC', {

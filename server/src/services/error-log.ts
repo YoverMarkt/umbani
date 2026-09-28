@@ -13,7 +13,7 @@ import { enSegundoPlano } from '../lib/segundo-plano'
 //  2. Nunca guarda datos personales ni credenciales. El log está pensado para
 //     descargarse y compartirse, así que sale saneado de fábrica.
 
-export type ErrorCategory = 'canal' | 'ia' | 'envio' | 'servidor'
+export type ErrorCategory = 'canal' | 'ia' | 'envio' | 'servidor' | 'pagos'
 
 export interface RecordErrorInput {
   businessId?: string | null

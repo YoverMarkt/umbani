@@ -548,6 +548,7 @@ export type Database = {
           bot_active: boolean | null
           brand_color: string | null
           calcom_link: string | null
+          card_mode: string | null
           chat_mode: string
           cover_url: string | null
           created_at: string | null
@@ -601,6 +602,7 @@ export type Database = {
           bot_active?: boolean | null
           brand_color?: string | null
           calcom_link?: string | null
+          card_mode?: string | null
           chat_mode?: string
           cover_url?: string | null
           created_at?: string | null
@@ -654,6 +656,7 @@ export type Database = {
           bot_active?: boolean | null
           brand_color?: string | null
           calcom_link?: string | null
+          card_mode?: string | null
           chat_mode?: string
           cover_url?: string | null
           created_at?: string | null
@@ -2264,6 +2267,96 @@ export type Database = {
           },
         ]
       }
+      payments: {
+        Row: {
+          amount_cents: number
+          approved_at: string | null
+          authorization_code: string | null
+          business_id: string
+          captured_cents: number | null
+          card_brand: string | null
+          card_last_digits: string | null
+          client_transaction_id: string
+          confirm_attempts: number
+          created_at: string
+          currency: string
+          environment: string
+          id: string
+          method: string
+          next_check_at: string
+          order_id: string
+          provider: string
+          provider_transaction_id: string | null
+          reversed_at: string | null
+          status: string
+          status_detail: string | null
+          updated_at: string
+        }
+        Insert: {
+          amount_cents: number
+          approved_at?: string | null
+          authorization_code?: string | null
+          business_id: string
+          captured_cents?: number | null
+          card_brand?: string | null
+          card_last_digits?: string | null
+          client_transaction_id: string
+          confirm_attempts?: number
+          created_at?: string
+          currency?: string
+          environment: string
+          id?: string
+          method?: string
+          next_check_at?: string
+          order_id: string
+          provider?: string
+          provider_transaction_id?: string | null
+          reversed_at?: string | null
+          status?: string
+          status_detail?: string | null
+          updated_at?: string
+        }
+        Update: {
+          amount_cents?: number
+          approved_at?: string | null
+          authorization_code?: string | null
+          business_id?: string
+          captured_cents?: number | null
+          card_brand?: string | null
+          card_last_digits?: string | null
+          client_transaction_id?: string
+          confirm_attempts?: number
+          created_at?: string
+          currency?: string
+          environment?: string
+          id?: string
+          method?: string
+          next_check_at?: string
+          order_id?: string
+          provider?: string
+          provider_transaction_id?: string | null
+          reversed_at?: string | null
+          status?: string
+          status_detail?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payments_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_order_fk"
+            columns: ["order_id", "business_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id", "business_id"]
+          },
+        ]
+      }
       platform_errors: {
         Row: {
           business_id: string | null
@@ -3096,6 +3189,13 @@ export type Database = {
         Args: { p_business_id: string; p_customer_id: string }
         Returns: boolean
       }
+      claim_card_payment: {
+        Args: {
+          p_client_transaction_id: string
+          p_provider_transaction_id?: string
+        }
+        Returns: Json
+      }
       claim_marketplace_reply: {
         Args: {
           p_customer_id: string
@@ -3218,6 +3318,10 @@ export type Database = {
         Returns: boolean
       }
       ensure_current_month_billing: { Args: never; Returns: number }
+      expire_card_payment: {
+        Args: { p_client_transaction_id: string; p_detail?: string }
+        Returns: boolean
+      }
       expire_unpaid_orders: {
         Args: { p_limite?: number }
         Returns: {
@@ -3238,6 +3342,14 @@ export type Database = {
           p_lease_token: string
         }
         Returns: string
+      }
+      finish_card_refund: {
+        Args: {
+          p_client_transaction_id: string
+          p_detail?: string
+          p_reversed: boolean
+        }
+        Returns: boolean
       }
       get_admin_monthly_usage: {
         Args: { p_month?: string }
@@ -3262,6 +3374,21 @@ export type Database = {
       get_receipt_analysis: {
         Args: { p_business_id: string; p_order_id: string }
         Returns: Json
+      }
+      lease_card_payments: {
+        Args: { p_lease_s?: number; p_limite?: number }
+        Returns: {
+          amount_cents: number
+          business_id: string
+          client_transaction_id: string
+          confirm_attempts: number
+          created_at: string
+          environment: string
+          id: string
+          order_id: string
+          provider_transaction_id: string
+          status: string
+        }[]
       }
       lease_outbox_events: {
         Args: { p_lease_s?: number; p_limite?: number; p_owner: string }
@@ -3573,6 +3700,20 @@ export type Database = {
         Args: { p_blocked: boolean; p_phone: string; p_reason?: string }
         Returns: Json
       }
+      settle_card_payment: {
+        Args: {
+          p_authorization_code?: string
+          p_captured_cents: number
+          p_card_brand?: string
+          p_client_transaction_id: string
+          p_currency: string
+          p_detail?: string
+          p_last_digits?: string
+          p_provider_transaction_id: string
+          p_status_code: number
+        }
+        Returns: Json
+      }
       settle_month_commission: {
         Args: { p_period_start: string }
         Returns: Json
@@ -3580,6 +3721,15 @@ export type Database = {
       sincronizar_plantilla_en_grupo: {
         Args: { p_group_id: string }
         Returns: undefined
+      }
+      start_card_payment: {
+        Args: {
+          p_business_id: string
+          p_contact_phone: string
+          p_environment: string
+          p_order_id: string
+        }
+        Returns: Json
       }
       storefront_customer_block_state: {
         Args: { p_business_id: string; p_customer_id: string }

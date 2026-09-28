@@ -17,7 +17,7 @@ import { rutaDeReparto } from '@/lib/ubicacion'
 import { api } from '../../api/client'
 import { toast } from 'sonner'
 import {
-  Banknote, Bike, Clock, Landmark, MapPin, Navigation, Receipt, ShoppingBag,
+  Banknote, Bike, Clock, CreditCard, Landmark, MapPin, Navigation, Receipt, ShoppingBag,
   Check, X, FileText, Plus, RotateCcw, ShieldAlert, TriangleAlert,
 } from 'lucide-react'
 import {
@@ -746,7 +746,9 @@ function TarjetaPedido({ pedido, ocupado, onCambiar, onRefrescar }: {
         <div className="flex items-start gap-2">
           {pedido.payment_method === 'efectivo'
             ? <Banknote className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-            : <Landmark className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />}
+            : pedido.payment_method === 'tarjeta'
+              ? <CreditCard className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+              : <Landmark className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />}
           <div className="min-w-0">
             <div className="font-medium text-foreground">
               {pedido.payment_method === 'efectivo'
@@ -755,8 +757,27 @@ function TarjetaPedido({ pedido, ocupado, onCambiar, onRefrescar }: {
                   ? 'Transferencia'
                   : pedido.payment_method === 'pago_al_retirar'
                     ? 'Paga al retirar'
-                    : 'Pago por coordinar'}
+                    : pedido.payment_method === 'tarjeta'
+                      ? 'Tarjeta'
+                      : 'Pago por coordinar'}
             </div>
+            {/* Con tarjeta el pago lo confirma PayPhone, no el dueño: aquí
+                solo se dice si ya está cobrado. Mientras no lo esté, el pedido
+                no se puede preparar (lo impide la base). */}
+            {pedido.payment_method === 'tarjeta' && (
+              pedido.payment_confirmed_at
+                ? (
+                    <span className="mt-0.5 flex items-center gap-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                      <Check className="h-3 w-3" />
+                      Pagado con tarjeta · {hora(pedido.payment_confirmed_at)}
+                    </span>
+                  )
+                : (
+                    <span className="text-xs text-amber-600 dark:text-amber-400">
+                      Esperando el pago con tarjeta. No lo prepares todavía.
+                    </span>
+                  )
+            )}
             {pedido.payment_method === 'transferencia' && (
               <>
                 {pedido.payment_proof_url

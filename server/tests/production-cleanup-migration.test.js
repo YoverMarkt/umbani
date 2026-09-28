@@ -46,8 +46,22 @@ describe('preparación transaccional para producción', () => {
     expect(schema).toContain('create trigger businesses_default_schedule')
   })
 
-  it('no conserva rutas ni repositorios de proveedores financieros', () => {
+  // ⚠️ CAMBIÓ el 2026-09-27, por decisión del dueño: se cobra con TARJETA por
+  // PayPhone y la regla «cobro manual» dejó de ser absoluta. Aquí se prohibía
+  // CUALQUIER repositorio de pagos; ahora existe UNO, `payments`, con su
+  // propia batería (`pago-con-tarjeta.test.js` y el bloque «PAGO CON TARJETA»
+  // de `verificar-esquema.sql`).
+  //
+  // Lo que este guardián sigue impidiendo es lo que retiró esta migración: el
+  // flujo viejo de PayPal y sus cinco tablas. Si alguno vuelve, falla.
+  it('no resucita el flujo financiero retirado (PayPal y sus tablas)', () => {
     expect(indexSource).not.toMatch(/paypal|payments\.routes/i)
-    expect(dbSource).not.toMatch(/repositories\/payments/i)
+    expect(dbSource).not.toMatch(/paypal/i)
+    for (const table of [
+      'payment_provider_accounts', 'payment_intents', 'payment_attempts',
+      'payment_transactions', 'payment_webhook_events',
+    ]) {
+      expect(schema).not.toMatch(new RegExp(`create table (if not exists )?public\\.${table}\\b`))
+    }
   })
 })

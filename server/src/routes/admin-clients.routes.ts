@@ -32,7 +32,7 @@ import {
   type DiagnosableBusiness,
 } from '../services/channel-health'
 import { getPlatformChannel } from '../services/platform-channel'
-const ALLOWED_ERROR_CATEGORIES = ['canal', 'ia', 'envio', 'servidor']
+const ALLOWED_ERROR_CATEGORIES = ['canal', 'ia', 'envio', 'servidor', 'pagos']
 
 interface PlatformErrorRow {
   id: string
@@ -260,6 +260,9 @@ const ALLOWED_BUSINESS_FIELDS = [
   // panel o la API lo escriban solo sirve para volver a ponerlo mal. Lo fija
   // el alta y lo hace cumplir el CHECK de la base.
   'storefront_enabled',
+  // Cobro con tarjeta (PayPhone). SOLO aquí: el dinero entra en la cuenta de
+  // Umbani, así que no lo enciende el dueño desde su panel.
+  'card_mode',
 ] as const
 
 function assertDatabaseResult(result: DatabaseResult, operation: string): void {
@@ -774,6 +777,14 @@ router.put('/api/admin/clients/:id', auth.authAdmin, async (req, res) => {
   }
   if ('plan' in body && !normalizePlanId(body.plan)) {
     return res.status(400).json({ error: 'Selecciona uno de los seis planes disponibles' })
+  }
+  // Apagado, pruebas o producción; nada más. El CHECK de la base lo repite.
+  if ('card_mode' in body) {
+    const modo = body.card_mode === '' ? null : body.card_mode
+    if (modo !== null && modo !== 'pruebas' && modo !== 'produccion') {
+      return res.status(400).json({ error: 'Modo de cobro con tarjeta no válido' })
+    }
+    body.card_mode = modo
   }
   if (typeof body.client_password === 'string' && body.client_password
     && body.client_password.length < MIN_PASSWORD_LENGTH) {

@@ -495,7 +495,7 @@ const createStorefrontOrder = async (input: {
 const getOrderMoney = async (businessId: string, orderId: string) => {
   const { data, error } = await db
     .from('orders')
-    .select('subtotal,shipping,total,status')
+    .select('subtotal,shipping,total,status,payment_method')
     .eq('business_id', businessId)
     .eq('id', orderId)
     .maybeSingle()
@@ -505,6 +505,7 @@ const getOrderMoney = async (businessId: string, orderId: string) => {
     shipping: number | string | null
     total: number | string | null
     status: string | null
+    payment_method: string | null
   }
 }
 
@@ -955,7 +956,7 @@ const bindStorefrontSession = async (sessionId: string, deviceHash: string) => {
  * compila. La alternativa era un cast, que es justo lo que se quitó de esta
  * capa.
  */
-const CAMPOS_DEL_SEGUIMIENTO = 'id,order_number,status,total,shipping,currency,fulfillment,created_at,payment_confirmed_at,order_items(product_name,variant_name,extras_names,item_note,quantity,line_total,order_item_options(option_group_name,option_name,quantity,group_sort))' as const
+const CAMPOS_DEL_SEGUIMIENTO = 'id,order_number,status,total,shipping,currency,fulfillment,created_at,payment_confirmed_at,payment_method,order_items(product_name,variant_name,extras_names,item_note,quantity,line_total,order_item_options(option_group_name,option_name,quantity,group_sort))' as const
 
 /**
  * Los pedidos de UN cliente en ESTE negocio, para su pestaña de Cuenta.

@@ -33,7 +33,7 @@ git diff --stat       # tamaño del cambio por archivo
 - [ ] Ninguna política RLS se desactivó ni se volvió permisiva.
 - [ ] La service key no se expone al frontend; no se consulta Supabase directo desde los paneles.
 - [ ] Las etiquetas/tools del bot operan sobre el `business_id` de la conversación.
-- [ ] No se agregaron pasarelas de pago (checkout sigue por WhatsApp).
+- [ ] Ninguna pasarela de pago NUEVA. La única es PayPhone para tarjeta (decidido por el dueño el 2026-09-27): sus credenciales solo en variables de entorno, el monto sale de la base y lo que se da por pagado lo decide `settle_card_payment` al centavo.
 
 ### Seguridad (ver seguridad-saas)
 - [ ] **No hay secretos ni API keys en el diff** (`git diff | grep -iE "sk-|gsk_|eyJ|api.?key|password|secret"`).

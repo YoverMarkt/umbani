@@ -51,6 +51,8 @@ describe('rutas de la mini app', () => {
       '/api/store/:slug/orders',
       '/api/store/:slug/orders/:id',
       '/api/store/:slug/orders/:id/proof',
+      // Pagar con tarjeta (POST) y preguntar en qué quedó el cobro (GET).
+      '/api/store/:slug/orders/:id/tarjeta',
       '/api/store/:slug/payment-info',
       '/api/store/:slug/quote',
       '/api/store/:slug/session/verify',
@@ -97,6 +99,8 @@ describe('rutas de la mini app', () => {
       '/api/store/:slug/orders',
       '/api/store/:slug/orders/:id',
       '/api/store/:slug/orders/:id/proof',
+      // Cobrar con tarjeta ES dinero de una persona: con sesión, siempre.
+      '/api/store/:slug/orders/:id/tarjeta',
       '/api/store/:slug/payment-info',
     ]) {
       expect(middlewareDe(path), path).toBe('exige')

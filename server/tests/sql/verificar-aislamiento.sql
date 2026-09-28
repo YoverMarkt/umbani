@@ -502,6 +502,20 @@ begin
       'marketplace_conversations no debería tener políticas RLS: su protección es no dar acceso a nadie salvo service_role';
   end if;
 
+  -- ── 11. Los pagos con tarjeta no los lee nadie salvo el servidor ────────
+  --
+  -- Guardan códigos de autorización y los últimos dígitos de tarjetas. RLS
+  -- sin políticas ya lo cierra; esto vigila además que nadie les devuelva el
+  -- permiso de tabla por descuido.
+  for v_rol in select unnest(array['anon', 'authenticated']) loop
+    if has_table_privilege(v_rol, 'public.payments', 'select') then
+      raise exception 'FUGA GRAVE: el rol % puede leer los pagos con tarjeta', v_rol;
+    end if;
+  end loop;
+  if exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'payments') then
+    raise exception 'payments no debería tener políticas RLS: solo la lee el servidor';
+  end if;
+
   -- Y borrar un negocio no puede llevarse la conversación del cliente con la
   -- plataforma: la reinicia, que es distinto.
   if exists (

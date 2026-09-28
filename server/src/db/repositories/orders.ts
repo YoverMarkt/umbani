@@ -121,6 +121,10 @@ const pedidosEsperandoComprobante = async (
     .eq('status', 'esperando_pago')
     .is('payment_proof_url', null)
     .is('payment_confirmed_at', null)
+    // ⚠️ Con TARJETA no hay comprobante (2026-09-27): una foto no puede
+    // colgarse de un pedido que se paga en PayPhone. `payment_method` es nulo
+    // en los pedidos del bot, y esos SÍ se quedan.
+    .or('payment_method.is.null,payment_method.neq.tarjeta')
     // El mismo número vive con y sin el `+` según por dónde entró el pedido.
     .in('contact_phone', variantesDelTelefono(contactPhone))
     .order('created_at', { ascending: false })
@@ -312,8 +316,12 @@ const claimOrderNotification = async (
     .or(`customer_notified_status.is.null,customer_notified_status.neq.${status}`)
     // Las opciones viajan con cada línea: el aviso de preparación cuenta lo
     // que el cliente eligió, y sin ellas decía «1× Pizza» y punto.
+    // ⚠️ El método y la marca de pago: con tarjeta el aviso de caducidad y el
+    // de cancelación cuentan otra cosa. Mismas columnas que `getOrderForNotice`
+    // (la cola): los dos caminos tienen que redactar el MISMO mensaje.
     .select(
       'id,order_number,status,fulfillment,contact_phone,contact_name,total,currency,'
+      + 'payment_method,payment_confirmed_at,'
       + 'order_items(*, order_item_options(option_group_name,option_name,quantity,group_sort))',
     )
     .maybeSingle()

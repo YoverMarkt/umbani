@@ -41,6 +41,7 @@ un módulo concreto, no en cada sesión.
 - [Menús con reloj](#menús-con-reloj)
 - [Cómo usa la gente el menú de Umbani](#cómo-usa-la-gente-el-menú-de-umbani)
 - [Los reportes del dueño hablan del modelo de hoy](#los-reportes-del-dueño-hablan-del-modelo-de-hoy)
+- [El pago con tarjeta entra en la cuenta de Umbani](#el-pago-con-tarjeta-entra-en-la-cuenta-de-umbani)
 
 ---
 
@@ -183,7 +184,7 @@ Verificado ejecutando la migración contra un PostgreSQL real —incluidas la ir
 
 **El envío es un monto fijo por negocio** (`businesses.delivery_fee`) y **lo suma PostgreSQL**, dentro de `create_storefront_order`, junto al subtotal. No es un detalle de implementación: si el envío se calculara en el teléfono, cualquiera pediría con envío $0 tocando el JavaScript (regla inviolable #8). Solo se cobra cuando `fulfillment = 'delivery'` — quien retira en el local no lo paga — y es **uno por pedido, no por unidad**. La mini app muestra una vista previa del desglose; el importe que manda es siempre el que devuelve la base. Se descartaron las zonas por precio: exigen tabla propia, pantalla de gestión y que el cliente acierte su zona, y ningún negocio real lo ha pedido todavía.
 
-**El método de pago** (`orders.payment_method`) es `transferencia` o `efectivo`, y **nunca tarjeta**: la plataforma no procesa cobros (regla inviolable #6), y el diagrama la marcaba «próximamente» a propósito. Queda nulo en los pedidos que entran por WhatsApp, que no preguntan cómo se paga. Lo que elige el cliente decide qué ve después: quien paga en efectivo no pasa por datos bancarios ni comprobante.
+**El método de pago** (`orders.payment_method`) es `transferencia` o `efectivo`, y **nunca tarjeta**: la plataforma no procesa cobros (regla inviolable #6), y el diagrama la marcaba «próximamente» a propósito. ⚠️ **Superado el 2026-09-27:** la tarjeta llegó por PayPhone — ver [El pago con tarjeta entra en la cuenta de Umbani](#el-pago-con-tarjeta-entra-en-la-cuenta-de-umbani). Queda nulo en los pedidos que entran por WhatsApp, que no preguntan cómo se paga. Lo que elige el cliente decide qué ve después: quien paga en efectivo no pasa por datos bancarios ni comprobante.
 
 **El comprobante es OPCIONAL y va DESPUÉS de crear el pedido.** Es la decisión con más consecuencias del bloque: el pedido ya está a salvo cuando se pide la foto, así que un cliente que no la encuentra —o una subida que falla— no pierde el pedido. La imagen la sube el SERVIDOR a Cloudinary y se guarda la URL que devuelve Cloudinary, nunca una que mande el teléfono. ⚠️ La pertenencia se comprueba en `attach_storefront_payment_proof` con **las tres cosas a la vez: negocio, pedido y teléfono de la sesión** — la mini app no tiene JWT, así que sin eso cualquiera con un id de pedido ajeno podría colgarle una imagen. Un pedido ya cerrado no admite comprobante.
 
@@ -1388,3 +1389,92 @@ catálogo que no pidió.
   catálogo con decisiones tomadas es justo lo que no debe pasar.
 - **Sin medir todavía:** una carta grande (40 productos, 40 precios, tamaños de
   pizza). Se mide con la próxima carta real.
+
+## El pago con tarjeta entra en la cuenta de Umbani
+
+**Decidido por el dueño el 2026-09-27** («vamos con lo mejor para Umbani, como
+las grandes»). Cambia la regla inviolable #6 SOLO para la tarjeta: el cliente
+paga en PayPhone, el dinero entra en la cuenta de Umbani y Umbani liquida
+después al local (su propio PR, con el split de PayPhone «al día siguiente»).
+Efectivo y transferencia siguen como estaban. Es lo que deja cobrar la
+comisión en el acto —sin «Nos debe»— y controlar las devoluciones.
+(`migration-2026-09-27-tarjeta-payphone.sql`, `services/pago-con-tarjeta.ts`,
+`integrations/payphone.ts`.)
+
+**Botón por redirección, no la «Cajita».** La Cajita se configura en el
+JavaScript del navegador con el token y el monto a la vista: cualquiera podía
+editar el monto, y con ese token se confirman y se revierten cobros. Con el
+botón, el servidor prepara el cobro con el total de la base y el cliente solo
+recibe la URL de PayPhone. Los datos de la tarjeta nunca pasan por Umbani.
+⚠️ PayPhone no admite abrir su página dentro de otra (iframe/webview): se
+comprueba en el navegador interno de WhatsApp en la prueba real.
+
+**PayPhone NO avisa, y eso decide el diseño.** Redirige al TELÉFONO; si nadie
+llama a su `Confirm` en 5 minutos, devuelve el dinero solo. Por eso hay dos
+caminos a la confirmación y cualquiera basta: la redirección
+(`/pagos/payphone/retorno`, la vía rápida) y la tarea del servidor, que cada
+20 s busca por NUESTRA referencia (`GET /api/Sale/client/{ref}`) los cobros
+cuyo teléfono no volvió. ⚠️ Esa consulta está documentada para la «API Sale»:
+hay que comprobar en pruebas que vale para el botón (cerrar la app justo
+después de pagar y ver que el pedido queda pagado).
+
+**La base decide ANTES de capturar.** `Confirm` es lo que captura el dinero,
+así que primero se pregunta a `claim_card_payment`: si el pedido ya no se
+puede cobrar —el local lo canceló, ya se pagó con otro intento, cambió el
+total— el cobro pasa a `no_confirmado`, nadie llama a PayPhone y PayPhone lo
+devuelve solo. Es la única forma de no cobrar dos veces el mismo pedido sin
+tener que devolver nada.
+
+**Cada centavo cuadra, o no se confirma.** Todo en centavos enteros, como
+PayPhone. El monto del intento sale de `orders.total` en la base; al asentar
+(`settle_card_payment`) se exige cobrado == intento == total vigente, en USD.
+Si no, el pedido NO se marca y el cobro pasa a `por_devolver` con alerta en la
+categoría «Pagos» del registro de errores. Un monto de PayPhone que no es
+entero llega como NULO y cuenta como descuadre: jamás se redondea para que
+«cuadre». ⚠️ `amount = amountWithoutTax`: una sola parte, sin redondeo que
+descuadre. El desglose del IVA lo decide el contador antes de producción.
+
+**Un pedido, un pago aprobado** (índice único parcial). El doble toque, las
+dos pestañas o la redirección y la tarea llegando a la vez no pueden cobrar
+dos veces: el segundo intento no se confirma.
+
+**El modo PRUEBAS en producción.** No hay dominio propio, así que se prueba en
+producción con un local de pruebas. En pruebas PayPhone aprueba TODO sin
+cobrar: si alcanzara a un local real, habría comida gratis. Tres cerrojos:
+`businesses.card_mode` (lo pone SOLO el superadmin), `PAYPHONE_MODO` del
+servidor, y la base exige que coincidan al iniciar Y al asentar
+(`payments.environment`). La tienda pinta «PAGOS DE PRUEBA» en grande.
+
+**Las credenciales, SOLO en variables de Railway.** El token decide a qué
+cuenta va el dinero: si viviera en `server_settings`, quien entrara al
+superadmin pondría el de SU cuenta y se quedaría los cobros. Fallan cerrado:
+sin las tres, o con un modo que no sea exactamente `pruebas`/`produccion`, no
+hay tarjeta.
+
+**Lo que hacía «esperando pago» de paso, y con tarjeta ya no** (el inventario
+de cortar un flujo): pedir la FOTO del comprobante por el chat
+(`orders_mark_awaiting_receipt` y `pedirComprobantePorChat`), colgar una foto
+del pedido (`pedidosEsperandoComprobante`), avisar al dueño de un pedido nuevo
+al crearlo (ahora sale cuando el cobro se confirma), el texto «no recibimos tu
+comprobante» al caducar, y el botón «Recibí el pago, preparar» del panel. Lo
+que SÍ se conserva: el candado del chat, borrar la pregunta pendiente para que
+«Empezar de nuevo» no cancele el pedido, y la caducidad —con ventana de como
+mucho 30 minutos y nunca con un cobro vivo—.
+
+**Un pedido con tarjeta no avanza sin cobro** (`orders_card_requires_payment`):
+sin `payment_confirmed_at` solo puede esperar, cancelarse, rechazarse o
+caducar. Al revés que la transferencia, aquí no hay pago «por otra vía».
+Pagado y luego cancelado → `por_devolver` por disparador
+(`orders_card_refund_on_cancel`), y la tarea lo revierte en PayPhone. PayPhone
+solo revierte el mismo día antes de las 20:00: si no deja, `devolucion_manual`
+con alerta.
+
+⚠️ **De paso se cerró un hueco de la transferencia:** `expire_unpaid_orders` no
+miraba `payment_confirmed_at`, así que un pedido confirmado con «Solo confirmar
+el pago» y sin foto podía caducar con el dinero del cliente dentro.
+
+⚠️ **Pendiente antes de cobrar de verdad:** el contador (Umbani factura solo su
+comisión y la tarifa; el resto es «por cuenta de terceros»), el contrato con
+cada local, la aprobación del split por PayPhone y qué pasa con un contracargo
+después del reparto.
+

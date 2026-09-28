@@ -19,7 +19,7 @@ import {
 } from '@remixicon/react'
 import {
   createAddress, createOrder, deleteAddress, getCatalog, getMe, getOrder, isLinkProblem,
-  setAddressLocation,
+  setAddressLocation, startCardPayment,
 } from '../lib/api'
 import {
   ENTREGA_POR_DEFECTO, addLine, cartCount, cartTotal, claveDelPlato, claveSuelta,
@@ -43,6 +43,8 @@ const Buscar = lazy(() => import('./Buscar'))
 // tiene dirección guardada, así que no tiene por qué viajar en la primera
 // carga —que es la que se paga en clientes que cierran antes de que abra—.
 const DireccionRapida = lazy(() => import('../components/DireccionRapida'))
+// Solo lo descarga quien paga con tarjeta.
+const PagoConTarjeta = lazy(() => import('./PagoConTarjeta'))
 import type {
   Business, CartLine, Catalog, Fulfillment, Me, PaymentMethod, Product, StoreStatus,
   TrackedOrder,
@@ -92,6 +94,17 @@ export default function FoodStore({
   const [pagoPendiente, setPagoPendiente] = useState<TrackedOrder | null>(null)
   /** Si el cliente tocó ese aviso y está en la pantalla de pago. */
   const [abrirPago, setAbrirPago] = useState(false)
+  /**
+   * El cobro con tarjeta en pantalla. Al volver de PayPhone llega en la URL
+   * (`?pago=<pedido>`): solo dice QUÉ pedido mirar; si se pagó lo dice el
+   * servidor.
+   */
+  const [cobroTarjeta, setCobroTarjeta] = useState<{ orderId: string; volviendo: boolean } | null>(() => {
+    try {
+      const pedido = new URLSearchParams(window.location.search).get('pago')
+      return pedido ? { orderId: pedido, volviendo: true } : null
+    } catch { return null }
+  })
   const [enCuenta, setEnCuenta] = useState(false)
   /**
    * La hoja que pide la dirección en el PRIMER «Agregar».
@@ -485,6 +498,18 @@ export default function FoodStore({
       setLineas([])
       claveDelPedido.current = null
       setCarritoAbierto(false)
+      // ── Con tarjeta, directo a la página segura de PayPhone ───────────────
+      // El pedido ya está guardado: si abrir el pago falla, la pantalla de la
+      // tarjeta ofrece reintentarlo, y el aviso de la portada lo recuerda.
+      if (datos.paymentMethod === 'tarjeta' && pedido.id) {
+        try {
+          const { url } = await startCardPayment(slug, String(pedido.id))
+          window.location.assign(url)
+        } catch {
+          setCobroTarjeta({ orderId: String(pedido.id), volviendo: false })
+        }
+        return
+      }
       // ⚠️ Pasa por «recibido» y no directo al seguimiento. La pantalla que se
       // retiró el 2026-08-08 mentía —decía «confirmado» cuando el negocio ni lo
       // había mirado— y era estática. Esta dice «recibido», que es verdad
@@ -577,6 +602,35 @@ export default function FoodStore({
   // los círculos de categoría, y se entra tocándolo. El recordatorio queda a
   // la vista en el sitio más visible, y quien abrió la app para mirar la carta
   // puede mirarla.
+  // El cobro con tarjeta: al volver de PayPhone, o desde el aviso de la
+  // portada si el pedido quedó sin pagar.
+  const tarjetaEnPantalla = cobroTarjeta
+    ?? (pagoPendiente && abrirPago && pagoPendiente.payment_method === 'tarjeta'
+      ? { orderId: pagoPendiente.id, volviendo: false }
+      : null)
+  if (tarjetaEnPantalla) {
+    return (
+      <Suspense fallback={null}>
+        <PagoConTarjeta
+          slug={slug}
+          nombreDelLocal={business.name}
+          orderId={tarjetaEnPantalla.orderId}
+          numero={pagoPendiente?.id === tarjetaEnPantalla.orderId ? pagoPendiente.order_number : null}
+          total={pagoPendiente?.id === tarjetaEnPantalla.orderId ? pagoPendiente.total : null}
+          volviendo={tarjetaEnPantalla.volviendo}
+          pruebas={(business.paymentMethods || []).some(m => m.code === 'tarjeta' && m.test_mode === true)}
+          onVolver={() => {
+            // La URL deja de decir «pago»: recargar no vuelve a esta pantalla.
+            try { window.history.replaceState(null, '', window.location.pathname) } catch { /* sin historial */ }
+            setCobroTarjeta(null)
+            setAbrirPago(false)
+            revisarPagoPendiente()
+          }}
+        />
+      </Suspense>
+    )
+  }
+
   if (pagoPendiente && abrirPago) {
     return (
       <OrderPlaced
@@ -1007,7 +1061,7 @@ export default function FoodStore({
           <Aviso
             tono="alerta"
             icono={<RiTimeLine size={18} />}
-            titulo="Falta tu comprobante"
+            titulo={pagoPendiente.payment_method === 'tarjeta' ? 'Falta tu pago' : 'Falta tu comprobante'}
             onClick={() => setAbrirPago(true)}
           >
             Tu pedido #{pagoPendiente.order_number} está guardado. Toca para pagarlo.
