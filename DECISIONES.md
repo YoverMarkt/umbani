@@ -1448,8 +1448,17 @@ servidor, y la base exige que coincidan al iniciar Y al asentar
 **Las credenciales, SOLO en variables de Railway.** El token decide a qué
 cuenta va el dinero: si viviera en `server_settings`, quien entrara al
 superadmin pondría el de SU cuenta y se quedaría los cobros. Fallan cerrado:
-sin las tres, o con un modo que no sea exactamente `pruebas`/`produccion`, no
-hay tarjeta.
+sin token, o con un modo que no sea exactamente `pruebas`/`produccion`, no
+hay tarjeta. ⚠️ El Store ID es OPCIONAL: en la primera prueba real el
+«Identificador» de la consola dio «La tienda asociada no existe» (error 100);
+sin `storeId` PayPhone usa la tienda del token.
+
+⚠️ **Los dos interruptores NO van juntos.** El de PayPhone (Producción/Prueba)
+decide si se cobra dinero de verdad; `PAYPHONE_MODO` solo se lo cuenta a
+nuestro servidor. Si PayPhone pasa a Producción con un local aún en «Pruebas»,
+se cobrarían tarjetas reales con la pantalla diciendo «de prueba». Para pasar
+a real, en este orden: local de pruebas a «Apagado» → interruptor de PayPhone
+→ `PAYPHONE_MODO` → locales reales a «Producción».
 
 **Lo que hacía «esperando pago» de paso, y con tarjeta ya no** (el inventario
 de cortar un flujo): pedir la FOTO del comprobante por el chat

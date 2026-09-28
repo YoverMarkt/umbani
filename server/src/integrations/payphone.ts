@@ -108,7 +108,8 @@ export interface PreparacionDeCobro {
 
 export function crearClientePayphone(input: {
   token: string
-  storeId: string
+  /** Opcional: sin él PayPhone usa la tienda por defecto del token. */
+  storeId?: string | null
   http?: HttpParaPayphone
 }) {
   const http: HttpParaPayphone = input.http || axios
@@ -143,7 +144,9 @@ export function crearClientePayphone(input: {
           amountWithoutTax: cobro.centavos,
           currency: 'USD',
           clientTransactionId: cobro.referencia,
-          storeId: input.storeId,
+          // Solo si hay uno: un `storeId` equivocado hace fallar el cobro
+          // entero (error 100), uno ausente usa la tienda del token.
+          ...(input.storeId ? { storeId: input.storeId } : {}),
           reference: cobro.motivo.slice(0, 100),
           responseUrl: cobro.urlRespuesta,
           cancellationUrl: cobro.urlCancelacion,
