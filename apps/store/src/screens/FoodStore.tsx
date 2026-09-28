@@ -19,7 +19,7 @@ import {
 } from '@remixicon/react'
 import {
   createAddress, createOrder, deleteAddress, getCatalog, getMe, getOrder, isLinkProblem,
-  setAddressLocation, startCardPayment,
+  irAPayPhone, setAddressLocation, startCardPayment,
 } from '../lib/api'
 import {
   ENTREGA_POR_DEFECTO, addLine, cartCount, cartTotal, claveDelPlato, claveSuelta,
@@ -504,7 +504,7 @@ export default function FoodStore({
       if (datos.paymentMethod === 'tarjeta' && pedido.id) {
         try {
           const { url } = await startCardPayment(slug, String(pedido.id))
-          window.location.assign(url)
+          irAPayPhone(url)
         } catch {
           setCobroTarjeta({ orderId: String(pedido.id), volviendo: false })
         }
