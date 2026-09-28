@@ -12,6 +12,7 @@ const Catalog = lazy(() => import('./features/catalog/Catalog'))
 const Sales = lazy(() => import('./features/sales/Sales'))
 const Orders = lazy(() => import('./features/orders/Orders'))
 const Reports = lazy(() => import('./features/reports/Reports'))
+const MisPagos = lazy(() => import('./features/pagos/MisPagos'))
 const Customers = lazy(() => import('./features/customers/Customers'))
 const Reactivar = lazy(() => import('./features/customers/Reactivar'))
 const Schedule = lazy(() => import('./features/schedule/Schedule'))
@@ -53,6 +54,7 @@ export default function App() {
               <Route path="/sales" element={<Sales />} />
               <Route path="/orders" element={<Orders />} />
               <Route path="/reports" element={<Reports />} />
+              <Route path="/pagos" element={<MisPagos />} />
               <Route path="/customers" element={<Customers />} />
               <Route path="/reactivate" element={<Reactivar />} />
               {/* ⚠️ «Bienvenida» se retiró el 2026-09-20: el saludo y las

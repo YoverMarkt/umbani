@@ -50,6 +50,7 @@ import productOptionsRouter = require('./routes/product-options.routes')
 import catalogStructureRouter = require('./routes/catalog-structure.routes')
 import storefrontRouter = require('./routes/storefront.routes')
 import pagosRouter = require('./routes/pagos.routes')
+import misPagosRouter = require('./routes/mis-pagos.routes')
 import healthRouter = require('./routes/health.routes')
 import { cachearEstaticos, enviarHtmlDeSpa } from './lib/cache-estaticos'
 import { alEntrarUnMensaje } from './lib/despertador-de-la-cola'
@@ -264,6 +265,8 @@ app.use(businessRouter)
 app.use(blockedContactsRouter)
 app.use(salesRouter)
 app.use(reportsRouter)
+// Mis pagos: el estado de cuenta del local (solo el dueño).
+app.use(misPagosRouter)
 app.use(scheduleRouter)
 app.use(productsRouter)
 app.use(menuModifiersRouter)

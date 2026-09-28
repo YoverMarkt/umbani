@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { api, session } from '../api/client'
 import { queryClient } from '../lib/queryClient'
 import { useBusinessInfo, isOrderBiz } from '../lib/biz'
-import { Home, Package, BarChart3, Users, RotateCcw, Clock, UserRound, Settings, LogOut, Sun, Moon, Menu, Receipt } from 'lucide-react'
+import { Home, Package, BarChart3, Users, RotateCcw, Clock, UserRound, Settings, LogOut, Sun, Moon, Menu, Receipt, Wallet } from 'lucide-react'
 import { useState } from 'react'
 import { getTheme, toggleTheme } from '../lib/theme'
 import { AlarmBanner } from './AlarmSystem'
@@ -58,6 +58,8 @@ export default function Layout() {
     // no hacían nada (modo manual y responder a mano).
     ...(orderBiz ? [{ to: '/orders', label: 'Pedidos', icon: Receipt, perm: 'ventas', badge: att.pendingOrders.length || undefined }] : []),
     { to: '/reports',       label: 'Reportes',          icon: BarChart3, perm: 'reportes' },
+    // Solo el dueño y solo si vende: son los depósitos a SU cuenta.
+    ...(orderBiz ? [{ to: '/pagos', label: 'Mis pagos', icon: Wallet, perm: 'owner' }] : []),
     { to: '/customers',     label: 'Clientes',          icon: Users, perm: 'reportes' },
     { to: '/reactivate',    label: 'Reactivar',         icon: RotateCcw, perm: 'reportes' },
     { to: '/schedule',      label: 'Horarios',          icon: Clock, perm: 'horarios' },

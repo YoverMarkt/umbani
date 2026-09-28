@@ -79,7 +79,25 @@ const listCardPayments = async (limite = 100) => {
   return data || []
 }
 
+/**
+ * El libro de UN local: sus pedidos entregados con lo que le tocó a cada uno.
+ * ⚠️ El negocio es obligatorio: esto lo pide el panel del dueño.
+ */
+const listLedger = async (businessId: string, input: { soloSinLiquidar?: boolean; limite?: number } = {}) => {
+  let consulta = db
+    .from('order_ledger')
+    .select('id, order_id, kind, sold_at, payment_method, total_cents, local_cents, reparto_cents, reparto_para, umbani_cents, en_mano, settlement_id, orders(order_number)')
+    .eq('business_id', businessId)
+    .order('sold_at', { ascending: false })
+    .limit(Math.min(Math.max(input.limite ?? 200, 1), 500))
+  if (input.soloSinLiquidar) consulta = consulta.is('settlement_id', null)
+  const { data, error } = await consulta
+  if (error) throw new Error(error.message)
+  return data || []
+}
+
 export {
+  listLedger,
   closeWeeklySettlements,
   getSettlementBalances,
   listSettlements,
