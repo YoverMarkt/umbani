@@ -188,6 +188,38 @@ export default function ServerSettings() {
         </div>
       </Card>
 
+      {/* El dinero de Umbani */}
+      <Card className={card}>
+        <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2"><Receipt className="w-4 h-4" /> Tarifa de servicio y costo de la tarjeta</h2>
+        <p className="text-xs text-muted-foreground mb-3">
+          La tarifa de servicio la paga el cliente en cada pedido de la tienda, igual para todo
+          método de pago, y es entera de Umbani. Se ve en el carrito antes de confirmar y se
+          congela en cada pedido: cambiarla no toca lo ya vendido. Vacía o en 0 = apagada.
+        </p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <Label htmlFor="server-service-fee">Tarifa de servicio por pedido (USD)</Label>
+            <Input
+              id="server-service-fee"
+              inputMode="decimal"
+              value={val('service_fee')}
+              onChange={set('service_fee')}
+              placeholder={saved.service_fee || '0.25'}
+            />
+          </div>
+          <div>
+            <Label htmlFor="server-payphone-fee">Comisión de PayPhone (puntos básicos: 575 = 5,75 %)</Label>
+            <Input
+              id="server-payphone-fee"
+              inputMode="numeric"
+              value={val('payphone_fee_bps')}
+              onChange={set('payphone_fee_bps')}
+              placeholder={saved.payphone_fee_bps || '575'}
+            />
+          </div>
+        </div>
+      </Card>
+
       {/* Cloudinary */}
       <Card className={card}>
         <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2"><Cloud className="w-4 h-4" /> Cloudinary — Imágenes y videos</h2>

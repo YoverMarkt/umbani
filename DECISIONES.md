@@ -43,6 +43,7 @@ un módulo concreto, no en cada sesión.
 - [Los reportes del dueño hablan del modelo de hoy](#los-reportes-del-dueño-hablan-del-modelo-de-hoy)
 - [El pago con tarjeta entra en la cuenta de Umbani](#el-pago-con-tarjeta-entra-en-la-cuenta-de-umbani)
 - [Las cuentas de cada uno y el cierre semanal](#las-cuentas-de-cada-uno-y-el-cierre-semanal)
+- [La tarifa de servicio](#la-tarifa-de-servicio)
 
 ---
 
@@ -1527,4 +1528,26 @@ no entra en el invariante ni se le descuenta al local.
 'motorizado'` y `settlements.party` existen desde hoy. Sus reglas decididas:
 guarda el efectivo y liquida los lunes, tope de $150, se le retiene la carrera
 si se le cae la comida y el local cobra igual.
+
+## La tarifa de servicio
+
+**Decidida por el dueño el 2026-09-27:** $0,25 fija por pedido, como las
+grandes. Cubre la comisión de la tarjeta y los mensajes en los pedidos
+pequeños (sin ella, un pedido de $5 con tarjeta dejaba $0,04). IGUAL para todo
+método de pago: en Ecuador es ilegal cobrar más por pagar con tarjeta.
+
+⚠️ **Va DENTRO de `platform_markup`** (la parte de Umbani) y además aparte en
+`orders.service_fee`, solo para desglosarla. Así los reportes, el libro por
+pedido, las liquidaciones, la factura y la validación del comprobante la
+tratan como de Umbani SIN tocarlos: el local nunca se queda con ella, ni con
+margen `on_top` ni con `absorbed` (ahí la comisión sale del comercio; la
+tarifa, nunca).
+
+⚠️ **La lee la BASE** (`tarifa_de_servicio()` sobre
+`server_settings.service_fee`, tope $5, un valor roto = 0) y la sella
+`orders_stamp_pricing`, solo en pedidos de la tienda y CONGELADA en el pedido.
+La app la pide a la base para enseñarla (un minuto en memoria), así el número
+del carrito y el que se cobra salen del mismo sitio. Se ve en el carrito como
+su propia línea ANTES de confirmar. Nace en 0; se enciende en Superadmin →
+Configuración.
 

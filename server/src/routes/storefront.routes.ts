@@ -24,6 +24,7 @@ import {
 import { avisarAlDuenoDelPedido } from '../services/owner-order-notice'
 import { metodoTarjeta, pagosConTarjeta, tarjetaDisponible } from '../services/pago-con-tarjeta'
 import { leerConfiguracionPayphone } from '../config/payphone'
+import { tarifaDeServicio } from '../services/tarifa-de-servicio'
 
 // Rutas de la mini app del negocio.
 //
@@ -318,7 +319,7 @@ router.get('/api/store/:slug', readStorefrontBlock, async (req, res) => {
       // igual, solo que sin los botones de WhatsApp. Que un fallo leyendo
       // `server_settings` tumbe la PORTADA sería cambiar cuatro botones por
       // una tienda que no carga.
-      ...publicBusiness(business, null, await getPlatformPhone().catch(() => null)),
+      ...publicBusiness(business, null, await getPlatformPhone().catch(() => null), await tarifaDeServicio()),
       // Los métodos que ESE local acepta. La app los pinta; ya no los lleva
       // escritos a mano. Si la consulta falla se manda una lista vacía en vez
       // de romper la portada: el cliente puede mirar la carta igual, y el
@@ -464,7 +465,7 @@ router.get('/api/store/:slug/catalog', readStorefrontSession, async (req, res) =
   return res.json({
     business: business
       ? {
-        ...publicBusiness(business, pricing, await getPlatformPhone().catch(() => null)),
+        ...publicBusiness(business, pricing, await getPlatformPhone().catch(() => null), await tarifaDeServicio()),
         paymentMethods: await metodosDeLaTienda(business),
       }
       : null,
@@ -1101,6 +1102,7 @@ router.post('/api/store/:slug/quote', cotizarLimiter, readStorefrontSession, asy
     deliveryFee: Number((business as { delivery_fee?: unknown } | null)?.delivery_fee) || 0,
     fulfillment: String(body.fulfillment || 'pickup'),
     pricing: reglaPrecio,
+    serviceFee: await tarifaDeServicio(),
   })
 
   if (cotizacion.error) return res.status(400).json({ error: cotizacion.error })

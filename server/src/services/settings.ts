@@ -61,6 +61,13 @@ export const ALLOWED_KEYS = [
   // añadir una señal mañana no obliga a tocar esta lista ni a desplegar. Lo
   // que no venga —o venga roto— cae a los valores por defecto del código.
   'receipt_risk_rules',
+  // ── El dinero de Umbani (2026-09-28) ────────────────────────────────
+  // La tarifa de servicio por pedido (USD, «0.25»). La lee la BASE
+  // (`tarifa_de_servicio()`), que es la que cobra; nace sin valor = apagada.
+  'service_fee',
+  // Lo que cobra PayPhone, en puntos básicos (575 = 5,75 %). Solo sirve
+  // para enseñarle a Umbani lo que le queda; se negocia con PayPhone.
+  'payphone_fee_bps',
 ] as const
 
 type AllowedKey = typeof ALLOWED_KEYS[number]

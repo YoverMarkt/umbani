@@ -262,6 +262,8 @@ describe('la tienda del negocio', () => {
       const publico = publicBusiness(negocio({ slogan: 'La mejor pizza' }))
       expect(publico).toEqual({
         id: 'biz-1',
+        // La tarifa de servicio (2026-09-28): 0 si no se pasa, que es apagada.
+        serviceFee: 0,
         name: 'Pizzería Roma',
         slug: 'pizza-roma',
         type: null,

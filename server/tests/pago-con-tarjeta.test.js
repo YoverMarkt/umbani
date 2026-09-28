@@ -138,8 +138,10 @@ describe('las credenciales: solo variables de entorno y fallan cerrado', () => {
   it('el token NO se puede guardar desde el panel del superadmin', () => {
     // Si viviera en `server_settings`, quien entrara al superadmin pondría el
     // token de SU cuenta y se quedaría con los cobros.
+    // (La COMISIÓN de PayPhone sí vive allí —`payphone_fee_bps`—: es un
+    // porcentaje que solo sirve para estimar; no mueve dinero.)
     const ajustes = fs.readFileSync('src/services/settings.ts', 'utf8')
-    expect(ajustes).not.toMatch(/payphone/i)
+    expect(ajustes).not.toMatch(/payphone_(token|store)|PAYPHONE_TOKEN|PAYPHONE_STORE/i)
   })
 })
 
