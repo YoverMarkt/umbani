@@ -109,6 +109,8 @@ function dependenciasDelSimulador(
       // enseña la ADVERTENCIA y nunca se pausa al superadmin.
       anotarAvisoDeOpcionVieja: async () => undefined,
       pausarElMenu: async () => false,
+      // Ni cerrar de verdad las sesiones de la app del cliente del simulador.
+      cerrarSesionesDeLaApp: async () => undefined,
     } as unknown as MarketplaceEntryDeps['database'],
     issueLink: link.issueStorefrontLink,
     // ⚠️ Aquí SÍ se aplana a títulos, y a propósito: el simulador pinta las

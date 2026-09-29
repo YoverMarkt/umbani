@@ -1069,6 +1069,7 @@ export type Database = {
       }
       customers: {
         Row: {
+          app_sessions_valid_after: string | null
           blocked_at: string | null
           blocked_kind: string | null
           blocked_reason: string | null
@@ -1082,6 +1083,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          app_sessions_valid_after?: string | null
           blocked_at?: string | null
           blocked_kind?: string | null
           blocked_reason?: string | null
@@ -1095,6 +1097,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          app_sessions_valid_after?: string | null
           blocked_at?: string | null
           blocked_kind?: string | null
           blocked_reason?: string | null
