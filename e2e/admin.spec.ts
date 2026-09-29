@@ -530,3 +530,47 @@ test('el superadmin ve cómo usa la gente el menú de Umbani', async ({ page }) 
     .toContainText('le falta un alias')
   await expect(page.getByRole('row', { name: /^pizza/ })).toContainText('Encontró locales')
 })
+
+// El registro de quién mueve dinero (2026-09-29): cada acción en español, y el
+// cambio hecho DIRECTAMENTE en la base, señalado.
+test('Pagos → Registro dice quién movió dinero y qué cambió', async ({ page }) => {
+  await mockAdminApi(page)
+  await page.route('**/api/admin/pagos', route => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ saldos: [], liquidaciones: [], cobros: [], cuentas: {} }),
+  }))
+  await page.route('**/api/admin/pagos/registro', route => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      movimientos: [
+        {
+          id: 3, created_at: '2026-10-05T15:10:00Z', actor: 'superadmin:dueno@umbani.test',
+          business_id: 'b1', business_name: 'Burger Brava', action: 'liquidacion_pagada',
+          target_table: 'settlements', target_id: 's1',
+          detail: { antes: { estado: 'por_pagar' }, despues: { estado: 'pagada', referencia: 'TRF-001', neto_cents: 12050 } },
+        },
+        {
+          id: 2, created_at: '2026-10-04T20:00:00Z', actor: 'local:caja@burger.test',
+          business_id: 'b1', business_name: 'Burger Brava', action: 'pedido_pagado_cancelado',
+          target_table: 'orders', target_id: 'o1', detail: { numero: 12, total: 8.93, metodo: 'tarjeta' },
+        },
+        {
+          id: 1, created_at: '2026-10-04T10:00:00Z', actor: 'base',
+          business_id: 'b1', business_name: 'Burger Brava', action: 'tarjeta_del_local',
+          target_table: 'businesses', target_id: 'b1', detail: { antes: null, despues: 'produccion' },
+        },
+      ],
+    }),
+  }))
+  await seedAdminSession(page)
+  await page.goto(`${adminUrl}#/pagos`)
+
+  await page.getByRole('tab', { name: 'Registro' }).click()
+  await expect(page.getByText('Liquidación del local pagada')).toBeVisible()
+  await expect(page.getByText('Neto $120.50 · ref. TRF-001')).toBeVisible()
+  await expect(page.getByText('dueno@umbani.test')).toBeVisible()
+  await expect(page.getByText('Pedido YA PAGADO cancelado')).toBeVisible()
+  await expect(page.getByText('Pedido #12 · $8.93 · tarjeta')).toBeVisible()
+  await expect(page.getByText('Cambio directo en la base')).toBeVisible()
+  await expect(page.getByText('apagada → de verdad')).toBeVisible()
+})

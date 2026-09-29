@@ -9,6 +9,7 @@ import { Skeleton } from '@botpanel/ui/components/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@botpanel/ui/components/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@botpanel/ui/components/tabs'
 import { getPagos, marcarLiquidacion } from './api'
+import Registro from './Registro'
 import type { CuentaBancaria, Liquidacion } from './api'
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -129,6 +130,7 @@ export default function Pagos() {
           <TabsTrigger value="saldos">Semana en curso</TabsTrigger>
           <TabsTrigger value="liquidaciones">Liquidaciones{pendientes.length ? ` (${pendientes.length})` : ''}</TabsTrigger>
           <TabsTrigger value="cobros">Cobros con tarjeta</TabsTrigger>
+          <TabsTrigger value="registro">Registro</TabsTrigger>
         </TabsList>
 
         <TabsContent value="saldos">
@@ -251,6 +253,11 @@ export default function Pagos() {
                 </Table>
               )}
           </Card>
+        </TabsContent>
+
+        {/* Quién movió dinero (2026-09-29). Radix solo lo monta al abrirlo. */}
+        <TabsContent value="registro">
+          <Registro />
         </TabsContent>
       </Tabs>
     </div>

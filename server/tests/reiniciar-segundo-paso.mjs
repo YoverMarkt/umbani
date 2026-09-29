@@ -27,7 +27,11 @@ if (!url || !clave) {
   console.error('❌ Faltan SUPABASE_URL y SUPABASE_SERVICE_KEY en server/.env')
   process.exit(1)
 }
-const db = createClient(url, clave, { auth: { persistSession: false } })
+// El reinicio queda en el registro de dinero con este autor, no como «sistema».
+const db = createClient(url, clave, {
+  auth: { persistSession: false },
+  global: { headers: { 'x-umbani-actor': 'script:admin:reiniciar-codigos' } },
+})
 
 const { data, error } = await db.from('server_settings').select('key, updated_at').in('key', CLAVES)
 if (error) {

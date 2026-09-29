@@ -7,6 +7,7 @@ import jwt from 'jsonwebtoken'
 import { JWT } from '../middleware/auth'
 import { createRouter } from '../middleware/async'
 import { enlaceDeConfiguracion, nuevaClave, verificarCodigo } from '../lib/codigos-de-un-solo-uso'
+import { conActor } from '../lib/actor-de-la-peticion'
 
 interface LoginBody {
   email?: unknown
@@ -192,7 +193,9 @@ router.post('/api/admin/login/codigo', loginLimiter, async (req, res) => {
       fallosDelSegundoPaso.push(ahora)
       return res.status(401).json({ error: vigente ? 'Código incorrecto' : 'La configuración caducó. Vuelve a empezar.' })
     }
-    await db.activarClave(estado.pendiente as string, paso)
+    // Aún no hay sesión, así que el autor se nombra aquí: configurar el segundo
+    // paso queda en el registro de dinero (2026-09-29).
+    await conActor(`superadmin:${pase.email}`, () => db.activarClave(estado.pendiente as string, paso))
     return res.json({ token: sesionDelAdmin(pase.email) })
   }
 

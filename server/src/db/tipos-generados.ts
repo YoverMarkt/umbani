@@ -1442,6 +1442,42 @@ export type Database = {
         }
         Relationships: []
       }
+      money_audit_log: {
+        Row: {
+          action: string
+          actor: string
+          business_id: string | null
+          business_name: string | null
+          created_at: string
+          detail: Json
+          id: number
+          target_id: string | null
+          target_table: string
+        }
+        Insert: {
+          action: string
+          actor: string
+          business_id?: string | null
+          business_name?: string | null
+          created_at?: string
+          detail?: Json
+          id?: never
+          target_id?: string | null
+          target_table: string
+        }
+        Update: {
+          action?: string
+          actor?: string
+          business_id?: string | null
+          business_name?: string | null
+          created_at?: string
+          detail?: Json
+          id?: never
+          target_id?: string | null
+          target_table?: string
+        }
+        Relationships: []
+      }
       option_groups: {
         Row: {
           active: boolean
@@ -3453,6 +3489,7 @@ export type Database = {
       }
     }
     Functions: {
+      actor_de_la_peticion: { Args: never; Returns: string }
       advance_marketplace_conversation: {
         Args: {
           p_business_id?: string
@@ -3465,6 +3502,16 @@ export type Database = {
           p_state?: string
         }
         Returns: Json
+      }
+      anotar_movimiento_de_dinero: {
+        Args: {
+          p_action: string
+          p_business_id: string
+          p_detail: Json
+          p_target_id: string
+          p_target_table: string
+        }
+        Returns: undefined
       }
       apply_business_menu: {
         Args: { p_business_id: string; p_menu: Json }
@@ -3936,6 +3983,26 @@ export type Database = {
           stock: string
           tags: string[]
         }[]
+      }
+      money_audit_log_recent: {
+        Args: { p_antes_de?: number; p_business_id?: string; p_limite?: number }
+        Returns: {
+          action: string
+          actor: string
+          business_id: string | null
+          business_name: string | null
+          created_at: string
+          detail: Json
+          id: number
+          target_id: string | null
+          target_table: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "money_audit_log"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
       normalize_business_channel_identifier: {
         Args: { p_identifier_type: string; p_value: string }

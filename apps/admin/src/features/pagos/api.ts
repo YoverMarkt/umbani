@@ -71,3 +71,24 @@ export const marcarLiquidacion = (id: string, referencia: string) =>
     method: 'POST',
     body: JSON.stringify({ referencia }),
   })
+
+// ── El registro de quién mueve dinero (2026-09-29) ──────────────────────────
+//
+// Lo escribe la base con disparadores; aquí solo se lee. `actor` es
+// `superadmin:<correo>`, `local:<correo>`, `sistema`, `base` o `script:<qué>`.
+export type MovimientoDeDinero = {
+  id: number
+  created_at: string
+  actor: string
+  business_id: string | null
+  business_name: string | null
+  action: string
+  target_table: string
+  target_id: string | null
+  detail: Record<string, unknown>
+}
+
+export const getRegistro = (antes?: number) =>
+  api<{ movimientos: MovimientoDeDinero[] }>(
+    `/api/admin/pagos/registro${antes ? `?antes=${antes}` : ''}`,
+  )

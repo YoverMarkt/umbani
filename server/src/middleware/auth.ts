@@ -1,5 +1,6 @@
 import type { RequestHandler } from 'express'
 import jwt, { type JwtPayload } from 'jsonwebtoken'
+import { conActor } from '../lib/actor-de-la-peticion'
 
 interface ActiveClientUser {
   id?: string
@@ -56,14 +57,20 @@ export const authAdmin: RequestHandler = (req, res, next) => {
       return res.status(401).json({ error: 'Tu sesión venció. Entra de nuevo con tu código.' })
     }
     req.user = decoded as Express.AdminUserClaims
-    next()
+    // Quién: lo leen los disparadores del registro de dinero (2026-09-29).
+    conActor(`superadmin:${decoded.email || 'sin-correo'}`, next)
   } catch {
     res.status(401).json({ error: 'Token inválido' })
   }
 }
 
+/** Cómo se nombra al usuario de un local en el registro de dinero. */
+const actorDelLocal = (usuario: { email?: string; userId?: string; businessId: string }): string => (
+  `local:${usuario.email || usuario.userId || usuario.businessId}`
+)
+
 export const authClient: RequestHandler = (req, res, next) => {
-  if (req.user?.role === 'client') return next()
+  if (req.user?.role === 'client') return conActor(actorDelLocal(req.user), next)
   const token = req.headers.authorization?.split(' ')[1]
   if (!token) return res.status(401).json({ error: 'No autorizado' })
 
@@ -73,7 +80,7 @@ export const authClient: RequestHandler = (req, res, next) => {
       return res.status(403).json({ error: 'Solo clientes' })
     }
     req.user = decoded as Express.ClientUserClaims
-    next()
+    conActor(actorDelLocal(decoded as Express.ClientUserClaims), next)
   } catch {
     res.status(401).json({ error: 'Token inválido' })
   }
@@ -106,7 +113,7 @@ export function createActiveClientGuard(
     const cached = cache.get(cacheKey)
     if (cached && cached.expiresAt > now()) {
       req.user = cached.user
-      return next()
+      return conActor(actorDelLocal(cached.user), next)
     }
 
     try {
@@ -132,7 +139,7 @@ export function createActiveClientGuard(
       }
       cache.set(cacheKey, { user: current, expiresAt: now() + cacheTtlMs })
       req.user = current
-      return next()
+      return conActor(actorDelLocal(current), next)
     } catch (error) {
       console.error('❌ Validación de sesión cliente:', (error as Error).message)
       return res.status(503).json({ error: 'No se pudo validar la sesión' })
