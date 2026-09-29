@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import path from 'node:path'
 import { exigirBaseLocalEnPruebas } from '../lib/solo-base-local-en-pruebas'
+import { conActorEnLaCabecera } from '../lib/actor-de-la-peticion'
 
 require('dotenv').config({ path: path.join(__dirname, '../../.env') })
 
@@ -9,9 +10,13 @@ require('dotenv').config({ path: path.join(__dirname, '../../.env') })
 // ajustes de PRODUCCIÓN. Ver `lib/solo-base-local-en-pruebas`.
 exigirBaseLocalEnPruebas(process.env.SUPABASE_URL)
 
+// ⚠️ Con el actor en la cabecera (2026-09-29): cambiar la tarifa de servicio o
+// la comisión de PayPhone desde Ajustes queda en el registro de dinero con el
+// nombre de quien lo hizo. Ver `lib/actor-de-la-peticion.ts`.
 const supabase = createClient(
   process.env.SUPABASE_URL as string,
   (process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_KEY) as string,
+  { global: { fetch: conActorEnLaCabecera(fetch) } },
 )
 
 export const ALLOWED_KEYS = [

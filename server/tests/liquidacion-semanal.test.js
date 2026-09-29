@@ -85,10 +85,12 @@ describe('el camino real', () => {
     expect(rutas.map(l => l.route.path).sort()).toEqual([
       '/api/admin/pagos',
       '/api/admin/pagos/liquidaciones/:id/marcar',
+      // El registro de quién mueve dinero (2026-09-29): solo lectura.
+      '/api/admin/pagos/registro',
     ])
     for (const layer of rutas) expect(layer.route.stack.length, layer.route.path).toBeGreaterThanOrEqual(2)
     const fuente = fs.readFileSync('src/routes/admin-pagos.routes.ts', 'utf8')
-    expect(fuente.match(/router\.(get|post)\([^)]*auth\.authAdmin/g)).toHaveLength(2)
+    expect(fuente.match(/router\.(get|post)\([^)]*auth\.authAdmin/g)).toHaveLength(3)
     expect(admin.stack.some(l => l.handle === pagos)).toBe(true)
   })
 

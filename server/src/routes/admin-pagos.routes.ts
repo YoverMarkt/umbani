@@ -50,4 +50,21 @@ router.post('/api/admin/pagos/liquidaciones/:id/marcar', auth.authAdmin, async (
   return res.json({ status: r.status })
 })
 
+// ── El registro de quién mueve dinero (2026-09-29) ──────────────────────────
+//
+// Solo lectura: lo escribe la base. `antes` pagina hacia atrás por id, y
+// `negocio` lo acota a un local.
+router.get('/api/admin/pagos/registro', auth.authAdmin, async (req, res) => {
+  const negocio = typeof req.query.negocio === 'string' && UUID.test(req.query.negocio)
+    ? req.query.negocio
+    : null
+  const antes = Number(req.query.antes)
+  const movimientos = await db.getMoneyAuditLog({
+    limite: 200,
+    businessId: negocio,
+    antesDe: Number.isSafeInteger(antes) && antes > 0 ? antes : null,
+  })
+  return res.json({ movimientos })
+})
+
 export = router

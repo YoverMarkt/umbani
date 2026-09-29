@@ -3,6 +3,7 @@ import type { Database } from './tipos-generados'
 import dotenv from 'dotenv'
 import path from 'node:path'
 import { exigirBaseLocalEnPruebas } from '../lib/solo-base-local-en-pruebas'
+import { conActorEnLaCabecera } from '../lib/actor-de-la-peticion'
 
 dotenv.config({ path: path.join(__dirname, '../../.env') })
 
@@ -82,8 +83,12 @@ const fetchConLimite: typeof fetch = (entrada, opciones) => {
 // rompen el build aquí, que es donde cuesta barato.
 //
 // Ver `db/tipos-generados.ts` — se regenera con `npm run tipos:generar`.
+//
+// ⚠️ Y con QUIÉN en cada consulta (2026-09-29): la cabecera `x-umbani-actor`
+// que leen los disparadores del registro de dinero. Ver
+// `lib/actor-de-la-peticion.ts`.
 const supabase = createClient<Database>(url, key, {
-  global: { fetch: fetchConLimite },
+  global: { fetch: conActorEnLaCabecera(fetchConLimite) },
 })
 
 export = supabase

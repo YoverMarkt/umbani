@@ -7226,3 +7226,164 @@ returns date language sql stable set search_path = public, pg_temp
 as $x$ select date '2026-09-28' $x$;
 
 select '✅ motorizados: solo toma lo que le toca, respeta el tope, el efectivo lo tiene él, la carrera se retiene y el local cobra entero' as resultado;
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- EL REGISTRO DE QUIÉN MUEVE DINERO (2026-09-29)
+-- ════════════════════════════════════════════════════════════════════════════
+--
+-- Lo escribe la BASE, en la misma transacción que el cambio, y el autor llega
+-- en la cabecera `x-umbani-actor` que PostgREST deja en `request.headers`.
+-- Aquí se simula esa cabecera con `set_config`, que es exactamente lo que hace
+-- PostgREST en cada petición.
+do $registro$
+declare
+  v_neg uuid;
+  v_ped uuid;
+  v_fac uuid;
+  v_regla uuid;
+  v_ultima public.money_audit_log;
+  v_antes bigint := coalesce((select max(id) from public.money_audit_log), 0);
+begin
+  insert into businesses (slug, name, type, whatsapp_provider, takes_orders, active)
+  values ('verif-registro', 'Registro de Prueba', 'pizzería', 'marketplace', true, true)
+  returning id into v_neg;
+
+  -- ── 1. Sin PostgREST de por medio (editor SQL, migraciones): «base» ──────
+  perform set_config('request.headers', '', true);
+  update businesses set card_mode = 'pruebas' where id = v_neg;
+  select * into v_ultima from money_audit_log order by id desc limit 1;
+  if v_ultima.actor <> 'base' or v_ultima.action <> 'tarjeta_del_local'
+     or v_ultima.business_id <> v_neg or v_ultima.business_name <> 'Registro de Prueba'
+     or v_ultima.detail <> '{"antes": null, "despues": "pruebas"}'::jsonb then
+    raise exception 'el cambio a mano no quedó como «base»: %', row_to_json(v_ultima);
+  end if;
+
+  -- ── 2. Por PostgREST sin persona detrás (una tarea de fondo): «sistema» ──
+  perform set_config('request.headers', '{"user-agent": "postgrest"}', true);
+  update businesses set card_mode = null where id = v_neg;
+  if (select actor from money_audit_log order by id desc limit 1) <> 'sistema' then
+    raise exception 'el servidor sin persona no quedó como «sistema»';
+  end if;
+
+  -- ── 3. Con persona: el correo de quien lo hizo ───────────────────────────
+  perform set_config('request.headers', '{"x-umbani-actor": "superadmin:dueno@umbani.test"}', true);
+  update businesses set card_mode = 'produccion' where id = v_neg;
+  if (select actor from money_audit_log order by id desc limit 1) <> 'superadmin:dueno@umbani.test' then
+    raise exception 'no quedó quién encendió la tarjeta';
+  end if;
+  -- Un cambio que NO toca la tarjeta no deja rastro: esto no es un registro de todo.
+  update businesses set name = 'Registro de Prueba' where id = v_neg;
+  if (select count(*) from money_audit_log where id > v_antes) <> 3 then
+    raise exception 'un cambio sin dinero quedó en el registro';
+  end if;
+
+  -- Una cabecera ilegible no rompe el cambio: queda como «sistema».
+  perform set_config('request.headers', 'esto no es json', true);
+  update businesses set card_mode = null where id = v_neg;
+  if (select actor from money_audit_log order by id desc limit 1) <> 'sistema' then
+    raise exception 'una cabecera ilegible no cayó a «sistema»';
+  end if;
+
+  perform set_config('request.headers', '{"x-umbani-actor": "local:caja@verif.test"}', true);
+
+  -- ── 4. El pedido: el pago confirmado, y el pedido YA pagado que se cancela ─
+  insert into orders (business_id, contact_phone, source, status, subtotal, total)
+  values (v_neg, '593900222201', 'manual', 'pendiente', 10, 10) returning id into v_ped;
+  update orders set total = 11 where id = v_ped;  -- sin dinero movido: nada
+  update orders set payment_confirmed_at = now() where id = v_ped;
+  update orders set status = 'cancelado' where id = v_ped;
+  if (select string_agg(action, ',' order by id) from money_audit_log
+        where id > v_antes and target_table = 'orders') <> 'pago_confirmado,pedido_pagado_cancelado' then
+    raise exception 'el pedido no dejó el pago y la cancelación: %',
+      (select string_agg(action, ',' order by id) from money_audit_log where id > v_antes and target_table = 'orders');
+  end if;
+  if (select actor from money_audit_log where target_id = v_ped::text and action = 'pedido_pagado_cancelado')
+     <> 'local:caja@verif.test' then
+    raise exception 'la cancelación del pedido pagado no dice quién fue';
+  end if;
+  -- Un pedido SIN pagar que se cancela no es dinero.
+  insert into orders (business_id, contact_phone, source, status, subtotal, total)
+  values (v_neg, '593900222202', 'manual', 'pendiente', 10, 10) returning id into v_ped;
+  update orders set status = 'cancelado' where id = v_ped;
+  if exists (select 1 from money_audit_log where target_id = v_ped::text) then
+    raise exception 'un pedido sin pagar cancelado quedó en el registro';
+  end if;
+
+  -- ── 5. La factura del local ──────────────────────────────────────────────
+  insert into billing (business_id, amount, status, period_start, period_end)
+  values (v_neg, 25, 'pending', '2026-09-01', '2026-09-30') returning id into v_fac;
+  update billing set status = 'paid', paid_at = now() where id = v_fac;
+  if (select string_agg(action, ',' order by id) from money_audit_log
+        where id > v_antes and target_table = 'billing') <> 'factura_creada,factura_paid' then
+    raise exception 'la factura no dejó su rastro';
+  end if;
+
+  -- ── 6. El margen: crear, cambiar, borrar ─────────────────────────────────
+  insert into pricing_rules (business_id, scope, strategy, percentage, markup_mode, status)
+  values (v_neg, 'business', 'percentage', 10, 'on_top', 'draft') returning id into v_regla;
+  update pricing_rules set percentage = 12 where id = v_regla;
+  delete from pricing_rules where id = v_regla;
+  if (select string_agg(action, ',' order by id) from money_audit_log
+        where id > v_antes and target_table = 'pricing_rules') <> 'margen_creado,margen_cambiado,margen_borrado' then
+    raise exception 'el margen no dejó su rastro: %',
+      (select string_agg(action, ',' order by id) from money_audit_log where id > v_antes and target_table = 'pricing_rules');
+  end if;
+  if (select detail -> 'antes' ->> 'porcentaje' from money_audit_log
+        where target_id = v_regla::text and action = 'margen_cambiado')::numeric <> 10 then
+    raise exception 'el cambio de margen no guardó el antes';
+  end if;
+
+  -- ── 7. Los ajustes de dinero y el segundo paso —de la clave, NADA— ───────
+  insert into server_settings (key, value) values ('service_fee', '0.25')
+    on conflict (key) do update set value = excluded.value;
+  update server_settings set value = '0.25' where key = 'service_fee';  -- igual: nada
+  insert into server_settings (key, value) values ('admin_totp_secret', 'GEZDGNBVGY3TQOJQ')
+    on conflict (key) do update set value = excluded.value;
+  delete from server_settings where key = 'admin_totp_secret';
+  insert into server_settings (key, value) values ('platform_errors', 'x')
+    on conflict (key) do update set value = excluded.value;  -- no es dinero: nada
+  if (select string_agg(action, ',' order by id) from money_audit_log
+        where id > v_antes and target_table = 'server_settings')
+     <> 'ajuste_service_fee,segundo_paso_configurado,segundo_paso_reiniciado' then
+    raise exception 'los ajustes no dejaron su rastro: %',
+      (select string_agg(action, ',' order by id) from money_audit_log where id > v_antes and target_table = 'server_settings');
+  end if;
+  if exists (select 1 from money_audit_log where id > v_antes and detail::text like '%GEZDGNBV%') then
+    raise exception '¡la clave del segundo paso quedó escrita en el registro!';
+  end if;
+
+  -- ── 8. No se edita ni se borra ───────────────────────────────────────────
+  begin
+    update money_audit_log set actor = 'yo' where id > v_antes;
+    raise exception 'se pudo editar el registro';
+  exception when raise_exception then
+    if sqlerrm = 'se pudo editar el registro' then raise; end if;
+  end;
+  begin
+    delete from money_audit_log where id > v_antes;
+    raise exception 'se pudo borrar el registro';
+  exception when raise_exception then
+    if sqlerrm = 'se pudo borrar el registro' then raise; end if;
+  end;
+
+  -- ── 9. Borrar el local NO borra su rastro ────────────────────────────────
+  delete from sales where business_id = v_neg;
+  delete from orders where business_id = v_neg;
+  delete from billing where business_id = v_neg;
+  delete from businesses where id = v_neg;
+  if (select count(*) from money_audit_log where business_id = v_neg) < 5
+     or exists (select 1 from money_audit_log where business_id = v_neg and business_name is distinct from 'Registro de Prueba') then
+    raise exception 'borrar el local se llevó su rastro de dinero';
+  end if;
+
+  -- ── 10. La lectura del superadmin: lo último primero, y por local ────────
+  if (select count(*) from public.money_audit_log_recent(500, v_neg, null)) <> (select count(*) from money_audit_log where business_id = v_neg)
+     or (select min(id) from public.money_audit_log_recent(1, null, null)) <> (select max(id) from money_audit_log) then
+    raise exception 'la lectura del registro no devuelve lo último primero';
+  end if;
+
+  perform set_config('request.headers', '', true);
+end;
+$registro$;
+
+select '✅ registro de dinero: quién (base, sistema o la persona), qué cambió, sin la clave, sin editar ni borrar, y sobrevive al local' as resultado;
