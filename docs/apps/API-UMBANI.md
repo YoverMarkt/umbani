@@ -21,6 +21,16 @@ contraseña ni SMS:
 4. En adelante: `Authorization: Bearer <token>` en las rutas `/api/v1/*`. Dura
    30 días; con `401`, vuelve al paso 1.
 
+⚠️ **El cliente puede cerrar la sesión desde WhatsApp** (2026-09-29): el mensaje
+de «iniciaste sesión» le dice que escriba **CERRAR SESIÓN** si no fue él —la
+estafa de «mándame el código que te llegó»—. Desde ese momento TODAS las
+sesiones de la app de su número responden `401` con
+`«Tu sesión se cerró desde WhatsApp. Inicia sesión otra vez.»`: enseña ese
+texto y vuelve al paso 1. Se cierran también sus sesiones de tienda (como con
+MENÚ), salvo la del local donde un pedido espera su pago. Un `503` en
+cualquier ruta autenticada quiere decir que no se pudo comprobar la sesión:
+reintenta en unos segundos, no la borres.
+
 El teléfono lo prueba WhatsApp (es el remitente del mensaje), no el cliente
 escribiendo un número.
 
@@ -48,7 +58,8 @@ Algunos traen `reason`:
 
 | Código | Qué hacer |
 |---|---|
-| `401` | Sesión vencida: pide otra (de app o de tienda). |
+| `401` | Sesión vencida o cerrada desde WhatsApp: enseña el texto y pide otra (de app o de tienda). |
+| `503` | No se pudo comprobar la sesión: reintenta en unos segundos, sin borrarla. |
 | `403` + `reason: "bloqueado"` | El cliente está bloqueado: enseña el texto, sin reintentar. |
 | `409` | El local está cerrado, no recibe pedidos o el pedido ya no se puede pagar. |
 | `429` | Demasiadas peticiones: espera unos segundos. |

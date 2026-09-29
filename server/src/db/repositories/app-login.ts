@@ -54,4 +54,41 @@ const consumeAppLoginCode = async (code: string): Promise<{ estado: 'ok'; phone:
   return { estado: vivo ? 'pendiente' : 'invalido' }
 }
 
-export { createAppLoginCode, verifyAppLoginCode, consumeAppLoginCode }
+/**
+ * «CERRAR SESIÓN» desde WhatsApp (2026-09-29): las sesiones de la app de este
+ * cliente emitidas hasta ahora dejan de valer. Ver
+ * `migration-2026-09-29-cerrar-sesion-de-la-app.sql`.
+ */
+const cerrarSesionesDeLaApp = async (customerId: string): Promise<void> => {
+  const { error } = await db
+    .from('customers')
+    .update({ app_sessions_valid_after: new Date().toISOString() })
+    .eq('id', customerId)
+  if (error) throw new Error(error.message)
+}
+
+/**
+ * Desde cuándo valen las sesiones de la app de este teléfono. `null`: nunca
+ * se cerraron, valen todas. ⚠️ LANZA si la base no responde: `authApp` falla
+ * CERRADO, porque una sesión cerrada que vuelve a abrir cuando la base va lenta
+ * no está cerrada.
+ */
+const sesionesDeLaAppValidasDesde = async (phone: string): Promise<string | null> => {
+  const digitos = String(phone || '').replace(/\D/g, '')
+  if (!digitos) return null
+  const { data, error } = await db
+    .from('customers')
+    .select('app_sessions_valid_after')
+    .eq('phone', digitos)
+    .maybeSingle()
+  if (error) throw new Error(error.message)
+  return data?.app_sessions_valid_after ?? null
+}
+
+export {
+  createAppLoginCode,
+  verifyAppLoginCode,
+  consumeAppLoginCode,
+  cerrarSesionesDeLaApp,
+  sesionesDeLaAppValidasDesde,
+}

@@ -24,7 +24,13 @@ const { handleMarketplaceMessage } = require('../dist/services/marketplace-entry
 
 const SECRET = 'app-v1-test'
 let anterior
-beforeEach(() => { anterior = process.env.JWT_SECRET; process.env.JWT_SECRET = SECRET })
+beforeEach(() => {
+  anterior = process.env.JWT_SECRET
+  process.env.JWT_SECRET = SECRET
+  // `authApp` pregunta si la sesión se cerró desde WhatsApp (2026-09-29): aquí
+  // nunca se cerró. Lo de cerrarla se prueba en `cerrar-sesion-de-la-app.test.js`.
+  vi.spyOn(db, 'sesionesDeLaAppValidasDesde').mockResolvedValue(null)
+})
 afterEach(() => {
   vi.restoreAllMocks()
   if (anterior === undefined) delete process.env.JWT_SECRET

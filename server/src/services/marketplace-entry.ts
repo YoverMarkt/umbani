@@ -70,6 +70,8 @@ export interface MarketplaceEntryDatabase {
    * REMITENTE de WhatsApp. Opcional: el simulador y el canario no lo tienen.
    */
   verifyAppLoginCode?(code: string, phone: string): Promise<boolean>
+  /** «CERRAR SESIÓN» (2026-09-29). ⚠️ ESCRIBE: el canario y el simulador la sustituyen. */
+  cerrarSesionesDeLaApp?(customerId: string): Promise<void>
   /**
    * Los horarios de varios locales de una vez, para marcar cuáles están
    * cerrados en el menú. Opcional: sin ella la lista sale sin marcar, que es
@@ -308,9 +310,23 @@ const vistaDe = (flowState: Record<string, unknown> | null): MarketplaceView => 
  * citan en otros sitios. Que falte uno es, de hecho, la señal que destapó que
  * esta función ya no cabía en la cabeza de nadie.
  */
-const SESION_DE_APP_INICIADA = '✅ Listo: ya iniciaste sesión en la app de Umbani con este número. '
-  + 'Vuelve a la app para seguir.'
+// ⚠️ Con la salida a la vista (2026-09-29): la estafa de «mándame el código que
+// te llegó» abre la app con el número de otro, y quien lo mandó recibe AQUÍ la
+// única señal de que pasó. Por eso dice cómo cortarlo.
+export const SESION_DE_APP_INICIADA = '✅ Listo: iniciaste sesión en la app de Umbani con este número. '
+  + 'Vuelve a la app para seguir.\n\n'
+  + '🔒 ¿No fuiste tú, o alguien te pidió que le enviaras este código? Escribe '
+  + '*CERRAR SESIÓN* y la cerramos al instante.'
 const CODIGO_DE_APP_VENCIDO = '⌛ Ese código ya no es válido. Pide uno nuevo en la app de Umbani.'
+export const SESIONES_DE_APP_CERRADAS = '🔒 Listo: cerramos todas las sesiones de la app de Umbani '
+  + 'abiertas con tu número. Para volver a entrar hace falta un código nuevo, y solo lo puede '
+  + 'confirmar este WhatsApp.\n\n'
+  + 'Si alguien te pidió que le enviaras un código de Umbani, no lo hagas: nosotros nunca te lo '
+  + 'pediremos. Para seguir pidiendo por aquí, escribe *MENÚ*.'
+
+/** «cerrar sesión», «CERRAR SESIÓN», «cierra mis sesiones de la app»… */
+export const esCerrarSesion = (texto: string): boolean => /^(cerrar|cierra|cierren|cierre)\s+(la\s+|las\s+|mis?\s+|todas\s+las\s+)?sesion(es)?(\s+de\s+(la\s+)?app)?[\s.!]*$/i
+  .test(String(texto || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\*/g, '').trim())
 
 /**
  * El código para iniciar sesión en la app (2026-09-28).
@@ -329,6 +345,36 @@ async function atenderCodigoDeLaApp(deps: MarketplaceEntryDeps, text: string, fr
   deps.logger?.log(`📱 [marketplace] código de la app ${valido ? 'verificado' : 'no válido'}`)
   return true
 }
+
+/**
+ * «CERRAR SESIÓN» (2026-09-29): las sesiones de la app de este número dejan de
+ * valer al instante, y los enlaces de tienda se cierran como con MENÚ —salvo el
+ * del local donde un pedido espera su pago—.
+ *
+ * ⚠️ En la misma puerta que el código de la app, y por eso también antes de la
+ * pausa por opciones viejas: cortar un acceso robado no puede esperar 5 minutos.
+ * ⚠️ Falla hacia DECIRLO: si la base no pudo cerrarlas, no se contesta «listo»
+ * —sería mentirle a quien acaba de descubrir que le robaron la sesión—.
+ */
+async function atenderCerrarSesion(deps: MarketplaceEntryDeps, text: string, customerId: string): Promise<boolean> {
+  if (!esCerrarSesion(text) || !deps.database.cerrarSesionesDeLaApp) return false
+  try {
+    await deps.database.cerrarSesionesDeLaApp(customerId)
+  } catch {
+    await deps.send('⚠️ No pudimos cerrar las sesiones ahora mismo. Vuelve a escribir *CERRAR SESIÓN* en un momento.', [])
+      .catch(() => undefined)
+    return true
+  }
+  await deps.database.revokeStorefrontSessionsOnExit?.(customerId).catch(() => 0)
+  await deps.send(SESIONES_DE_APP_CERRADAS, []).catch(() => undefined)
+  deps.logger?.log('🔒 [marketplace] sesiones de la app cerradas desde WhatsApp')
+  return true
+}
+
+/** Lo que es para la APP y no para el chat: su código, o cerrar sus sesiones. */
+const atenderLaApp = async (deps: MarketplaceEntryDeps, text: string, from: string, customerId: string) => (
+  await atenderCodigoDeLaApp(deps, text, from) || atenderCerrarSesion(deps, text, customerId)
+)
 
 /**
  * ¿Está el menú de este cliente en PAUSA por tocar opciones viejas?
@@ -505,8 +551,8 @@ export async function handleMarketplaceMessage(
   // vive en `atenderInsulto`.
   if (!esMarcadorDeComprobante && await atenderInsulto(deps, text, customer.id)) return
 
-  // El código de la app: DESPUÉS de los tres frenos y ANTES del menú.
-  if (await atenderCodigoDeLaApp(deps, text, from)) return
+  // Lo de la app —su código, o CERRAR SESIÓN—: DESPUÉS de los tres frenos y ANTES del menú.
+  if (await atenderLaApp(deps, text, from, customer.id)) return
 
   // ⚠️ A LA VEZ, no una tras otra (2026-09-25): conversación, categorías y el
   // local elegido son lecturas independientes, y cada ida a la base se paga

@@ -46,22 +46,59 @@ export function firmarSesionApp(telefono: string): string {
   return jwt.sign({ role: 'cliente_app', phone: telefono }, secreto(), { audience: AUDIENCIA, expiresIn: DURACION })
 }
 
-/** El teléfono de la sesión, o null si el token no es de la app o no vale. */
-export function leerSesionApp(token: string): string | null {
+/** El teléfono de la sesión y cuándo se emitió, o null si el token no es de la app o no vale. */
+export function leerSesionAppConFecha(token: string): { telefono: string; emitidaMs: number } | null {
   try {
-    const datos = jwt.verify(token, secreto(), { audience: AUDIENCIA }) as { role?: string; phone?: string }
-    return datos?.role === 'cliente_app' && typeof datos.phone === 'string' ? datos.phone : null
+    const datos = jwt.verify(token, secreto(), { audience: AUDIENCIA }) as { role?: string; phone?: string; iat?: number }
+    if (datos?.role !== 'cliente_app' || typeof datos.phone !== 'string') return null
+    return { telefono: datos.phone, emitidaMs: Number(datos.iat) * 1000 }
   } catch {
     return null
   }
 }
 
-/** El teléfono de la sesión de la app, o 401. Lo usan la app del cliente y la del motorizado. */
-export const authApp: RequestHandler = (req, res, next) => {
+/** El teléfono de la sesión, o null si el token no es de la app o no vale. */
+export function leerSesionApp(token: string): string | null {
+  return leerSesionAppConFecha(token)?.telefono ?? null
+}
+
+/**
+ * ¿Se cerró esta sesión desde WhatsApp? (2026-09-29)
+ *
+ * Un token emitido ANTES del último «CERRAR SESIÓN» de ese teléfono ya no vale.
+ * `iat` va en segundos: uno emitido en el mismo segundo del corte cuenta como
+ * anterior, y lo peor que pasa es pedir un código más.
+ */
+export const sesionCerrada = (emitidaMs: number, validasDesde: string | null): boolean => {
+  if (!validasDesde) return false
+  const corte = Date.parse(validasDesde)
+  return Number.isFinite(corte) && !(emitidaMs > corte)
+}
+
+/**
+ * El teléfono de la sesión de la app, o 401. Lo usan la app del cliente y la del motorizado.
+ *
+ * ⚠️ Desde el 2026-09-29 pregunta a la base si la sesión se CERRÓ desde
+ * WhatsApp, y falla CERRADO (503) si la base no responde: una sesión cerrada
+ * que vuelve a abrir cuando la base va lenta no está cerrada.
+ */
+export const authApp: RequestHandler = async (req, res, next) => {
   const cabecera = String(req.headers.authorization || '')
-  const telefono = cabecera.startsWith('Bearer ') ? leerSesionApp(cabecera.slice(7).trim()) : null
-  if (!telefono) return res.status(401).json({ error: 'Inicia sesión otra vez' })
-  ;(req as Request & { telefonoApp?: string }).telefonoApp = telefono
+  const sesion = cabecera.startsWith('Bearer ') ? leerSesionAppConFecha(cabecera.slice(7).trim()) : null
+  if (!sesion) return res.status(401).json({ error: 'Inicia sesión otra vez' })
+
+  // Diferido: este módulo lo importa el menú del marketplace al arrancar.
+  const db = require('../db') as typeof import('../db')
+  let validasDesde: string | null
+  try {
+    validasDesde = await db.sesionesDeLaAppValidasDesde(sesion.telefono)
+  } catch {
+    return res.status(503).json({ error: 'No se pudo comprobar tu sesión. Inténtalo en un momento.' })
+  }
+  if (sesionCerrada(sesion.emitidaMs, validasDesde)) {
+    return res.status(401).json({ error: 'Tu sesión se cerró desde WhatsApp. Inicia sesión otra vez.' })
+  }
+  ;(req as Request & { telefonoApp?: string }).telefonoApp = sesion.telefono
   return next()
 }
 

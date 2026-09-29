@@ -2924,6 +2924,14 @@ create table if not exists public.customers (
 );
 create unique index if not exists uq_customers_phone on public.customers (phone);
 
+-- «CERRAR SESIÓN» desde WhatsApp (2026-09-29): las sesiones de la app emitidas
+-- antes de esta fecha ya no valen. Ver `migration-2026-09-29-cerrar-sesion-de-la-app.sql`.
+alter table public.customers
+  add column if not exists app_sessions_valid_after timestamptz;
+
+comment on column public.customers.app_sessions_valid_after is
+  'Las sesiones de la app emitidas antes de esta fecha ya no valen. La pone CERRAR SESIÓN desde WhatsApp.';
+
 create table if not exists public.business_customers (
   id                uuid primary key default gen_random_uuid(),
   business_id       uuid not null references public.businesses(id) on delete cascade,
