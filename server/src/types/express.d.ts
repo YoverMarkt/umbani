@@ -12,6 +12,8 @@ declare global {
     interface AdminUserClaims {
       role: 'admin'
       email?: string
+      /** Pasó el segundo paso (2026-09-29). Sin esto `authAdmin` no deja pasar. */
+      mfa?: true
     }
 
     // Sesión de la mini app. No es un usuario del panel: el cliente entra con

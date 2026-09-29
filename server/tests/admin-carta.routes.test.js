@@ -38,7 +38,7 @@ afterAll(async () => {
 
 afterEach(() => { vi.restoreAllMocks() })
 
-const token = (role = 'admin') => `Bearer ${jwt.sign({ role, businessId: 'b' }, JWT_SECRET)}`
+const token = (role = 'admin') => `Bearer ${jwt.sign({ role, mfa: true, businessId: 'b' }, JWT_SECRET)}`
 
 const enviar = (fotos, auth = token()) => {
   const formulario = new FormData()

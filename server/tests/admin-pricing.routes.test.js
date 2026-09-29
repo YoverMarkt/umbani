@@ -36,7 +36,7 @@ afterEach(() => {
   else process.env.JWT_SECRET = originalJwtSecret
 })
 
-const adminAuth = () => `Bearer ${jwt.sign({ role: 'admin' }, JWT_SECRET)}`
+const adminAuth = () => `Bearer ${jwt.sign({ role: 'admin', mfa: true }, JWT_SECRET)}`
 
 async function dispatch(method, path, { auth, body = {}, params = {}, query = {} } = {}) {
   const layer = pricingRouter.stack.find(item => (

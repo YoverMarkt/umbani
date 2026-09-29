@@ -40,7 +40,7 @@ async function correr(r, method, path, { headers = {}, body = {}, params = {} } 
 }
 const moto = { id: 'm1', phone: '593900', name: 'Luis', vehicle: null, fleet_business_id: null, active: true, available: false, cash_limit_cents: 15000 }
 const conSesion = () => ({ authorization: `Bearer ${sesion.firmarSesionApp('593900')}` })
-const admin = () => ({ authorization: `Bearer ${jwt.sign({ role: 'admin' }, SECRET)}` })
+const admin = () => ({ authorization: `Bearer ${jwt.sign({ role: 'admin', mfa: true }, SECRET)}` })
 
 describe('la app del motorizado', () => {
   it('sin sesión 401; con sesión pero sin ser motorizado activo 403', async () => {

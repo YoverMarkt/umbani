@@ -136,7 +136,10 @@ export async function mockAdminApi(page: Page) {
   await page.route('**/api/admin/**', async (route) => {
     const path = new URL(route.request().url()).pathname
 
-    if (path === '/api/admin/login') return json(route, { token: 'e2e-admin-token' })
+    // El superadmin entra en dos pasos (2026-09-29): la contraseña da un pase,
+    // y la sesión solo llega con el código.
+    if (path === '/api/admin/login') return json(route, { paso: 'codigo', pase: 'e2e-pase' })
+    if (path === '/api/admin/login/codigo') return json(route, { token: 'e2e-admin-token' })
     if (path === '/api/admin/verify-provider') return json(route, { ok: true, info: 'Canal verificado' })
     if (path === '/api/admin/stats') {
       return json(route, { totalClients: 1, activeClients: 1, suspendedClients: 0, messagesToday: 3 })

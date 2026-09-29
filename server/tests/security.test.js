@@ -73,7 +73,7 @@ describe('middleware de cliente', () => {
 
   it('rechaza un token de administrador en rutas cliente', () => {
     process.env.JWT_SECRET = 'test-secret'
-    const token = jwt.sign({ role: 'admin' }, process.env.JWT_SECRET)
+    const token = jwt.sign({ role: 'admin', mfa: true }, process.env.JWT_SECRET)
     const result = run(token)
     expect(result.nextCalled).toBe(false)
     expect(result.status).toBe(403)

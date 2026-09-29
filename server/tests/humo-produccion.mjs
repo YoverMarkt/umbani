@@ -69,7 +69,7 @@ const avisar = (etiqueta, detalle = '') => {
 }
 
 const token = jwt.sign(
-  { role: 'admin', email: process.env.ADMIN_EMAIL || 'humo@local' },
+  { role: 'admin', mfa: true, email: process.env.ADMIN_EMAIL || 'humo@local' },
   process.env.JWT_SECRET,
   { expiresIn: '5m' },
 )

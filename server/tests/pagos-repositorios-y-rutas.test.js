@@ -152,7 +152,7 @@ async function despachar(method, path, { auth, body = {}, params = {} } = {}) {
   await correr(0)
   return r
 }
-const admin = () => `Bearer ${jwt.sign({ role: 'admin' }, SECRET)}`
+const admin = () => `Bearer ${jwt.sign({ role: 'admin', mfa: true }, SECRET)}`
 
 describe('rutas de Pagos', () => {
   it('sin superadmin no se ve ni se marca nada', async () => {

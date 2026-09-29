@@ -54,7 +54,7 @@ afterEach(() => {
   }
 })
 
-const authorization = () => `Bearer ${jwt.sign({ role: 'admin' }, JWT_SECRET)}`
+const authorization = () => `Bearer ${jwt.sign({ role: 'admin', mfa: true }, JWT_SECRET)}`
 
 async function dispatch(method, path, { auth, body = {}, params = {} } = {}) {
   const layer = clientsRouter.stack.find(item => (

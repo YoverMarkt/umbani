@@ -20,7 +20,7 @@ afterEach(() => {
 })
 
 function authorization(role = 'admin') {
-  return `Bearer ${jwt.sign({ role, businessId: 'business-a' }, JWT_SECRET)}`
+  return `Bearer ${jwt.sign({ role, mfa: true, businessId: 'business-a' }, JWT_SECRET)}`
 }
 
 async function dispatch({ auth, query = {} } = {}) {

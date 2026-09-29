@@ -55,7 +55,7 @@ describe('protección anti fuerza bruta', () => {
       message: { error: 'Demasiados intentos fallidos. Espera 15 minutos.' },
     })
 
-    for (const path of ['/api/admin/login', '/api/client/login']) {
+    for (const path of ['/api/admin/login', '/api/admin/login/configurar', '/api/admin/login/codigo', '/api/client/login']) {
       const route = authRouter.stack.find(layer => layer.route?.path === path)
       expect(route.route.stack).toHaveLength(2)
     }
@@ -87,16 +87,22 @@ describe('POST /api/admin/login', () => {
     })
   })
 
-  it('emite un JWT administrativo válido por siete días', async () => {
+  it('la contraseña sola NO da la sesión: da un pase de 10 minutos para el código', async () => {
+    // Hasta el 2026-09-29 daba aquí una sesión de 7 días. Ahora hace falta el
+    // segundo paso: ver `superadmin-dos-pasos.test.js`.
+    vi.spyOn(db, 'leerSegundoPasoDelAdmin')
+      .mockResolvedValue({ clave: 'JBSWY3DPEHPK3PXP', pendiente: null, pendienteDesde: null, ultimoPaso: -1 })
     const response = await dispatch('/api/admin/login', {
       email: 'admin@example.com',
       password: 'admin-password',
     })
-    const decoded = jwt.verify(response.body.token, process.env.JWT_SECRET)
+    const decoded = jwt.verify(response.body.pase, process.env.JWT_SECRET)
 
     expect(response.status).toBe(200)
-    expect(decoded).toMatchObject({ role: 'admin', email: 'admin@example.com' })
-    expect(decoded.exp - decoded.iat).toBe(7 * 24 * 60 * 60)
+    expect(response.body.token).toBeUndefined()
+    expect(response.body.paso).toBe('codigo')
+    expect(decoded).toMatchObject({ role: 'admin_2fa', email: 'admin@example.com', paso: 'codigo' })
+    expect(decoded.exp - decoded.iat).toBe(10 * 60)
   })
 })
 

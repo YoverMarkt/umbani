@@ -49,6 +49,12 @@ export const authAdmin: RequestHandler = (req, res, next) => {
     if (!decoded || decoded.role !== 'admin') {
       return res.status(403).json({ error: 'Solo admins' })
     }
+    // ⚠️ Solo la sesión que pasó el SEGUNDO PASO (2026-09-29). Las de antes
+    // —7 días, solo contraseña— dejan de valer al desplegar, y es a propósito.
+    // 401 y no 403: el panel lo lee como «sesión vencida» y vuelve al login.
+    if (decoded.mfa !== true) {
+      return res.status(401).json({ error: 'Tu sesión venció. Entra de nuevo con tu código.' })
+    }
     req.user = decoded as Express.AdminUserClaims
     next()
   } catch {

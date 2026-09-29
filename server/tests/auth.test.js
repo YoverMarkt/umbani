@@ -53,7 +53,7 @@ describe('autenticación administrativa', () => {
   })
 
   it('acepta únicamente un JWT administrativo válido', () => {
-    const valid = run(auth.authAdmin, sign({ role: 'admin', email: 'admin@example.com' }))
+    const valid = run(auth.authAdmin, sign({ role: 'admin', mfa: true, email: 'admin@example.com' }))
     const client = run(auth.authAdmin, sign({ role: 'client', businessId: 'business-a' }))
 
     expect(valid.nextCalled).toBe(true)
