@@ -189,6 +189,37 @@ async function sendTyping(
   }
 }
 
+/**
+ * SOLO el visto azul, sin «escribiendo…» (2026-09-28).
+ *
+ * Lo usa el número de Umbani. Su menú contesta en menos de un segundo, así que
+ * el «escribiendo…» solo se notaba cuando NO había respuesta —el anti-eco, la
+ * pausa por opciones viejas, una ráfaga de fotos—, y ahí WhatsApp lo deja
+ * colgado ~25 s sin que exista forma de retirarlo. El dueño lo vio probando y
+ * parecía que el bot se había roto. Los locales con canal propio siguen con
+ * `sendTyping`: allí piensa la IA y el indicador sí dice algo verdadero.
+ *
+ * Best-effort como `sendTyping`: nunca lanza.
+ */
+async function sendReadReceipt(
+  business: WhatsAppBusiness,
+  inboundId?: string | null,
+): Promise<void> {
+  let canal: WhatsAppBusiness
+  try {
+    canal = await conCanalDePlataforma(business)
+    if (providerFor(canal) !== 'ycloud' || !inboundId) return
+  } catch {
+    return
+  }
+  try {
+    await ycloud.markAsRead(ycloudKeyFor(canal), inboundId)
+  } catch (error) {
+    // Solo el mensaje resumido, como en `sendTyping`: nunca response.data.
+    console.warn('⚠️  [ycloud] markAsRead:', errorDetail(error))
+  }
+}
+
 async function sendText(
   business: WhatsAppBusiness,
   to: string,
@@ -436,6 +467,6 @@ async function sendLinkButton(
 }
 
 export {
-  sendTyping, sendText, sendImage, sendVideo,
+  sendTyping, sendReadReceipt, sendText, sendImage, sendVideo,
   sendInteractive, sendLinkButton, sendLocation,
 }

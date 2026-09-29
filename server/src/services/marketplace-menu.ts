@@ -178,9 +178,22 @@ const ACUSE = '🙂 ¡Listo! Cuando quieras pedir, elige una categoría y te lle
  */
 export const OPCION_ANTERIOR = '[opción anterior]'
 
+/**
+ * La ADVERTENCIA del primer toque viejo (2026-09-28, decisión del dueño).
+ *
+ * Antes solo avisaba —«aquí van las de ahora»— y el cliente seguía tocando
+ * listas viejas: la segunda vez el anti-eco callaba y el chat parecía colgado.
+ * Ahora dice lo que pasa si lo repite, porque lo siguiente es la pausa.
+ *
+ * ⚠️ «de ESTE mensaje»: la advertencia trae su propia lista, y eso convierte
+ * en vieja la que el cliente tenía justo encima aunque fuera idéntica.
+ */
+export const ADVERTENCIA_OPCION_VIEJA = '⚠️ Esa opción era de un mensaje anterior. '
+  + 'Usa solo las opciones de *este* mensaje: si vuelves a tocar una vieja, no '
+  + 'podrás pedir durante 5 minutos.'
+
 const ADJUNTOS = new Map<string, string>([
-  ['[opcion anterior]', '✋ Esa opción era de un mensaje anterior: aquí van las de ahora. '
-    + 'Si prefieres empezar de nuevo, escribe *MENÚ*.'],
+  ['[opcion anterior]', ADVERTENCIA_OPCION_VIEJA],
   ['[foto]', '📷 Recibí tu foto, pero por aquí no me sirve todavía.'],
   ['[nota de voz]', '🎤 Recibí tu nota de voz, pero por aquí todavía no puedo escucharla.'],
   ['[ubicacion]', '📍 Recibí tu ubicación, pero ahora mismo no me hace falta.'],
@@ -316,6 +329,10 @@ const cabecera = (saludar: boolean | 'vuelta'): string => (
  */
 export const textoDeAdjuntoRecibido = (mensaje: string): string | null => {
   const clave = normalizar(mensaje)
+  // ⚠️ También dentro de un local (2026-09-28): el siguiente toque viejo es la
+  // pausa, y nadie puede llegar a ella sin haber leído la advertencia. Hasta
+  // hoy aquí salía el recordatorio a secas, sin decir que la opción era vieja.
+  if (clave === '[opcion anterior]') return ADVERTENCIA_OPCION_VIEJA
   if (clave === '[foto]') {
     return '📷 Recibí tu foto, pero todavía no es un comprobante: aún no has '
       + 'hecho tu pedido.'
@@ -754,6 +771,25 @@ export function avisoDeSilencio(hasta: string, ahora = new Date()): string {
     + `un rato.\n\nVuelve a escribirnos desde ${cuando} 🙏\n\n`
     + 'Si tienes un pedido en curso, sus avisos te siguen llegando por aquí, y la '
     + 'foto de tu comprobante la recibimos igual.'
+}
+
+/**
+ * Lo que se le dice UNA vez al que vuelve a tocar una opción vieja después de
+ * la advertencia (2026-09-28): 5 minutos sin menú. Lo que llegue mientras
+ * tanto no recibe respuesta —MENÚ tampoco la levanta—, salvo el comprobante
+ * de un pedido ya hecho, que se atiende igual.
+ */
+export function avisoDePausaPorOpcionesViejas(hasta: string): string {
+  const fin = new Date(hasta)
+  const cuando = Number.isNaN(fin.getTime())
+    ? 'dentro de 5 minutos'
+    : `desde las ${hora12(new Intl.DateTimeFormat('en-GB', {
+      timeZone: ZONA, hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+    }).format(fin))}`
+  return '⏳ Volviste a tocar una opción de un mensaje anterior, así que '
+    + 'pausamos tu pedido por el chat durante 5 minutos.\n\n'
+    + `Podrás pedir de nuevo ${cuando} 🙏\n\n`
+    + 'Si ya hiciste un pedido, la foto de tu comprobante la recibimos igual.'
 }
 
 // ── Insultos (2026-09-27) ─────────────────────────────────────────────────

@@ -105,6 +105,10 @@ function dependenciasDelSimulador(
       // que es el texto que hay que poder revisar, y nunca se bloquea.
       claimPlatformBlockState: async () => ({ bloqueado: false }),
       registerInsult: async () => ({ accion: 'advertido' }),
+      // ⚠️ Ni la pausa por opciones viejas (2026-09-28), por lo mismo: se
+      // enseña la ADVERTENCIA y nunca se pausa al superadmin.
+      anotarAvisoDeOpcionVieja: async () => undefined,
+      pausarElMenu: async () => false,
     } as unknown as MarketplaceEntryDeps['database'],
     issueLink: link.issueStorefrontLink,
     // ⚠️ Aquí SÍ se aplana a títulos, y a propósito: el simulador pinta las

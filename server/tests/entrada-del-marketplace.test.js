@@ -483,6 +483,11 @@ describe('guardián: el orden de las puertas', () => {
       // quien insulta a ráfagas no se lo puede saltar— y ANTES que MENÚ —«menú,
       // hijueputa» sigue siendo un insulto—.
       'atenderInsulto(deps, text',
+      // La pausa por opciones viejas (2026-09-28) y el toque que la provoca:
+      // ANTES que MENÚ, que no la levanta —una pausa que se salta escribiendo
+      // una palabra no frena a nadie—. Decisión del dueño.
+      'menuPausado(deps, conversation',
+      'pausarSiReincide(deps, customer.id',
       // MENÚ, que es la salida de cualquier sitio.
       'atenderComandoMenu(deps, text',
       // Los marcadores del webhook, detrás de MENÚ.

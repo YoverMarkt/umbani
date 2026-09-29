@@ -111,6 +111,7 @@ interface CanalDeSalida {
     message: { body: string; url: string; label: string; footer?: string | null },
   ): Promise<boolean>
   sendTyping(business: unknown, inboundId?: string | null): Promise<void>
+  sendReadReceipt(business: unknown, inboundId?: string | null): Promise<void>
 }
 
 /** El marcador que `conCanalDePlataforma` cambia por las credenciales reales. */
@@ -250,16 +251,22 @@ export const enviarEnlacePorLaPlataforma = async (
 }
 
 /**
- * El visto azul y el «escribiendo…» del número de Umbani.
+ * El visto azul del número de Umbani.
  *
- * ⚠️ El marketplace NO los mandaba: `sendTyping` —que hace las dos cosas— solo
+ * ⚠️ El marketplace NO lo mandaba: `sendTyping` —que hace las dos cosas— solo
  * lo llamaba `bot-entry`, el camino de los negocios con canal propio. Quien
  * escribía a Umbani veía su mensaje con un solo tic hasta que llegaba la
  * respuesta, que en un chat de venta se lee como «no me están leyendo».
  *
- * ⚠️ Best-effort de verdad: `sendTyping` no lanza —resuelve el canal dentro de
- * su propio `try` y usa `allSettled`—, pero se envuelve igual. Ningún adorno
- * puede impedir que se conteste.
+ * ⚠️ SIN «escribiendo…» desde el 2026-09-28 (`sendReadReceipt`). Se ponía al
+ * recibir el mensaje, ANTES de saber si habría respuesta, y cuando no la había
+ * —el anti-eco, la pausa por opciones viejas— WhatsApp lo dejaba colgado ~25 s.
+ * El dueño lo vio probando: «el bot se queda escribiendo y nada». El menú
+ * contesta en menos de un segundo, así que no se pierde nada.
+ *
+ * ⚠️ Best-effort de verdad: `sendReadReceipt` no lanza —resuelve el canal
+ * dentro de su propio `try`—, pero se envuelve igual. Ningún adorno puede
+ * impedir que se conteste.
  */
 export const marcarLeidoPorLaPlataforma = async (
   inboundId?: string | null,
@@ -267,6 +274,6 @@ export const marcarLeidoPorLaPlataforma = async (
   if (!inboundId) return
   const whatsapp = require('../integrations/whatsapp') as CanalDeSalida
   try {
-    await whatsapp.sendTyping(MARCADOR, inboundId)
+    await whatsapp.sendReadReceipt(MARCADOR, inboundId)
   } catch { /* el visto azul nunca puede costar la respuesta */ }
 }

@@ -19,13 +19,21 @@ import {
   ADVERTENCIA_POR_INSULTOS,
   avisoDeBloqueoPorInsultos,
   TE_HEMOS_DESBLOQUEADO,
+  OPCION_ANTERIOR,
+  avisoDePausaPorOpcionesViejas,
   type MarketplaceBusiness,
   type MarketplaceCategory,
   type MarketplaceReply,
   type MarketplaceView,
 } from './marketplace-menu'
 import { isOutsideHours, proximaApertura } from './schedule'
-import { enviosDelTurno, leerToque } from './marketplace-envio'
+import {
+  enviosDelTurno,
+  leerToque,
+  menuEnPausa,
+  queHacerConElToqueViejo,
+  PAUSA_POR_OPCIONES_VIEJAS_MS,
+} from './marketplace-envio'
 import { contieneInsulto } from '../lib/malas-palabras'
 import type { ScheduleRecord } from './schedule'
 import {
@@ -96,6 +104,10 @@ export interface MarketplaceEntryDatabase {
     /** La huella de la última respuesta y cuándo salió. */
     last_reply_hash?: string | null
     last_reply_at?: string | null
+    /** Cuándo se le advirtió por tocar una opción vieja (2026-09-28). */
+    stale_tap_warned_at?: string | null
+    /** Hasta cuándo no se le atiende el menú. */
+    menu_paused_until?: string | null
   } | null>
   advanceConversation(
     customerId: string,
@@ -201,6 +213,13 @@ export interface MarketplaceEntryDatabase {
    */
   marcarUltimaLista?(customerId: string, marca: string): Promise<boolean>
   anotarUltimaRespuesta?(customerId: string, huella: string): Promise<void>
+  /**
+   * Tocar opciones viejas tiene consecuencia (2026-09-28): la advertencia se
+   * anota, y el segundo toque pausa el menú. ⚠️ ESCRIBEN: el canario y el
+   * simulador las sustituyen. Sin `pausarElMenu` nunca se pausa: se advierte.
+   */
+  anotarAvisoDeOpcionVieja?(customerId: string): Promise<void>
+  pausarElMenu?(customerId: string, hasta: string): Promise<boolean>
 }
 
 export interface MarketplaceEntryDeps {
@@ -309,6 +328,87 @@ async function atenderCodigoDeLaApp(deps: MarketplaceEntryDeps, text: string, fr
     .catch(() => { /* la app verá el resultado igual al preguntar */ })
   deps.logger?.log(`📱 [marketplace] código de la app ${valido ? 'verificado' : 'no válido'}`)
   return true
+}
+
+/**
+ * ¿Está el menú de este cliente en PAUSA por tocar opciones viejas?
+ * (2026-09-28)
+ *
+ * Quien volvió a tocar una opción vieja después de la advertencia no tiene
+ * menú durante 5 minutos: ya se le dijo una vez hasta cuándo, y lo demás es
+ * silencio. Decisión del dueño, como la regla de Luka que la sostiene.
+ *
+ * ⚠️ Se consulta ANTES que MENÚ, y a propósito: una pausa que se salta
+ * escribiendo una palabra no frena a nadie.
+ * ⚠️ EL COMPROBANTE SÍ pasa, igual que con el techo: quien ya pidió y manda
+ * la foto de su pago no es a quien se está frenando.
+ */
+function menuPausado(
+  deps: MarketplaceEntryDeps,
+  conversation: { menu_paused_until?: string | null } | null,
+  esMarcadorDeComprobante: boolean,
+): boolean {
+  if (esMarcadorDeComprobante || !menuEnPausa(conversation?.menu_paused_until)) return false
+  deps.logger?.log('⏳ [marketplace] menú en pausa por opciones viejas: no se responde')
+  return true
+}
+
+/**
+ * El segundo toque viejo con la advertencia vigente: 5 minutos sin menú
+ * (2026-09-28). Devuelve si pausó, y entonces el turno acaba aquí. El primero
+ * no pasa por aquí: su ADVERTENCIA repinta lo de ahora como siempre, y
+ * `conLaAdvertenciaAnotada` la apunta.
+ *
+ * ⚠️ El aviso sale ANTES de guardar la pausa. Al revés, un envío que falla
+ * dejaría al cliente pausado sin saberlo —el reintento del webhook ya lo
+ * encontraría en pausa y callaría—, que es justo el chat mudo que el dueño
+ * vio y que esto viene a arreglar. Si lo que falla es guardar, se le avisó de
+ * una pausa que no llega: lo peor es que pueda pedir antes.
+ *
+ * Sin `pausarElMenu` (el canario, el simulador) nunca se pausa: se advierte.
+ */
+async function pausarSiReincide(
+  deps: MarketplaceEntryDeps,
+  customerId: string,
+  advertidoEn: string | null | undefined,
+): Promise<boolean> {
+  if (!deps.database.pausarElMenu || queHacerConElToqueViejo(advertidoEn) !== 'pausar') return false
+  const hasta = new Date(Date.now() + PAUSA_POR_OPCIONES_VIEJAS_MS).toISOString()
+  await deps.send(avisoDePausaPorOpcionesViejas(hasta), [])
+  const pausado = await deps.database.pausarElMenu(customerId, hasta).catch(() => false)
+  deps.logger?.log(pausado
+    ? '⏳ [marketplace] segundo toque viejo: menú en pausa 5 minutos'
+    : '⚠️ [marketplace] segundo toque viejo: no se pudo guardar la pausa')
+  return true
+}
+
+/**
+ * Los envíos de un turno con toque viejo, que anotan la ADVERTENCIA en cuanto
+ * sale la primera respuesta.
+ *
+ * ⚠️ DESPUÉS de mandar, como la huella de #420: si el envío falla y el webhook
+ * reintenta, el reintento no puede pausar a quien nunca leyó la advertencia.
+ * La primera respuesta de un toque viejo ES la advertencia —con las opciones
+ * de ahora—, venga del menú, del local o de la confirmación de reinicio.
+ */
+function conLaAdvertenciaAnotada(
+  deps: MarketplaceEntryDeps,
+  customerId: string,
+): MarketplaceEntryDeps {
+  const anotar = deps.database.anotarAvisoDeOpcionVieja
+  if (!anotar) return deps
+  const enviar = deps.send
+  let pendiente = true
+  return {
+    ...deps,
+    send: async (reply, options, marca) => {
+      await enviar(reply, options, marca)
+      if (!pendiente) return
+      pendiente = false
+      // Falla ABIERTO: sin la advertencia anotada, lo peor es advertir otra vez.
+      await anotar(customerId).catch(() => undefined)
+    },
+  }
 }
 
 export async function handleMarketplaceMessage(
@@ -443,7 +543,8 @@ export async function handleMarketplaceMessage(
   // Monster Pizza. Ver `marketplace-envio.ts`.
   //
   // ⚠️ Va DESPUÉS del bloqueo y del techo: a quien está silenciado no se le
-  // contesta nada, tampoco el aviso.
+  // contesta nada, tampoco el aviso. La PAUSA, antes que MENÚ: `menuPausado`.
+  if (menuPausado(deps, conversation, esMarcadorDeComprobante)) return
   const toque = leerToque(text, conversation?.menu_mark)
   if (toque.vieja) deps.logger?.log('✋ [marketplace] toque en una lista vieja: no se ejecuta')
   text = toque.texto
@@ -458,6 +559,10 @@ export async function handleMarketplaceMessage(
       at: conversation?.last_reply_at,
     }),
   }
+
+  // Tocar opciones viejas tiene consecuencia (2026-09-28): `pausarSiReincide`.
+  if (toque.vieja && await pausarSiReincide(deps, customer.id, conversation?.stale_tap_warned_at)) return
+  if (toque.vieja) deps = conLaAdvertenciaAnotada(deps, customer.id)
   const { send } = deps
 
   // Un marketplace sin un solo local disponible no puede ofrecer nada, y una
@@ -1267,8 +1372,14 @@ async function atenderCandado(
     // espera. Si una llega hasta aquí en ese estado es porque el buzón no pudo
     // procesarla, y decirle «esto no es un comprobante» sería lo contrario de
     // la verdad. Esos dos casos conservan su mensaje intacto.
-    const adjunto = contexto.estadoDeLaConversacion !== 'esperando_comprobante'
-      && contexto.estadoDeLaConversacion !== 'pago_en_revision'
+    //
+    // ⚠️ El toque viejo SÍ lleva su advertencia en esos dos estados
+    // (2026-09-28): lo que se protege ahí es la FOTO, que es lo esperado. Una
+    // opción vieja no lo es, y el siguiente toque viejo pausa el menú: nadie
+    // puede llegar a la pausa sin haber leído antes la advertencia.
+    const adjunto = text === OPCION_ANTERIOR
+      || (contexto.estadoDeLaConversacion !== 'esperando_comprobante'
+        && contexto.estadoDeLaConversacion !== 'pago_en_revision')
       ? textoDeAdjuntoRecibido(text)
       : null
     const conAviso = adjunto
