@@ -892,6 +892,17 @@ const RESPUESTA_AL_INICIAR: Record<string, { status: number; error: string }> = 
   ya_pagado: { status: 409, error: 'Este pedido ya está pagado' },
   no_cobrable: { status: 409, error: 'Este pedido ya no se puede pagar' },
   demasiados_intentos: { status: 429, error: 'Demasiados intentos de pago. Espera un rato o elige otro método' },
+  // Los frenos contra tarjetas robadas (2026-09-29). La tienda no deja cambiar
+  // el método de un pedido ya hecho: por eso se dice que lo pida de nuevo.
+  tarjeta_apagada: {
+    status: 403,
+    error: 'Por seguridad, el pago con tarjeta está desactivado 24 horas para tu número tras varios '
+      + 'intentos rechazados. Vuelve al menú y pide de nuevo pagando en efectivo o por transferencia.',
+  },
+  sobre_el_tope: {
+    status: 409,
+    error: 'Con tarjeta el máximo por pedido es $150. Vuelve al menú y pide de nuevo pagando en efectivo o por transferencia.',
+  },
   fallo_proveedor: { status: 502, error: 'No pudimos abrir el pago con tarjeta. Inténtalo de nuevo' },
 }
 

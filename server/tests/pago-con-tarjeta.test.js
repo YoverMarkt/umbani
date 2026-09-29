@@ -305,6 +305,8 @@ describe('iniciar un cobro', () => {
     const casos = {
       not_found: 'no_encontrado', already_paid: 'ya_pagado', not_payable: 'no_cobrable',
       too_many_attempts: 'demasiados_intentos', card_unavailable: 'no_disponible', not_card: 'no_es_tarjeta',
+      // Los frenos contra tarjetas robadas (2026-09-29).
+      card_blocked: 'tarjeta_apagada', over_card_limit: 'sobre_el_tope',
     }
     for (const [result, resultado] of Object.entries(casos)) {
       const payphone = payphoneFalso()

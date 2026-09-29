@@ -7387,3 +7387,154 @@ end;
 $registro$;
 
 select '✅ registro de dinero: quién (base, sistema o la persona), qué cambió, sin la clave, sin editar ni borrar, y sobrevive al local' as resultado;
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- FRENOS CONTRA TARJETAS ROBADAS (2026-09-29)
+-- ════════════════════════════════════════════════════════════════════════════
+do $frenos$
+declare
+  v_local   uuid;
+  v_barato  uuid;
+  v_caro    uuid;
+  v_cliente uuid;
+  v_otro    uuid;
+  v_pedido  uuid;
+  v_barato_pedido uuid;
+  v_r       jsonb;
+  v_error   text;
+  v_i       integer;
+begin
+  insert into businesses (slug, name, type, whatsapp_provider, whatsapp_number,
+    ycloud_number, takes_orders, storefront_enabled, card_mode)
+  values ('verif-frenos', 'Frenos de tarjeta', 'pizzería', 'ycloud',
+    '+593900888001', '+593900888001', true, true, 'pruebas')
+  returning id into v_local;
+  insert into public.business_payment_methods (business_id, method_code, enabled)
+  values (v_local, 'efectivo', true)
+  on conflict (business_id, method_code) do update set enabled = true;
+  insert into products (business_id, name, price) values (v_local, 'Pizza', 3.50) returning id into v_barato;
+  insert into products (business_id, name, price) values (v_local, 'Banquete', 151) returning id into v_caro;
+  insert into public.customers (phone) values ('593900888100') returning id into v_cliente;
+  insert into public.customers (phone) values ('593900888200') returning id into v_otro;
+
+  -- ── 1. El tope: $150 por pedido con tarjeta, en la PUERTA REAL del alta ────
+  v_error := null;
+  begin
+    perform public.create_storefront_order(v_local, v_cliente, '593900888100', 'Ana', null, 'pickup',
+      jsonb_build_array(jsonb_build_object('product_id', v_caro, 'quantity', 1)), null, 'tarjeta');
+  exception when others then v_error := sqlerrm;
+  end;
+  if v_error is null or v_error not like 'Con tarjeta el máximo por pedido es $150.00%' then
+    raise exception 'un pedido con tarjeta de $151 se creó (o con otro mensaje): %', v_error;
+  end if;
+  -- …y el alta se deshizo ENTERA: no queda un pedido esperando un pago imposible.
+  if exists (select 1 from orders where business_id = v_local) then
+    raise exception 'el pedido por encima del tope quedó creado a medias';
+  end if;
+  -- El mismo banquete en efectivo, sí.
+  perform public.create_storefront_order(v_local, v_cliente, '593900888100', 'Ana', null, 'pickup',
+    jsonb_build_array(jsonb_build_object('product_id', v_caro, 'quantity', 1)), null, 'efectivo');
+  -- Y con tarjeta por debajo del tope, también.
+  v_r := public.create_storefront_order(v_local, v_cliente, '593900888100', 'Ana', null, 'pickup',
+    jsonb_build_array(jsonb_build_object('product_id', v_barato, 'quantity', 1)), null, 'tarjeta');
+  v_pedido := (v_r ->> 'id')::uuid;
+
+  -- ── 2. Cinco intentos por HORA y por CLIENTE, entre todos sus pedidos ──────
+  -- Un cliente solo tiene UN pedido esperando pago a la vez, así que quien
+  -- prueba tarjetas lo hace en pedidos SUCESIVOS: cuatro ya vencidos, con su
+  -- intento cada uno, más el de este = cinco.
+  for v_i in 1..4 loop
+    insert into orders (business_id, customer_id, contact_phone, source, status, subtotal, total, payment_method)
+    values (v_local, v_cliente, '593900888100', 'manual', 'expirado', 3.50, 3.50, 'tarjeta')
+    returning id into v_barato_pedido;
+    insert into payments (business_id, order_id, environment, client_transaction_id, amount_cents, status)
+    values (v_local, v_barato_pedido, 'pruebas', 'freno' || v_i || replace(gen_random_uuid()::text, '-', ''), 350, 'caducado');
+  end loop;
+  if public.start_card_payment(v_local, v_pedido, '593900888100', 'pruebas') ->> 'result' <> 'ok' then
+    raise exception 'el quinto intento del cliente no pasó';
+  end if;
+  if public.start_card_payment(v_local, v_pedido, '593900888100', 'pruebas') ->> 'result' <> 'too_many_attempts' then
+    raise exception 'el sexto intento en una hora, repartido en pedidos, pasó';
+  end if;
+  -- Otro cliente no hereda el freno de este.
+  v_r := public.create_storefront_order(v_local, v_otro, '593900888200', 'Bea', null, 'pickup',
+    jsonb_build_array(jsonb_build_object('product_id', v_barato, 'quantity', 1)), null, 'tarjeta');
+  if public.start_card_payment(v_local, (v_r ->> 'id')::uuid, '593900888200', 'pruebas') ->> 'result' <> 'ok' then
+    raise exception 'el freno de un cliente frenó a otro';
+  end if;
+
+  -- ── 3. Tres rechazos en 24 h apagan la tarjeta 24 h ───────────────────────
+  -- Pasada la hora de los intentos, para que lo que se mida sea el rechazo.
+  update payments set created_at = now() - interval '2 hours'
+   where order_id in (select id from orders where customer_id = v_cliente);
+  if public.tarjeta_apagada_para(v_otro) then
+    raise exception 'la tarjeta nació apagada';
+  end if;
+  update payments set status = 'rechazado', updated_at = now()
+   where id in (select p.id from payments p join orders o on o.id = p.order_id
+                 where o.customer_id = v_cliente and o.status = 'expirado' order by p.client_transaction_id limit 2);
+  if public.tarjeta_apagada_para(v_cliente) then
+    raise exception 'dos rechazos apagaron la tarjeta';
+  end if;
+  -- Un rechazo de hace más de 24 h no cuenta…
+  update payments set status = 'rechazado', updated_at = now() - interval '25 hours'
+   where id = (select p.id from payments p join orders o on o.id = p.order_id
+                where o.customer_id = v_cliente and o.status = 'expirado' and p.status = 'caducado'
+                order by p.client_transaction_id limit 1);
+  if public.tarjeta_apagada_para(v_cliente) then
+    raise exception 'un rechazo de hace más de 24 h contó';
+  end if;
+  -- …los caducados (cancelar sin meter tarjeta) tampoco…
+  if (select count(*) from payments p join orders o on o.id = p.order_id
+       where o.customer_id = v_cliente and p.status = 'caducado') = 0 then
+    raise exception 'la prueba se quedó sin un caducado que comprobar';
+  end if;
+  -- …y el tercero de hoy, sí.
+  update payments set status = 'rechazado', updated_at = now()
+   where id = (select p.id from payments p join orders o on o.id = p.order_id
+                where o.customer_id = v_cliente and o.status = 'expirado' and p.status = 'caducado'
+                order by p.client_transaction_id limit 1);
+  if not public.tarjeta_apagada_para(v_cliente) then
+    raise exception 'tres rechazos en 24 h no apagaron la tarjeta';
+  end if;
+  -- El cobro del pedido con tarjeta que ya tenía, no arranca…
+  if public.start_card_payment(v_local, v_pedido, '593900888100', 'pruebas') ->> 'result' <> 'card_blocked' then
+    raise exception 'con la tarjeta apagada, el cobro arrancó: %',
+      public.start_card_payment(v_local, v_pedido, '593900888100', 'pruebas');
+  end if;
+  -- …y vencido ese, no puede crear otro con tarjeta, y se le dice por qué…
+  update orders set status = 'expirado' where id = v_pedido;
+  v_error := null;
+  begin
+    perform public.create_storefront_order(v_local, v_cliente, '593900888100', 'Ana', null, 'pickup',
+      jsonb_build_array(jsonb_build_object('product_id', v_barato, 'quantity', 1)), null, 'tarjeta');
+  exception when others then v_error := sqlerrm;
+  end;
+  if v_error is null or v_error not like 'Por seguridad, el pago con tarjeta está desactivado 24 horas%' then
+    raise exception 'con la tarjeta apagada se creó un pedido con tarjeta: %', v_error;
+  end if;
+  -- …pero en efectivo pide sin problema.
+  perform public.create_storefront_order(v_local, v_cliente, '593900888100', 'Ana', null, 'pickup',
+    jsonb_build_array(jsonb_build_object('product_id', v_barato, 'quantity', 1)), null, 'efectivo');
+
+  -- ── 4. El cinturón: un pedido por encima del tope que llegara por otro camino ─
+  alter table orders disable trigger orders_tope_de_tarjeta;
+  update orders set total = 200 where id = (v_r ->> 'id')::uuid;
+  alter table orders enable trigger orders_tope_de_tarjeta;
+  delete from payments where order_id = (v_r ->> 'id')::uuid;
+  if public.start_card_payment(v_local, (v_r ->> 'id')::uuid, '593900888200', 'pruebas') ->> 'result' <> 'over_card_limit' then
+    raise exception 'el cobro de un pedido de $200 con tarjeta arrancó';
+  end if;
+
+  delete from payments where business_id = v_local;
+  delete from sales where business_id = v_local;
+  delete from orders where business_id = v_local;
+  delete from marketplace_conversations where customer_id in (v_cliente, v_otro);
+  delete from business_customers where business_id = v_local;
+  delete from business_payment_methods where business_id = v_local;
+  delete from customers where id in (v_cliente, v_otro);
+  delete from businesses where id = v_local;
+end;
+$frenos$;
+
+select '✅ frenos de tarjeta: tope de $150 en la puerta real (sin pedidos a medias), 5 intentos por hora y cliente, y 3 rechazos en 24 h la apagan' as resultado;

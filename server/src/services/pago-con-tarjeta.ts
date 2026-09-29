@@ -68,7 +68,8 @@ export interface DependenciasDelCobro {
 export type ResultadoAlIniciar =
   | { resultado: 'ok'; url: string }
   | { resultado: 'no_disponible' | 'no_encontrado' | 'no_es_tarjeta' | 'ya_pagado'
-    | 'no_cobrable' | 'demasiados_intentos' | 'fallo_proveedor' }
+    | 'no_cobrable' | 'demasiados_intentos' | 'fallo_proveedor'
+    | 'tarjeta_apagada' | 'sobre_el_tope' }
 
 export type ResultadoAlConfirmar =
   | 'aprobado' | 'rechazado' | 'pendiente' | 'devolver' | 'no_confirmado' | 'no_encontrado' | 'final'
@@ -247,6 +248,9 @@ export function crearPagosConTarjeta(deps: DependenciasDelCobro) {
         case 'already_paid': return { resultado: 'ya_pagado' }
         case 'not_payable': return { resultado: 'no_cobrable' }
         case 'too_many_attempts': return { resultado: 'demasiados_intentos' }
+        // Los frenos contra tarjetas robadas (2026-09-29).
+        case 'card_blocked': return { resultado: 'tarjeta_apagada' }
+        case 'over_card_limit': return { resultado: 'sobre_el_tope' }
         case 'card_unavailable': return { resultado: 'no_disponible' }
         default: return { resultado: 'no_disponible' }
       }
@@ -393,8 +397,8 @@ export function metodoTarjeta(config: ConfiguracionPayphone) {
     code: 'tarjeta',
     label: 'Tarjeta de crédito o débito',
     help_text: config.modo === 'pruebas'
-      ? 'MODO DE PRUEBA: no se cobra dinero real.'
-      : 'Visa, Mastercard o Diners, en la página segura de PayPhone.',
+      ? 'MODO DE PRUEBA: no se cobra dinero real. Hasta $150 por pedido.'
+      : 'Visa, Mastercard o Diners, en la página segura de PayPhone. Hasta $150 por pedido.',
     is_prepaid: true,
     requires_proof: false,
     // La tienda pinta una franja «PAGOS DE PRUEBA» con esto: en pruebas no se
