@@ -1172,11 +1172,13 @@ export type Database = {
           last_reply_hash: string | null
           last_reply_message_id: string | null
           menu_mark: string | null
+          menu_paused_until: string | null
           muted_until: string | null
           reply_count: number
           reply_window_start: string | null
           selected_business_id: string | null
           shopping_locked: boolean
+          stale_tap_warned_at: string | null
           updated_at: string
           version: number
         }
@@ -1192,11 +1194,13 @@ export type Database = {
           last_reply_hash?: string | null
           last_reply_message_id?: string | null
           menu_mark?: string | null
+          menu_paused_until?: string | null
           muted_until?: string | null
           reply_count?: number
           reply_window_start?: string | null
           selected_business_id?: string | null
           shopping_locked?: boolean
+          stale_tap_warned_at?: string | null
           updated_at?: string
           version?: number
         }
@@ -1212,11 +1216,13 @@ export type Database = {
           last_reply_hash?: string | null
           last_reply_message_id?: string | null
           menu_mark?: string | null
+          menu_paused_until?: string | null
           muted_until?: string | null
           reply_count?: number
           reply_window_start?: string | null
           selected_business_id?: string | null
           shopping_locked?: boolean
+          stale_tap_warned_at?: string | null
           updated_at?: string
           version?: number
         }

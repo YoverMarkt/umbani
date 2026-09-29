@@ -12200,6 +12200,18 @@ comment on column public.marketplace_conversations.menu_mark is
 comment on column public.marketplace_conversations.last_reply_hash is
   'Huella de la última respuesta enviada: la misma dentro de 60 s no se repite.';
 
+-- Tocar opciones viejas tiene consecuencia: advertencia y, a la segunda,
+-- 5 minutos sin menú (2026-09-28). Ver
+-- `migration-2026-09-28-opciones-viejas-pausa.sql`.
+alter table public.marketplace_conversations
+  add column if not exists stale_tap_warned_at timestamptz,
+  add column if not exists menu_paused_until timestamptz;
+
+comment on column public.marketplace_conversations.stale_tap_warned_at is
+  'Cuándo se le advirtió por tocar una opción vieja. Otro toque viejo dentro de 30 min pausa el menú.';
+comment on column public.marketplace_conversations.menu_paused_until is
+  'Hasta cuándo no se atiende el menú, por tocar opciones viejas tras la advertencia. El comprobante sí.';
+
 
 -- ── 2. Blindaje ────────────────────────────────────────────────────────────
 --

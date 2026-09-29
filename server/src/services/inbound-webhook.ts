@@ -891,6 +891,9 @@ const processor = createInboundWebhookProcessor({
     //
     // Nunca lanza y nunca bloquea la atención: si falla, se contesta igual.
     //
+    // ⚠️ Desde el 2026-09-28 es SOLO el visto: el «escribiendo…» se quedaba
+    // colgado cuando no había respuesta. Ver `marcarLeidoPorLaPlataforma`.
+    //
     // ⚠️ Se LANZA aquí pero no se espera aquí (2026-09-25). Hasta entonces se
     // esperaba entero antes de leer la base, y la ida a YCloud se sumaba a
     // cada respuesta. Lo que importa es que aterrice antes del ENVÍO, no antes

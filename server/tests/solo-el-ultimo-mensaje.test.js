@@ -186,6 +186,14 @@ const armarMarketplace = (conversacion) => {
     anotarUltimaRespuesta: vi.fn(async (_id, huella) => {
       if (memoria.valor) memoria.valor = { ...memoria.valor, last_reply_hash: huella, last_reply_at: new Date().toISOString() }
     }),
+    // La advertencia y la pausa por opciones viejas (2026-09-28).
+    anotarAvisoDeOpcionVieja: vi.fn(async () => {
+      if (memoria.valor) memoria.valor = { ...memoria.valor, stale_tap_warned_at: new Date().toISOString() }
+    }),
+    pausarElMenu: vi.fn(async (_id, hasta) => {
+      if (memoria.valor) memoria.valor = { ...memoria.valor, menu_paused_until: hasta, stale_tap_warned_at: null }
+      return Boolean(memoria.valor)
+    }),
     getMarketplaceCategories: vi.fn(async () => CATEGORIAS),
     getMarketplaceBusinesses: vi.fn(async code => LOCALES[code] || []),
     getBusinessById: vi.fn(async id => ({ id, name: id, slug: id, storefront_enabled: true, takes_orders: true })),
@@ -276,10 +284,15 @@ describe('el caso del dueño, con la función real', () => {
     expect(m.enviados[0].reply).toContain('foto')
   })
 
-  it('veinte toques viejos seguidos: un solo aviso', async () => {
+  it('veinte toques viejos seguidos: una advertencia, un aviso de pausa y silencio', async () => {
+    // Hasta el 2026-09-28 era «un solo aviso» y los otros diecinueve callaban
+    // con el «escribiendo…» colgado. Ahora el segundo toque pausa el menú 5
+    // minutos y lo dice. Ver `opciones-viejas-pausa.test.js`.
     const m = armarMarketplace(enPanaderias)
     for (let i = 0; i < 20; i += 1) await atender(m.deps, 'bbbbb.3')
-    expect(m.enviados).toHaveLength(1)
+    expect(m.enviados).toHaveLength(2)
+    expect(m.enviados[0].reply).toContain('mensaje anterior')
+    expect(m.enviados[1].reply).toContain('5 minutos')
   })
 })
 

@@ -48,6 +48,49 @@ export function leerToque(
   return { texto: OPCION_ANTERIOR, vieja: true }
 }
 
+// ── Tocar opciones viejas tiene consecuencia (2026-09-28) ──────────────────
+//
+// Lo pidió el dueño tras probarlo: tocó una lista vieja, recibió el aviso, y
+// volvió a tocar OTRA vieja. El anti-eco calló el segundo aviso —idéntico al
+// de hacía segundos— y el «escribiendo…» se quedó colgado sin respuesta.
+//
+// La regla de Luka se queda SIEMPRE. Lo que cambia es que saltársela cuesta:
+// la primera vez, una advertencia; la segunda, 5 minutos sin menú.
+
+/** Cuánto dura la pausa del menú tras el segundo toque viejo. */
+export const PAUSA_POR_OPCIONES_VIEJAS_MS = 5 * 60_000
+
+/**
+ * Cuánto vale la advertencia. Pasado esto, el siguiente toque viejo vuelve a
+ * ser solo una advertencia: quien se equivocó a mediodía no puede quedarse
+ * pausado por un despiste de la noche.
+ */
+export const VIGENCIA_DE_LA_ADVERTENCIA_MS = 30 * 60_000
+
+const instante = (valor: string | null | undefined): number | null => {
+  if (!valor) return null
+  const t = Date.parse(valor)
+  return Number.isNaN(t) ? null : t
+}
+
+/** ¿Está el menú de este cliente en pausa ahora mismo? */
+export const menuEnPausa = (
+  pausaHasta: string | null | undefined,
+  ahora: number = Date.now(),
+): boolean => {
+  const fin = instante(pausaHasta)
+  return fin !== null && ahora < fin
+}
+
+/** Qué le toca a este toque viejo: la advertencia, o la pausa. */
+export const queHacerConElToqueViejo = (
+  advertidoEn: string | null | undefined,
+  ahora: number = Date.now(),
+): 'advertir' | 'pausar' => {
+  const aviso = instante(advertidoEn)
+  return aviso !== null && ahora - aviso < VIGENCIA_DE_LA_ADVERTENCIA_MS ? 'pausar' : 'advertir'
+}
+
 type Opcion = string | { title: string; description?: string }
 
 /**

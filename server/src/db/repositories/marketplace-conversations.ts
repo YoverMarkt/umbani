@@ -29,6 +29,10 @@ export interface MarketplaceConversation {
   /** La huella de la última respuesta y cuándo salió. Ver `anotarUltimaRespuesta`. */
   last_reply_hash?: string | null
   last_reply_at?: string | null
+  /** Cuándo se le advirtió por tocar una opción vieja. Ver `anotarAvisoDeOpcionVieja`. */
+  stale_tap_warned_at?: string | null
+  /** Hasta cuándo no se le atiende el menú. Ver `pausarElMenu`. */
+  menu_paused_until?: string | null
 }
 
 /** Lo que se quiere cambiar. Lo que no se nombra, no se toca. */
@@ -199,6 +203,43 @@ const anotarUltimaRespuesta = async (customerId: string, huella: string): Promis
 }
 
 /**
+ * Apunta que se le advirtió por tocar una opción de un mensaje anterior.
+ *
+ * ⚠️ Nace del 2026-09-28, por decisión del dueño: la regla de Luka se queda
+ * —solo vale el último mensaje—, pero saltársela tiene consecuencia. Con esto
+ * anotado, otro toque viejo dentro de 30 minutos pausa el menú 5 minutos.
+ *
+ * Se llama DESPUÉS de mandar la advertencia: si el envío falla y el webhook
+ * reintenta, el reintento no puede pausar a quien nunca la vio. Tampoco sube
+ * `version`, por lo mismo que `marcarUltimaLista`.
+ */
+const anotarAvisoDeOpcionVieja = async (customerId: string): Promise<void> => {
+  const { error } = await db
+    .from('marketplace_conversations')
+    .update({ stale_tap_warned_at: new Date().toISOString() })
+    .eq('customer_id', customerId)
+  if (error) throw new Error(error.message)
+}
+
+/**
+ * Pausa el menú de este cliente hasta `hasta`, y olvida la advertencia: al
+ * volver, el siguiente toque viejo es otra vez solo una advertencia.
+ *
+ * Devuelve si había conversación que pausar. Con `false` el llamador NO dice
+ * «podrás pedir a las…»: prometer una pausa que la base no guardó sería
+ * mentirle, así que se queda en advertencia.
+ */
+const pausarElMenu = async (customerId: string, hasta: string): Promise<boolean> => {
+  const { data, error } = await db
+    .from('marketplace_conversations')
+    .update({ menu_paused_until: hasta, stale_tap_warned_at: null })
+    .eq('customer_id', customerId)
+    .select('id')
+  if (error) throw new Error(error.message)
+  return Boolean(data?.length)
+}
+
+/**
  * ¿Se le contesta a este cliente, o ya se pasó del techo?
  *
  * El equivalente del marketplace a `claimMiniappReply`, que solo cubre el canal
@@ -338,6 +379,8 @@ export {
   advanceConversation,
   marcarUltimaLista,
   anotarUltimaRespuesta,
+  anotarAvisoDeOpcionVieja,
+  pausarElMenu,
   deleteConversation,
   claimMarketplaceReply,
   claimPlatformBlockState,
