@@ -3758,6 +3758,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      frenos_de_tarjeta: { Args: never; Returns: Json }
       get_admin_monthly_usage: {
         Args: { p_month?: string }
         Returns: {
@@ -4205,6 +4206,10 @@ export type Database = {
         }[]
       }
       tarifa_de_servicio: { Args: never; Returns: number }
+      tarjeta_apagada_para: {
+        Args: { p_customer_id: string }
+        Returns: boolean
+      }
       update_business_plan_billing: {
         Args: {
           p_business_id: string

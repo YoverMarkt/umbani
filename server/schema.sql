@@ -18595,6 +18595,85 @@ grant execute on function public.expire_unpaid_orders(integer) to service_role;
 -- (negocio + pedido + teléfono de la sesión, igual que el comprobante), que
 -- se paga con tarjeta, que sigue esperando el pago y que el local cobra en el
 -- MISMO modo que el servidor. El monto sale del pedido, en centavos.
+-- Frenos contra tarjetas robadas (2026-09-29): ver
+-- `migration-2026-09-29-frenos-de-tarjeta.sql`.
+-- Los números del freno, en un solo sitio. Cambiarlos es una migración.
+create or replace function public.frenos_de_tarjeta()
+returns jsonb
+language sql
+immutable
+set search_path = public, pg_temp
+as $$
+  select jsonb_build_object(
+    'intentos_por_hora', 5,
+    'rechazos_por_dia', 3,
+    'tope_por_pedido_cents', 15000
+  )
+$$;
+
+revoke all on function public.frenos_de_tarjeta() from public, anon, authenticated;
+grant execute on function public.frenos_de_tarjeta() to service_role;
+
+-- ¿Tiene este cliente la tarjeta apagada por rechazos recientes?
+create or replace function public.tarjeta_apagada_para(p_customer_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select p_customer_id is not null and (
+    select count(*)
+      from public.payments p
+      join public.orders o on o.id = p.order_id and o.business_id = p.business_id
+     where o.customer_id = p_customer_id
+       and p.status = 'rechazado'
+       and p.updated_at > now() - interval '24 hours'
+  ) >= (public.frenos_de_tarjeta() ->> 'rechazos_por_dia')::integer
+$$;
+
+revoke all on function public.tarjeta_apagada_para(uuid) from public, anon, authenticated;
+grant execute on function public.tarjeta_apagada_para(uuid) to service_role;
+
+-- El pedido con tarjeta: ni por encima del tope, ni de un cliente con la
+-- tarjeta apagada. El mensaje llega tal cual a la tienda.
+create or replace function public.orders_tope_de_tarjeta()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_tope integer := (public.frenos_de_tarjeta() ->> 'tope_por_pedido_cents')::integer;
+begin
+  if tg_op = 'INSERT' and public.tarjeta_apagada_para(new.customer_id) then
+    raise exception using
+      errcode = 'P0001',
+      message = 'Por seguridad, el pago con tarjeta está desactivado 24 horas para tu número '
+        || 'tras varios intentos rechazados. Puedes pagar en efectivo o por transferencia.';
+  end if;
+  if round(coalesce(new.total, 0) * 100) > v_tope then
+    raise exception using
+      errcode = 'P0001',
+      message = format(
+        'Con tarjeta el máximo por pedido es $%s y tu pedido suma $%s. Paga en efectivo o por transferencia.',
+        to_char(v_tope / 100.0, 'FM999999990.00'),
+        to_char(coalesce(new.total, 0), 'FM999999990.00')
+      );
+  end if;
+  return new;
+end;
+$$;
+
+revoke all on function public.orders_tope_de_tarjeta() from public, anon, authenticated;
+
+drop trigger if exists orders_tope_de_tarjeta on public.orders;
+create trigger orders_tope_de_tarjeta
+  before insert or update of total, payment_method on public.orders
+  for each row when (new.payment_method = 'tarjeta' and new.payment_confirmed_at is null)
+  execute function public.orders_tope_de_tarjeta();
+
+-- Y el inicio del cobro, con el freno POR CLIENTE, la tarjeta apagada y el tope.
 create or replace function public.start_card_payment(
   p_business_id uuid,
   p_order_id uuid,
@@ -18613,6 +18692,7 @@ declare
   v_intentos  integer;
   v_referencia text;
   v_pago_id   uuid;
+  v_frenos    jsonb := public.frenos_de_tarjeta();
 begin
   if p_environment is null or p_environment not in ('pruebas', 'produccion') then
     raise exception using errcode = '22023', message = 'Modo de cobro inválido';
@@ -18656,9 +18736,34 @@ begin
     return jsonb_build_object('result', 'too_many_attempts');
   end if;
 
+  -- ⚠️ Y POR CLIENTE, entre todos sus pedidos (2026-09-29): el freno por pedido
+  -- se esquivaba creando pedidos nuevos, que es justo lo que hace quien prueba
+  -- tarjetas robadas.
+  if v_order.customer_id is not null then
+    select count(*) into v_intentos
+    from public.payments p
+    join public.orders o on o.id = p.order_id and o.business_id = p.business_id
+    where o.customer_id = v_order.customer_id
+      and p.created_at > now() - interval '1 hour';
+    if v_intentos >= (v_frenos ->> 'intentos_por_hora')::integer then
+      return jsonb_build_object('result', 'too_many_attempts');
+    end if;
+  end if;
+
+  -- Tarjeta apagada para este cliente por rechazos recientes.
+  if public.tarjeta_apagada_para(v_order.customer_id) then
+    return jsonb_build_object('result', 'card_blocked');
+  end if;
+
   v_centavos := round(coalesce(v_order.total, 0) * 100)::integer;
   if v_centavos <= 0 then
     return jsonb_build_object('result', 'not_payable', 'status', v_order.status);
+  end if;
+
+  -- El tope por pedido, otra vez aquí: el disparador lo impide al crear el
+  -- pedido, y esto es el cinturón para uno que llegara por otro camino.
+  if v_centavos > (v_frenos ->> 'tope_por_pedido_cents')::integer then
+    return jsonb_build_object('result', 'over_card_limit');
   end if;
 
   v_referencia := replace(gen_random_uuid()::text, '-', '');
