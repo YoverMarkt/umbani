@@ -33,8 +33,44 @@ test('inicia sesión y carga datos administrativos simulados', async ({ page }) 
   await page.getByLabel('Contraseña').fill('segura-e2e')
   await page.getByRole('button', { name: 'Entrar' }).click()
 
+  // La contraseña sola ya no da la sesión: pide el código (2026-09-29).
+  await expect(page.getByLabel('Código de 6 dígitos')).toBeVisible()
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('admin_token'))).toBeNull()
+  await page.getByLabel('Código de 6 dígitos').fill('123456')
+  await page.getByRole('button', { name: 'Entrar' }).click()
+
   await expect(page).toHaveURL(/#\/$/)
   await expect(page.getByText('BotPanel').first()).toBeVisible()
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('admin_token'))).toBe('e2e-admin-token')
+})
+
+test('la primera vez enseña la clave para la app de códigos y entra con el código', async ({ page }) => {
+  await mockAdminApi(page)
+  await page.route('**/api/admin/login', route => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ paso: 'configurar', pase: 'e2e-pase' }),
+  }))
+  await page.route('**/api/admin/login/configurar', route => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      clave: 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP',
+      enlace: 'otpauth://totp/Umbani:admin%40e2e.test?secret=JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP&issuer=Umbani',
+    }),
+  }))
+  await page.goto(`${adminUrl}#/login`)
+
+  await page.getByLabel('Correo').fill('admin@e2e.test')
+  await page.getByLabel('Contraseña').fill('segura-e2e')
+  await page.getByRole('button', { name: 'Entrar' }).click()
+
+  // La clave en grupos de cuatro, para copiarla a mano sin perderse.
+  await expect(page.getByText('JBSW Y3DP EHPK 3PXP JBSW Y3DP EHPK 3PXP')).toBeVisible()
+  await expect(page.getByRole('link', { name: /ábrela directamente en la app/ }))
+    .toHaveAttribute('href', /^otpauth:\/\/totp\//)
+  await page.getByLabel('Código de 6 dígitos').fill('654321')
+  await page.getByRole('button', { name: 'Terminar y entrar' }).click()
+
+  await expect(page).toHaveURL(/#\/$/)
   await expect.poll(() => page.evaluate(() => localStorage.getItem('admin_token'))).toBe('e2e-admin-token')
 })
 

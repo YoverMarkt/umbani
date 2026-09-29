@@ -87,7 +87,7 @@ npm run dev -w @botpanel/admin
 
 ## 4. Primer negocio
 
-1. Entra al panel superadmin con `ADMIN_EMAIL` y `ADMIN_PASSWORD`.
+1. Entra al panel superadmin con `ADMIN_EMAIL` y `ADMIN_PASSWORD`. La primera vez te pide configurar una **app de códigos** (Google Authenticator o similar): desde entonces cada entrada pide también su código de 6 dígitos. Hazlo en seguida tras desplegar —mientras no esté configurada, quien tenga la contraseña es quien la configura—. Si pierdes el móvil: `npm run admin:reiniciar-codigos -w @botpanel/server -- --borrar`.
 2. Crea el negocio y su usuario de acceso.
 3. Configura y verifica el proveedor de WhatsApp.
 4. Completa catálogo, horarios, prompt y modo de operación.

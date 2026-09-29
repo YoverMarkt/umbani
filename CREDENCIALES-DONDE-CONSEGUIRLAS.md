@@ -19,6 +19,8 @@ Ejemplo: `botpanel2024_mi_clave_secreta_abc123xyz`
 ## ADMIN_EMAIL y ADMIN_PASSWORD
 Tus credenciales para entrar a /admin. Los inventas tú.
 
+Desde el 2026-09-29 no bastan: el superadmin pide además el código de 6 dígitos de una **app de códigos** (Google Authenticator o similar), que se configura la primera vez que entras. Su clave NO es una variable de entorno: vive en la base, separada de la contraseña, para que quien se lleve una sola de las dos no entre. Si pierdes el móvil: `npm run admin:reiniciar-codigos -w @botpanel/server -- --borrar`, y configúrala de nuevo en seguida.
+
 ---
 
 ## ANTHROPIC_API_KEY
