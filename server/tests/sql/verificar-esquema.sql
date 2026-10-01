@@ -7540,6 +7540,104 @@ $frenos$;
 select '✅ frenos de tarjeta: tope de $150 en la puerta real (sin pedidos a medias), 5 intentos por hora y cliente, y 3 rechazos en 24 h la apagan' as resultado;
 
 -- ════════════════════════════════════════════════════════════════════════════
+-- EL CUADRE DIARIO CONTRA PAYPHONE (2026-09-29)
+-- ════════════════════════════════════════════════════════════════════════════
+do $cuadre$
+declare
+  v_local   uuid;
+  v_pedido  uuid;
+  v_viejo   uuid;
+  v_vivo    uuid;
+  v_hoy     uuid;
+  v_otro    uuid;
+  v_antes   timestamptz;
+  v_fila    record;
+  v_falló   boolean;
+begin
+  insert into businesses (slug, name, type, whatsapp_provider, takes_orders, card_mode)
+  values ('verif-cuadre', 'Cuadre de Prueba', 'pizzería', 'marketplace', true, 'pruebas')
+  returning id into v_local;
+  insert into orders (business_id, contact_phone, source, status, subtotal, total, payment_method)
+  values (v_local, '593900999001', 'manual', 'expirado', 8.93, 8.93, 'tarjeta')
+  returning id into v_pedido;
+
+  insert into payments (business_id, order_id, environment, client_transaction_id, amount_cents, status, created_at)
+  values (v_local, v_pedido, 'pruebas', 'cuadrehoy0000000000000000000001', 893, 'devuelto', now() - interval '2 hours')
+  returning id into v_hoy;
+  -- Más de 3 días: ya no se cuadra.
+  insert into payments (business_id, order_id, environment, client_transaction_id, amount_cents, status, created_at)
+  values (v_local, v_pedido, 'pruebas', 'cuadreviejo00000000000000000002', 893, 'caducado', now() - interval '4 days')
+  returning id into v_viejo;
+  -- Vivo y reciente: es trabajo de la tarea de cobros, no del cuadre.
+  insert into payments (business_id, order_id, environment, client_transaction_id, amount_cents, status, created_at)
+  values (v_local, v_pedido, 'pruebas', 'cuadrevivo000000000000000000003', 893, 'iniciado', now() - interval '5 minutes')
+  returning id into v_vivo;
+  -- De otro modo: un servidor en pruebas no cuadra cobros de producción.
+  insert into payments (business_id, order_id, environment, client_transaction_id, amount_cents, status, created_at)
+  values (v_local, v_pedido, 'produccion', 'cuadreotro000000000000000000004', 893, 'aprobado', now() - interval '1 hour')
+  returning id into v_otro;
+
+  -- ── 1. Elige lo que toca, con el local y el número de pedido ─────────────
+  if (select array_agg(id) from public.payments_to_reconcile('pruebas', 100) where business_id = v_local) <> array[v_hoy] then
+    raise exception 'el cuadre eligió mal: %',
+      (select array_agg(client_transaction_id) from public.payments_to_reconcile('pruebas', 100) where business_id = v_local);
+  end if;
+  select * into v_fila from public.payments_to_reconcile('pruebas', 100) where id = v_hoy;
+  if v_fila.business_name <> 'Cuadre de Prueba' or v_fila.order_number is null then
+    raise exception 'el cuadre no trae el local o el número de pedido: %', row_to_json(v_fila);
+  end if;
+  -- El vivo, pasada media hora, sí: algo se atascó.
+  update payments set created_at = now() - interval '40 minutes' where id = v_vivo;
+  if not exists (select 1 from public.payments_to_reconcile('pruebas', 100) where id = v_vivo) then
+    raise exception 'un cobro vivo atascado más de 30 minutos no entró al cuadre';
+  end if;
+
+  -- ── 2. Marcar el resultado NO toca `updated_at` ──────────────────────────
+  -- El freno de tarjetas robadas cuenta los rechazos por esa fecha: cuadrar un
+  -- rechazo le reiniciaría las 24 horas.
+  update payments set updated_at = now() - interval '10 hours' where id = v_hoy;
+  select updated_at into v_antes from payments where id = v_hoy;
+  if not public.mark_payment_reconciled(v_hoy, 'descuadre', '  Devuelto aquí, cobrado allá  ') then
+    raise exception 'no se pudo marcar el cuadre';
+  end if;
+  select * into v_fila from payments where id = v_hoy;
+  if v_fila.updated_at <> v_antes then
+    raise exception 'marcar el cuadre movió updated_at: el freno de tarjeta contaría mal';
+  end if;
+  if v_fila.reconciliation <> 'descuadre' or v_fila.reconciliation_detail <> 'Devuelto aquí, cobrado allá'
+     or v_fila.reconciled_at is null or v_fila.status <> 'devuelto' then
+    raise exception 'el cuadre no quedó bien guardado (o cambió el estado del cobro): %', row_to_json(v_fila);
+  end if;
+  -- Recién cuadrado: no se vuelve a cuadrar hasta dentro de 20 h.
+  if exists (select 1 from public.payments_to_reconcile('pruebas', 100) where id = v_hoy) then
+    raise exception 'un cobro recién cuadrado se volvió a elegir';
+  end if;
+  update payments set reconciled_at = now() - interval '21 hours' where id = v_hoy;
+  if not exists (select 1 from public.payments_to_reconcile('pruebas', 100) where id = v_hoy) then
+    raise exception 'un cobro cuadrado ayer no se volvió a cuadrar';
+  end if;
+
+  -- ── 3. Solo «cuadra» o «descuadre» ───────────────────────────────────────
+  v_falló := false;
+  begin
+    perform public.mark_payment_reconciled(v_hoy, 'arreglado', null);
+  exception when invalid_parameter_value then v_falló := true;
+  end;
+  if not v_falló then
+    raise exception 'el cuadre aceptó un resultado inventado';
+  end if;
+  if public.mark_payment_reconciled(gen_random_uuid(), 'cuadra', null) then
+    raise exception 'marcar un cobro que no existe dijo que sí';
+  end if;
+
+  delete from payments where business_id = v_local;
+  delete from orders where business_id = v_local;
+  delete from businesses where id = v_local;
+end;
+$cuadre$;
+
+select '✅ cuadre con PayPhone: elige lo de 3 días y su modo, no toca updated_at ni el estado, y no repite en 20 h' as resultado;
+
 -- EL PEDIDO CON TARJETA SIN PAGAR NO PIDE «COMPROBANTE» (2026-09-30)
 -- ════════════════════════════════════════════════════════════════════════════
 do $mensaje$

@@ -168,11 +168,28 @@ describe('rutas de Pagos', () => {
     ])
     vi.spyOn(db, 'listSettlements').mockResolvedValue([{ id: 's1', business_id: 'b3', status: 'por_pagar' }])
     vi.spyOn(db, 'listCardPayments').mockResolvedValue([])
+    // ⚠️ La ruta lee también el último cuadre (2026-09-29). Sin simularlo, la
+    // consulta va a la base de verdad: en local falla al instante, y en el CI se
+    // queda colgada hasta el tiempo límite y la prueba muere a los 5 s.
+    vi.spyOn(db, 'leerUltimoCuadre').mockResolvedValue(null)
     const cuenta = vi.spyOn(db, 'getBusinessBankAccount').mockImplementation(async id => ({ account_number: `cta-${id}` }))
     const r = await despachar('get', '/api/admin/pagos', { auth: admin() })
     expect(r.status).toBe(200)
     expect(Object.keys(r.body.cuentas).sort()).toEqual(['b1', 'b3'])
     expect(cuenta).not.toHaveBeenCalledWith('b2')
+  })
+
+  it('trae el último cuadre con PayPhone, y si no se puede leer la pantalla sigue (2026-09-29)', async () => {
+    vi.spyOn(db, 'getSettlementBalances').mockResolvedValue([])
+    vi.spyOn(db, 'listSettlements').mockResolvedValue([])
+    vi.spyOn(db, 'listCardPayments').mockResolvedValue([])
+    const resumen = { fecha: '2026-10-01', at: '2026-10-01T11:05:00Z', revisados: 2, descuadres: 1, sinRespuesta: 0 }
+    const leer = vi.spyOn(db, 'leerUltimoCuadre').mockResolvedValue(resumen)
+    expect((await despachar('get', '/api/admin/pagos', { auth: admin() })).body.cuadre).toEqual(resumen)
+    leer.mockRejectedValue(new Error('base caída'))
+    const r = await despachar('get', '/api/admin/pagos', { auth: admin() })
+    expect(r.status).toBe(200)
+    expect(r.body.cuadre).toBeNull()
   })
 
   it('marcar exige id válido y referencia, y no marca dos veces', async () => {

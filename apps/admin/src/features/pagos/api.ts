@@ -45,9 +45,22 @@ export type CobroConTarjeta = {
   card_last_digits: string | null
   provider_transaction_id: string | null
   created_at: string
+  /** El último cuadre contra PayPhone (2026-09-29). Nunca cambia el estado. */
+  reconciled_at?: string | null
+  reconciliation?: 'cuadra' | 'descuadre' | null
+  reconciliation_detail?: string | null
   businesses?: { name: string } | null
   orders?: { order_number: number } | null
 }
+
+/** El resumen del último cuadre diario contra PayPhone. */
+export type ResumenDelCuadre = {
+  fecha: string
+  at: string
+  revisados: number
+  descuadres: number
+  sinRespuesta: number
+} | null
 
 export type CuentaBancaria = {
   bank_name?: string | null
@@ -62,6 +75,7 @@ export type Pagos = {
   liquidaciones: Liquidacion[]
   cobros: CobroConTarjeta[]
   cuentas: Record<string, CuentaBancaria>
+  cuadre?: ResumenDelCuadre
 }
 
 export const getPagos = () => api<Pagos>('/api/admin/pagos')

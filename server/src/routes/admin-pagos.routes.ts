@@ -18,10 +18,13 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const router = createRouter()
 
 router.get('/api/admin/pagos', auth.authAdmin, async (_req, res) => {
-  const [saldos, liquidaciones, cobros] = await Promise.all([
+  const [saldos, liquidaciones, cobros, cuadre] = await Promise.all([
     db.getSettlementBalances(null),
     db.listSettlements({ limite: 100 }),
     db.listCardPayments(100),
+    // El último cuadre contra PayPhone (2026-09-29). Si no se puede leer, la
+    // pantalla sigue: el cuadre es un dato más, no la condición para ver pagos.
+    db.leerUltimoCuadre().catch(() => null),
   ])
 
   // A quién hay que transferirle: la cuenta ACTIVA de cada local con saldo a
@@ -35,7 +38,7 @@ router.get('/api/admin/pagos', auth.authAdmin, async (_req, res) => {
     cuentas[id] = await db.getBusinessBankAccount(id).catch(() => null)
   }))
 
-  return res.json({ saldos, liquidaciones, cobros, cuentas })
+  return res.json({ saldos, liquidaciones, cobros, cuentas, cuadre })
 })
 
 router.post('/api/admin/pagos/liquidaciones/:id/marcar', auth.authAdmin, async (req, res) => {
