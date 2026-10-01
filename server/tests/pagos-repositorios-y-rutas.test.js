@@ -175,6 +175,19 @@ describe('rutas de Pagos', () => {
     expect(cuenta).not.toHaveBeenCalledWith('b2')
   })
 
+  it('trae el último cuadre con PayPhone, y si no se puede leer la pantalla sigue (2026-09-29)', async () => {
+    vi.spyOn(db, 'getSettlementBalances').mockResolvedValue([])
+    vi.spyOn(db, 'listSettlements').mockResolvedValue([])
+    vi.spyOn(db, 'listCardPayments').mockResolvedValue([])
+    const resumen = { fecha: '2026-10-01', at: '2026-10-01T11:05:00Z', revisados: 2, descuadres: 1, sinRespuesta: 0 }
+    const leer = vi.spyOn(db, 'leerUltimoCuadre').mockResolvedValue(resumen)
+    expect((await despachar('get', '/api/admin/pagos', { auth: admin() })).body.cuadre).toEqual(resumen)
+    leer.mockRejectedValue(new Error('base caída'))
+    const r = await despachar('get', '/api/admin/pagos', { auth: admin() })
+    expect(r.status).toBe(200)
+    expect(r.body.cuadre).toBeNull()
+  })
+
   it('marcar exige id válido y referencia, y no marca dos veces', async () => {
     const ruta = '/api/admin/pagos/liquidaciones/:id/marcar'
     const id = '22222222-2222-4222-8222-222222222222'

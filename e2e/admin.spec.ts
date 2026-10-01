@@ -574,3 +574,41 @@ test('Pagos → Registro dice quién movió dinero y qué cambió', async ({ pag
   await expect(page.getByText('Cambio directo en la base')).toBeVisible()
   await expect(page.getByText('apagada → de verdad')).toBeVisible()
 })
+
+// El cuadre diario contra PayPhone (2026-09-29): la línea del último cuadre y,
+// en cada cobro, si cuadra o qué no cuadra.
+test('Pagos → Cobros con tarjeta dice qué cuadra con PayPhone y qué no', async ({ page }) => {
+  await mockAdminApi(page)
+  await page.route('**/api/admin/pagos', route => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      saldos: [], liquidaciones: [], cuentas: {},
+      cuadre: { fecha: '2026-10-01', at: '2026-10-01T11:05:00Z', revisados: 2, descuadres: 1, sinRespuesta: 0 },
+      cobros: [
+        {
+          id: 'p1', environment: 'pruebas', status: 'aprobado', status_detail: null, amount_cents: 893,
+          captured_cents: 893, card_brand: 'Visa', card_last_digits: '8121', provider_transaction_id: '91754743',
+          created_at: '2026-09-30T16:31:00Z', reconciled_at: '2026-10-01T11:05:00Z', reconciliation: 'cuadra',
+          reconciliation_detail: null, businesses: { name: 'Burger Brava' }, orders: { order_number: 7 },
+        },
+        {
+          id: 'p2', environment: 'pruebas', status: 'devuelto', status_detail: 'El pedido pasó a cancelado', amount_cents: 848,
+          captured_cents: 848, card_brand: 'Visa', card_last_digits: '8121', provider_transaction_id: '91754800',
+          created_at: '2026-09-30T04:48:00Z', reconciled_at: '2026-10-01T11:05:00Z', reconciliation: 'descuadre',
+          reconciliation_detail: 'Devuelto aquí, pero PayPhone lo sigue teniendo COBRADO: hay que devolverlo a mano.',
+          businesses: { name: 'Burger Brava' }, orders: { order_number: 8 },
+        },
+      ],
+    }),
+  }))
+  await seedAdminSession(page)
+  await page.goto(`${adminUrl}#/pagos`)
+
+  await page.getByRole('tab', { name: 'Cobros con tarjeta' }).click()
+  await expect(page.getByText(/Último cuadre con PayPhone:/)).toBeVisible()
+  await expect(page.getByText('2 revisados', { exact: false })).toBeVisible()
+  await expect(page.getByText('1 descuadre', { exact: true })).toBeVisible()
+  await expect(page.getByText('Cuadra', { exact: true })).toBeVisible()
+  await expect(page.getByText('Descuadre', { exact: true })).toBeVisible()
+  await expect(page.getByText(/hay que devolverlo a mano/)).toBeVisible()
+})

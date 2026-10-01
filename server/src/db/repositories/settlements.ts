@@ -72,7 +72,7 @@ const markSettlementPaid = async (settlementId: string, reference: string): Prom
 const listCardPayments = async (limite = 100) => {
   const { data, error } = await db
     .from('payments')
-    .select('id, business_id, order_id, environment, status, status_detail, amount_cents, captured_cents, card_brand, card_last_digits, provider_transaction_id, created_at, approved_at, reversed_at, businesses(name), orders(order_number)')
+    .select('id, business_id, order_id, environment, status, status_detail, amount_cents, captured_cents, card_brand, card_last_digits, provider_transaction_id, created_at, approved_at, reversed_at, reconciled_at, reconciliation, reconciliation_detail, businesses(name), orders(order_number)')
     .order('created_at', { ascending: false })
     .limit(Math.min(Math.max(limite, 1), 300))
   if (error) throw new Error(error.message)

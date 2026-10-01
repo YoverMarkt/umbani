@@ -2592,6 +2592,9 @@ export type Database = {
           order_id: string
           provider: string
           provider_transaction_id: string | null
+          reconciled_at: string | null
+          reconciliation: string | null
+          reconciliation_detail: string | null
           reversed_at: string | null
           status: string
           status_detail: string | null
@@ -2616,6 +2619,9 @@ export type Database = {
           order_id: string
           provider?: string
           provider_transaction_id?: string | null
+          reconciled_at?: string | null
+          reconciliation?: string | null
+          reconciliation_detail?: string | null
           reversed_at?: string | null
           status?: string
           status_detail?: string | null
@@ -2640,6 +2646,9 @@ export type Database = {
           order_id?: string
           provider?: string
           provider_transaction_id?: string | null
+          reconciled_at?: string | null
+          reconciliation?: string | null
+          reconciliation_detail?: string | null
           reversed_at?: string | null
           status?: string
           status_detail?: string | null
@@ -3878,6 +3887,10 @@ export type Database = {
         Args: { p_reference: string; p_settlement_id: string }
         Returns: Json
       }
+      mark_payment_reconciled: {
+        Args: { p_detalle: string; p_id: string; p_resultado: string }
+        Returns: boolean
+      }
       mark_settlement_paid: {
         Args: { p_reference: string; p_settlement_id: string }
         Returns: Json
@@ -4015,6 +4028,22 @@ export type Database = {
       order_markup_by_line: {
         Args: { p_order_id: string; p_percentage: number }
         Returns: number
+      }
+      payments_to_reconcile: {
+        Args: { p_environment: string; p_limite?: number }
+        Returns: {
+          amount_cents: number
+          business_id: string
+          business_name: string
+          captured_cents: number
+          client_transaction_id: string
+          created_at: string
+          id: string
+          order_id: string
+          order_number: number
+          provider_transaction_id: string
+          status: string
+        }[]
       }
       platform_markup_summary: {
         Args: { p_business_id?: string; p_from: string; p_to: string }

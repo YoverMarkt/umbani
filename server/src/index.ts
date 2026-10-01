@@ -26,6 +26,7 @@ import { getPlatformChannel } from './services/platform-channel'
 import { expireUnpaidOrders } from './services/order-expiry'
 import { pagosConTarjeta } from './services/pago-con-tarjeta'
 import { cerrarSemanaAnterior } from './services/liquidacion'
+import { cuadrarConPayphone } from './services/cuadre-payphone'
 import { vigilarElCaminoDelCliente, ultimaVueltaDelCanario } from './services/canario'
 import { providerStatusClient } from './integrations/provider-status'
 import { activeClientGuard } from './middleware/auth'
@@ -638,6 +639,16 @@ httpServer = app.listen(port, () => {
     // nada — la base no crea dos liquidaciones para la misma semana.
     setTimeout(() => { void cerrarSemanaAnterior() }, 15_000)
     setInterval(() => { void cerrarSemanaAnterior() }, 6 * 60 * 60 * 1000)
+
+    // 🧮 El cuadre diario contra PayPhone (2026-09-29).
+    //
+    // Cada cobro de los últimos 3 días se le pregunta a PayPhone y se compara
+    // con lo que dice nuestra base. NUNCA mueve dinero: guarda el resultado y
+    // avisa en el registro de errores. Mira cada hora y solo actúa una vez al
+    // día, desde las 6 de Ecuador: si el servidor estaba caído a esa hora, el
+    // cuadre sale igual un rato después. Sin credenciales no consulta nada.
+    setTimeout(() => { void cuadrarConPayphone() }, 3 * 60 * 1000)
+    setInterval(() => { void cuadrarConPayphone() }, 60 * 60 * 1000)
 
     // 🐤 ¿Puede un cliente comprar AHORA MISMO?
     //
