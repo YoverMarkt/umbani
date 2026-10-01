@@ -588,6 +588,7 @@ export type Database = {
           description: string | null
           hours: string | null
           id: string
+          is_demo: boolean
           last_order_number: number
           latitude: number | null
           logo_url: string | null
@@ -643,6 +644,7 @@ export type Database = {
           description?: string | null
           hours?: string | null
           id?: string
+          is_demo?: boolean
           last_order_number?: number
           latitude?: number | null
           logo_url?: string | null
@@ -698,6 +700,7 @@ export type Database = {
           description?: string | null
           hours?: string | null
           id?: string
+          is_demo?: boolean
           last_order_number?: number
           latitude?: number | null
           logo_url?: string | null

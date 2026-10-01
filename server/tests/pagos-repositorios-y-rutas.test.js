@@ -107,6 +107,17 @@ describe('repositorio de liquidaciones', () => {
     expect(await db.markSettlementPaid('id', 'TRF-1')).toEqual({ result: 'updated', status: 'pagada' })
   })
 
+  it('los locales de demostración salen en UNA consulta, como conjunto (2026-09-30)', async () => {
+    const eq = vi.fn(async () => ({ data: [{ id: 'a' }, { id: 'b' }], error: null }))
+    const select = vi.fn(() => ({ eq }))
+    vi.spyOn(client, 'from').mockReturnValue({ select })
+    const demos = await db.getDemoBusinessIds()
+    expect([...demos]).toEqual(['a', 'b'])
+    expect(eq).toHaveBeenCalledWith('is_demo', true)
+    eq.mockResolvedValueOnce({ data: null, error: { message: 'caída' } })
+    await expect(db.getDemoBusinessIds()).rejects.toThrow('caída')
+  })
+
   it('el libro de UN local: siempre filtrado por su negocio', async () => {
     const q = consulta({ data: [{ id: 'l1' }], error: null })
     vi.spyOn(client, 'from').mockReturnValue(q)
@@ -168,11 +179,32 @@ describe('rutas de Pagos', () => {
     ])
     vi.spyOn(db, 'listSettlements').mockResolvedValue([{ id: 's1', business_id: 'b3', status: 'por_pagar' }])
     vi.spyOn(db, 'listCardPayments').mockResolvedValue([])
+    // ⚠️ La ruta lee también los locales de demostración (2026-09-30). Sin
+    // simularlo, en el CI la lectura se queda colgada y la prueba muere a los 5 s.
+    vi.spyOn(db, 'getDemoBusinessIds').mockResolvedValue(new Set())
     const cuenta = vi.spyOn(db, 'getBusinessBankAccount').mockImplementation(async id => ({ account_number: `cta-${id}` }))
     const r = await despachar('get', '/api/admin/pagos', { auth: admin() })
     expect(r.status).toBe(200)
     expect(Object.keys(r.body.cuentas).sort()).toEqual(['b1', 'b3'])
     expect(cuenta).not.toHaveBeenCalledWith('b2')
+  })
+
+  it('cada fila dice si es de un local de DEMOSTRACIÓN, y su liquidación no se paga (2026-09-30)', async () => {
+    vi.spyOn(db, 'getSettlementBalances').mockResolvedValue([{ business_id: 'demo', neto_cents: 500 }, { business_id: 'real', neto_cents: 300 }])
+    vi.spyOn(db, 'listSettlements').mockResolvedValue([{ id: 's1', business_id: 'demo', status: 'por_pagar' }])
+    vi.spyOn(db, 'listCardPayments').mockResolvedValue([{ id: 'c1', business_id: 'demo' }])
+    vi.spyOn(db, 'getDemoBusinessIds').mockResolvedValue(new Set(['demo']))
+    vi.spyOn(db, 'getBusinessBankAccount').mockResolvedValue(null)
+    const r = await despachar('get', '/api/admin/pagos', { auth: admin() })
+    expect(r.body.saldos.map(s => [s.business_id, s.demo])).toEqual([['demo', true], ['real', false]])
+    expect(r.body.liquidaciones[0].demo).toBe(true)
+    expect(r.body.cobros[0].demo).toBe(true)
+
+    const ruta = '/api/admin/pagos/liquidaciones/:id/marcar'
+    vi.spyOn(db, 'markSettlementPaid').mockResolvedValue({ result: 'demo' })
+    const marcar = await despachar('post', ruta, { auth: admin(), params: { id: '22222222-2222-4222-8222-222222222222' }, body: { referencia: 'TRF-1' } })
+    expect(marcar.status).toBe(409)
+    expect(marcar.body.error).toMatch(/local de demostración/)
   })
 
   it('marcar exige id válido y referencia, y no marca dos veces', async () => {

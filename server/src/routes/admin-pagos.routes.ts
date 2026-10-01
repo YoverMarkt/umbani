@@ -18,11 +18,16 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const router = createRouter()
 
 router.get('/api/admin/pagos', auth.authAdmin, async (_req, res) => {
-  const [saldos, liquidaciones, cobros] = await Promise.all([
+  const [saldos, liquidaciones, cobros, demos] = await Promise.all([
     db.getSettlementBalances(null),
     db.listSettlements({ limite: 100 }),
     db.listCardPayments(100),
+    // Los locales de demostración (2026-09-30): se marcan, no se esconden.
+    db.getDemoBusinessIds(),
   ])
+  const conDemo = <T extends { business_id: string }>(filas: T[]) => (
+    filas.map(f => ({ ...f, demo: demos.has(f.business_id) }))
+  )
 
   // A quién hay que transferirle: la cuenta ACTIVA de cada local con saldo a
   // su favor, leída por la única función que lee esa tabla
@@ -35,7 +40,12 @@ router.get('/api/admin/pagos', auth.authAdmin, async (_req, res) => {
     cuentas[id] = await db.getBusinessBankAccount(id).catch(() => null)
   }))
 
-  return res.json({ saldos, liquidaciones, cobros, cuentas })
+  return res.json({
+    saldos: conDemo(saldos),
+    liquidaciones: conDemo(liquidaciones),
+    cobros: conDemo(cobros),
+    cuentas,
+  })
 })
 
 router.post('/api/admin/pagos/liquidaciones/:id/marcar', auth.authAdmin, async (req, res) => {
@@ -46,6 +56,10 @@ router.post('/api/admin/pagos/liquidaciones/:id/marcar', auth.authAdmin, async (
     return res.status(400).json({ error: 'Escribe la referencia de la transferencia' })
   }
   const r = await db.markSettlementPaid(id, referencia)
+  // La base no deja pagar un local de demostración (2026-09-30).
+  if (r.result === 'demo') {
+    return res.status(409).json({ error: 'Es un local de demostración: su dinero es de prueba y su liquidación no se paga' })
+  }
   if (r.result !== 'updated') return res.status(409).json({ error: 'Esa liquidación ya no está pendiente' })
   return res.json({ status: r.status })
 })

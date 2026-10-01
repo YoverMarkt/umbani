@@ -574,3 +574,33 @@ test('Pagos → Registro dice quién movió dinero y qué cambió', async ({ pag
   await expect(page.getByText('Cambio directo en la base')).toBeVisible()
   await expect(page.getByText('apagada → de verdad')).toBeVisible()
 })
+
+// Los locales de DEMOSTRACIÓN (2026-09-30): se ven, con su etiqueta, pero no
+// suman a lo que Umbani debe y su liquidación no se paga.
+test('Pagos aparta los locales de demostración: etiqueta, sin sumar y sin pagar', async ({ page }) => {
+  await mockAdminApi(page)
+  await page.route('**/api/admin/pagos', route => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      saldos: [
+        { business_id: 'demo', business_name: 'Burger Brava', pedidos: 3, pedidos_tarjeta: 1, derecho_cents: 5000, en_mano_cents: 0, arrastre_cents: 0, neto_cents: 5000, umbani_cents: 600, payphone_cents: 0, demo: true },
+        { business_id: 'real', business_name: 'Monster Pizza', pedidos: 1, pedidos_tarjeta: 1, derecho_cents: 1200, en_mano_cents: 0, arrastre_cents: 0, neto_cents: 1200, umbani_cents: 150, payphone_cents: 0, demo: false },
+      ],
+      liquidaciones: [
+        { id: 's1', business_id: 'demo', period_start: '2026-09-28', period_end: '2026-10-04', orders_count: 3, derecho_cents: 5000, en_mano_cents: 0, arrastre_cents: 0, cuota_cents: 0, neto_cents: 5000, status: 'por_pagar', paid_at: null, reference: null, businesses: { name: 'Burger Brava' }, demo: true },
+      ],
+      cobros: [], cuentas: {},
+    }),
+  }))
+  await seedAdminSession(page)
+  await page.goto(`${adminUrl}#/pagos`)
+
+  // Lo que Umbani debe: SOLO el local real ($12.00), no los $50 de la demo.
+  await expect(page.getByText('$12.00').first()).toBeVisible()
+  await expect(page.getByText('$62.00')).toHaveCount(0)
+  await page.getByRole('tab', { name: 'Semana en curso' }).click()
+  await expect(page.getByText('Demo', { exact: true }).first()).toBeVisible()
+  await page.getByRole('tab', { name: /Liquidaciones/ }).click()
+  await expect(page.getByText('Demo: no se paga')).toBeVisible()
+  await expect(page.getByRole('button', { name: /Marcar/ })).toHaveCount(0)
+})

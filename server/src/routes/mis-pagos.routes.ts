@@ -23,13 +23,16 @@ const router = createRouter()
 
 router.get('/api/client/mis-pagos', auth.authClient, auth.requireOwner, async (req, res) => {
   const businessId = getClientBusinessId(req)
-  const [saldos, pedidos, depositos] = await Promise.all([
+  const [saldos, pedidos, depositos, negocio] = await Promise.all([
     db.getSettlementBalances(businessId),
     db.listLedger(businessId, { soloSinLiquidar: true, limite: 200 }),
     db.listSettlements({ businessId, limite: 52 }),
+    db.getBusinessById(businessId),
   ])
   const s = saldos[0]
   return res.json({
+    // Local de demostración (2026-09-30): los montos son de prueba.
+    demo: Boolean(negocio?.is_demo),
     semana: {
       pedidos: s?.pedidos ?? 0,
       pedidosTarjeta: s?.pedidos_tarjeta ?? 0,

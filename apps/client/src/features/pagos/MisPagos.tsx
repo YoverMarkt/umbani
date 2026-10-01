@@ -56,7 +56,7 @@ type Deposito = {
   pagadoEl: string | null
   referencia: string | null
 }
-type MisPagosData = { semana: Semana; pedidos: Pedido[]; depositos: Deposito[] }
+type MisPagosData = { semana: Semana; pedidos: Pedido[]; depositos: Deposito[]; demo?: boolean }
 
 const dinero = (centavos: number) =>
   '$' + (Math.abs(centavos) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -100,6 +100,11 @@ export default function MisPagos() {
           Umbani cobra tus pedidos con tarjeta y te deposita cada lunes lo de la semana anterior.
           Lo que cobras tú en efectivo o transferencia ya lo tienes; su comisión se descuenta del depósito.
         </p>
+        {data?.demo && (
+          <p className="mt-2 text-sm font-medium text-amber-800 dark:text-amber-300">
+            Estado de cuenta de ejemplo: así se ve el de un local real, pero estos montos no se depositan.
+          </p>
+        )}
       </div>
 
       <Card className="border-primary/30 bg-primary/5">

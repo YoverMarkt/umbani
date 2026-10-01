@@ -186,6 +186,8 @@ describe('POST /api/client/login', () => {
     expect(response.body.user).toEqual({
       name: 'Ana', role: 'employee', permissions: ['horarios', 'ventas'],
     })
+    // El panel pinta la franja de demostración solo si el local lo es (2026-09-30).
+    expect(response.body.business.demo).toBe(false)
   })
 
   it('convierte fallos internos en respuesta 500 controlada', async () => {

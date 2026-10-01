@@ -90,16 +90,24 @@ function Marcar({ liquidacion }: { liquidacion: Liquidacion }) {
   )
 }
 
+/** Local de demostración (2026-09-30): su dinero es de prueba y no se paga. */
+const Demo = ({ demo }: { demo?: boolean }) => (demo
+  ? <Badge variant="outline" className="ml-1.5 border-amber-500/40 bg-amber-500/10 text-[10px] text-amber-800 dark:text-amber-300">Demo</Badge>
+  : null)
+
 export default function Pagos() {
   const { data, isLoading, error } = useQuery({ queryKey: ['adm-pagos'], queryFn: getPagos })
 
   if (isLoading) return <Skeleton className="h-64 w-full" />
   if (error || !data) return <p className="text-sm text-destructive">No se pudieron cargar los pagos.</p>
 
-  const debemos = data.saldos.filter(s => s.neto_cents > 0).reduce((t, s) => t + s.neto_cents, 0)
-  const nosDeben = data.saldos.filter(s => s.neto_cents < 0).reduce((t, s) => t - s.neto_cents, 0)
-  const ganamos = data.saldos.reduce((t, s) => t + s.umbani_cents - s.payphone_cents, 0)
-  const pendientes = data.liquidaciones.filter(l => l.status === 'por_pagar' || l.status === 'por_cobrar')
+  // ⚠️ Sin los locales de DEMOSTRACIÓN (2026-09-30): su dinero es de prueba, y
+  // sumarlo haría creer que Umbani debe o gana lo que nunca existió.
+  const reales = data.saldos.filter(s => !s.demo)
+  const debemos = reales.filter(s => s.neto_cents > 0).reduce((t, s) => t + s.neto_cents, 0)
+  const nosDeben = reales.filter(s => s.neto_cents < 0).reduce((t, s) => t - s.neto_cents, 0)
+  const ganamos = reales.reduce((t, s) => t + s.umbani_cents - s.payphone_cents, 0)
+  const pendientes = data.liquidaciones.filter(l => !l.demo && (l.status === 'por_pagar' || l.status === 'por_cobrar'))
 
   return (
     <div className="space-y-5">
@@ -153,8 +161,8 @@ export default function Pagos() {
                     {data.saldos.map(s => (
                       <TableRow key={s.business_id}>
                         <TableCell>
-                          <div className="font-medium">{s.business_name}</div>
-                          {s.neto_cents > 0 && <Cuenta cuenta={data.cuentas[s.business_id]} />}
+                          <div className="font-medium">{s.business_name}<Demo demo={s.demo} /></div>
+                          {s.neto_cents > 0 && !s.demo && <Cuenta cuenta={data.cuentas[s.business_id]} />}
                         </TableCell>
                         <TableCell className="text-right tabular-nums">{s.pedidos} <span className="text-xs text-muted-foreground">({s.pedidos_tarjeta} con tarjeta)</span></TableCell>
                         <TableCell className="text-right tabular-nums">{dinero(s.derecho_cents)}</TableCell>
@@ -192,8 +200,8 @@ export default function Pagos() {
                     {data.liquidaciones.map(l => (
                       <TableRow key={l.id}>
                         <TableCell>
-                          <div className="font-medium">{l.businesses?.name || '—'}</div>
-                          {l.status === 'por_pagar' && <Cuenta cuenta={data.cuentas[l.business_id]} />}
+                          <div className="font-medium">{l.businesses?.name || '—'}<Demo demo={l.demo} /></div>
+                          {l.status === 'por_pagar' && !l.demo && <Cuenta cuenta={data.cuentas[l.business_id]} />}
                         </TableCell>
                         <TableCell className="whitespace-nowrap">{semana(l.period_start, l.period_end)}</TableCell>
                         <TableCell className="text-right tabular-nums">{l.orders_count}</TableCell>
@@ -204,7 +212,9 @@ export default function Pagos() {
                           {l.reference && <div className="mt-1 text-xs text-muted-foreground">Ref. {l.reference}</div>}
                         </TableCell>
                         <TableCell className="text-right">
-                          {(l.status === 'por_pagar' || l.status === 'por_cobrar') ? <Marcar liquidacion={l} /> : null}
+                          {l.demo
+                            ? <span className="text-xs text-muted-foreground">Demo: no se paga</span>
+                            : (l.status === 'por_pagar' || l.status === 'por_cobrar') ? <Marcar liquidacion={l} /> : null}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -235,7 +245,7 @@ export default function Pagos() {
                     {data.cobros.map(c => (
                       <TableRow key={c.id}>
                         <TableCell className="whitespace-nowrap">{hora(c.created_at)}</TableCell>
-                        <TableCell>{c.businesses?.name || '—'}</TableCell>
+                        <TableCell>{c.businesses?.name || '—'}<Demo demo={c.demo} /></TableCell>
                         <TableCell>#{c.orders?.order_number ?? '—'}</TableCell>
                         <TableCell className="text-right tabular-nums">{dinero(c.captured_cents ?? c.amount_cents)}</TableCell>
                         <TableCell className="whitespace-nowrap">{c.card_brand ? `${c.card_brand}${c.card_last_digits ? ` ···${c.card_last_digits}` : ''}` : '—'}</TableCell>

@@ -253,6 +253,8 @@ router.post('/api/client/login', loginLimiter, async (req, res) => {
         type: business.type,
         suspended: business.suspended,
         bot_active: business.bot_active,
+        // El panel pinta la franja «Local de demostración» (2026-09-30).
+        demo: Boolean(business.is_demo),
       },
     })
   } catch (error) {

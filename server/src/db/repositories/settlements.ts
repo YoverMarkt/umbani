@@ -69,6 +69,16 @@ const markSettlementPaid = async (settlementId: string, reference: string): Prom
 }
 
 /** Los cobros con tarjeta de todos los locales, para la pantalla «Pagos». */
+/**
+ * Los locales de DEMOSTRACIÓN (2026-09-30): su dinero es de prueba. Pagos los
+ * marca y no los suma a lo que Umbani debe; la base ya impide pagarlos.
+ */
+const getDemoBusinessIds = async (): Promise<Set<string>> => {
+  const { data, error } = await db.from('businesses').select('id').eq('is_demo', true)
+  if (error) throw new Error(error.message)
+  return new Set((data || []).map(b => b.id))
+}
+
 const listCardPayments = async (limite = 100) => {
   const { data, error } = await db
     .from('payments')
@@ -112,4 +122,5 @@ export {
   listSettlements,
   markSettlementPaid,
   listCardPayments,
+  getDemoBusinessIds,
 }
