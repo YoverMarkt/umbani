@@ -16388,6 +16388,7 @@ declare
   v_en_el_local      integer;
   v_en_la_plataforma integer;
   v_sin_pagar        integer;
+  v_sin_pagar_tarjeta integer;
   v_tope constant integer := 3;
   v_ventana constant interval := interval '6 hours';
   v_abiertos constant text[] := array['esperando_pago', 'pago_en_revision', 'pendiente'];
@@ -16403,8 +16404,9 @@ begin
   select
     count(*) filter (where previo.business_id = new.business_id),
     count(*),
-    count(*) filter (where previo.status = 'esperando_pago')
-  into v_en_el_local, v_en_la_plataforma, v_sin_pagar
+    count(*) filter (where previo.status = 'esperando_pago'),
+    count(*) filter (where previo.status = 'esperando_pago' and previo.payment_method = 'tarjeta')
+  into v_en_el_local, v_en_la_plataforma, v_sin_pagar, v_sin_pagar_tarjeta
   from public.orders as previo
   where previo.customer_id = new.customer_id
     and previo.source = 'storefront'
@@ -16419,6 +16421,17 @@ begin
   --
   -- El texto nombra la salida —mandar el comprobante— y no acusa: la mayoría
   -- de las veces es alguien que se distrajo, no alguien que está probando.
+  --
+  -- ⚠️ Con TARJETA no hay comprobante (2026-09-30): a quien dejó un pago con
+  -- tarjeta a medias se le decía «envía tu comprobante», que no existe. Se le
+  -- dan las dos salidas de verdad: pagarlo, o MENÚ, que cancela el pedido sin
+  -- pagar (si PayPhone lo aprobara después, no se confirma y lo devuelve solo).
+  if v_sin_pagar >= 1 and v_sin_pagar = v_sin_pagar_tarjeta then
+    raise exception using
+      errcode = '42501',
+      message = 'Tienes un pedido esperando su pago con tarjeta. Vuelve a él para pagarlo, '
+        || 'o escribe MENÚ en el chat de Umbani para cancelarlo y pedir de nuevo.';
+  end if;
   if v_sin_pagar >= 1 then
     raise exception using
       errcode = '42501',
