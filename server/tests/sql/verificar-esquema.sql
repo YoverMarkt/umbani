@@ -7538,3 +7538,61 @@ end;
 $frenos$;
 
 select '✅ frenos de tarjeta: tope de $150 en la puerta real (sin pedidos a medias), 5 intentos por hora y cliente, y 3 rechazos en 24 h la apagan' as resultado;
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- EL PEDIDO CON TARJETA SIN PAGAR NO PIDE «COMPROBANTE» (2026-09-30)
+-- ════════════════════════════════════════════════════════════════════════════
+do $mensaje$
+declare
+  v_local    uuid;
+  v_producto uuid;
+  v_tarjeta  uuid;
+  v_transfer uuid;
+  v_error    text;
+begin
+  insert into businesses (slug, name, type, whatsapp_provider, takes_orders, storefront_enabled, card_mode)
+  values ('verif-mensaje', 'Mensajes de pago', 'pizzería', 'marketplace', true, true, 'pruebas')
+  returning id into v_local;
+  insert into public.business_payment_methods (business_id, method_code, enabled)
+  values (v_local, 'transferencia', true)
+  on conflict (business_id, method_code) do update set enabled = true;
+  insert into products (business_id, name, price) values (v_local, 'Pizza', 3.50) returning id into v_producto;
+  insert into public.customers (phone) values ('593900333100') returning id into v_tarjeta;
+  insert into public.customers (phone) values ('593900333200') returning id into v_transfer;
+
+  -- Con un pedido con TARJETA sin pagar: pagarlo, o MENÚ. Nada de comprobante.
+  perform public.create_storefront_order(v_local, v_tarjeta, '593900333100', 'Ana', null, 'pickup',
+    jsonb_build_array(jsonb_build_object('product_id', v_producto, 'quantity', 1)), null, 'tarjeta');
+  v_error := null;
+  begin
+    perform public.create_storefront_order(v_local, v_tarjeta, '593900333100', 'Ana', null, 'pickup',
+      jsonb_build_array(jsonb_build_object('product_id', v_producto, 'quantity', 1)), null, 'tarjeta');
+  exception when others then v_error := sqlerrm;
+  end;
+  if v_error is null or v_error not like 'Tienes un pedido esperando su pago con tarjeta.%MENÚ%'
+     or v_error like '%comprobante%' then
+    raise exception 'el pedido con tarjeta sin pagar dijo otra cosa: %', v_error;
+  end if;
+
+  -- Con una TRANSFERENCIA sin comprobante: el mensaje de siempre.
+  perform public.create_storefront_order(v_local, v_transfer, '593900333200', 'Bea', null, 'pickup',
+    jsonb_build_array(jsonb_build_object('product_id', v_producto, 'quantity', 1)), null, 'transferencia');
+  v_error := null;
+  begin
+    perform public.create_storefront_order(v_local, v_transfer, '593900333200', 'Bea', null, 'pickup',
+      jsonb_build_array(jsonb_build_object('product_id', v_producto, 'quantity', 1)), null, 'transferencia');
+  exception when others then v_error := sqlerrm;
+  end;
+  if v_error is distinct from 'Tienes un pedido esperando tu comprobante. Envíalo y podrás hacer otro.' then
+    raise exception 'la transferencia sin comprobante perdió su mensaje: %', v_error;
+  end if;
+
+  delete from orders where business_id = v_local;
+  delete from business_customers where business_id = v_local;
+  delete from business_payment_methods where business_id = v_local;
+  delete from customers where id in (v_tarjeta, v_transfer);
+  delete from businesses where id = v_local;
+end;
+$mensaje$;
+
+select '✅ pedido sin pagar: con tarjeta se ofrece pagarlo o MENÚ; con transferencia, el comprobante' as resultado;
