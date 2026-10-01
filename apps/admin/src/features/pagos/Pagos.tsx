@@ -8,9 +8,10 @@ import { Input } from '@botpanel/ui/components/input'
 import { Skeleton } from '@botpanel/ui/components/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@botpanel/ui/components/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@botpanel/ui/components/tabs'
+import { AlertTriangle, CheckCircle2 } from 'lucide-react'
 import { getPagos, marcarLiquidacion } from './api'
 import Registro from './Registro'
-import type { CuentaBancaria, Liquidacion } from './api'
+import type { CobroConTarjeta, CuentaBancaria, Liquidacion, ResumenDelCuadre } from './api'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PAGOS — EL DINERO QUE ENTRA Y SALE DE UMBANI
@@ -94,6 +95,57 @@ function Marcar({ liquidacion }: { liquidacion: Liquidacion }) {
 const Demo = ({ demo }: { demo?: boolean }) => (demo
   ? <Badge variant="outline" className="ml-1.5 border-amber-500/40 bg-amber-500/10 text-[10px] text-amber-800 dark:text-amber-300">Demo</Badge>
   : null)
+
+/**
+ * Lo que dice el cuadre diario de UN cobro (2026-09-29). El cuadre compara con
+ * PayPhone y avisa; nunca cambia el estado del cobro.
+ */
+function Cuadre({ cobro }: { cobro: CobroConTarjeta }) {
+  if (cobro.reconciliation === 'cuadra') {
+    return (
+      <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
+        <CheckCircle2 className="size-4" aria-hidden />
+        Cuadra
+      </span>
+    )
+  }
+  if (cobro.reconciliation === 'descuadre') {
+    return (
+      <div className="max-w-64">
+        <span className="inline-flex items-center gap-1 font-medium text-red-700 dark:text-red-400">
+          <AlertTriangle className="size-4" aria-hidden />
+          Descuadre
+        </span>
+        {cobro.reconciliation_detail && (
+          <div className="text-xs text-muted-foreground">{cobro.reconciliation_detail}</div>
+        )}
+      </div>
+    )
+  }
+  return <span className="text-muted-foreground">Sin cuadrar</span>
+}
+
+/** La línea del último cuadre, encima de la tabla de cobros. */
+function UltimoCuadre({ cuadre }: { cuadre: ResumenDelCuadre | undefined }) {
+  if (!cuadre) {
+    return (
+      <p className="px-4 pt-4 text-sm text-muted-foreground">
+        Cada mañana desde las 6:00 se compara cada cobro con PayPhone. Todavía no hay ningún cuadre.
+      </p>
+    )
+  }
+  return (
+    <p className="px-4 pt-4 text-sm text-muted-foreground">
+      Último cuadre con PayPhone: <span className="text-foreground">{hora(cuadre.at)}</span>
+      {' · '}{cuadre.revisados} revisado{cuadre.revisados === 1 ? '' : 's'}
+      {' · '}
+      <span className={cuadre.descuadres ? 'font-medium text-red-700 dark:text-red-400' : ''}>
+        {cuadre.descuadres} descuadre{cuadre.descuadres === 1 ? '' : 's'}
+      </span>
+      {cuadre.sinRespuesta > 0 && ` · ${cuadre.sinRespuesta} sin respuesta de PayPhone (se reintenta)`}
+    </p>
+  )
+}
 
 export default function Pagos() {
   const { data, isLoading, error } = useQuery({ queryKey: ['adm-pagos'], queryFn: getPagos })
@@ -226,6 +278,7 @@ export default function Pagos() {
 
         <TabsContent value="cobros">
           <Card className="p-0">
+            <UltimoCuadre cuadre={data.cuadre} />
             {data.cobros.length === 0
               ? <p className="p-6 text-sm text-muted-foreground">Todavía no hay cobros con tarjeta.</p>
               : (
@@ -239,6 +292,7 @@ export default function Pagos() {
                       <TableHead>Tarjeta</TableHead>
                       <TableHead>Estado</TableHead>
                       <TableHead>Id PayPhone</TableHead>
+                      <TableHead>Cuadre</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -257,6 +311,7 @@ export default function Pagos() {
                           {c.status_detail && <div className="text-xs text-muted-foreground">{c.status_detail}</div>}
                         </TableCell>
                         <TableCell className="font-mono text-xs">{c.provider_transaction_id || '—'}</TableCell>
+                        <TableCell><Cuadre cobro={c} /></TableCell>
                       </TableRow>
                     ))}
                   </TableBody>

@@ -217,7 +217,85 @@ const getCardPaymentOrder = async (
   return data || null
 }
 
+// ── El cuadre diario contra PayPhone (2026-09-29) ───────────────────────────
+//
+// Ver `migration-2026-09-29-cuadre-con-payphone.sql`. Solo guarda el
+// RESULTADO del cuadre: nada de aquí cambia el estado de un cobro.
+
+export interface CobroPorCuadrar {
+  id: string
+  business_id: string
+  business_name: string
+  order_id: string
+  order_number: number | null
+  client_transaction_id: string
+  provider_transaction_id: string | null
+  status: string
+  amount_cents: number
+  captured_cents: number | null
+  created_at: string
+}
+
+const paymentsToReconcile = async (environment: ModoDeCobro, limite = 120): Promise<CobroPorCuadrar[]> => {
+  const { data, error } = await db.rpc('payments_to_reconcile', { p_environment: environment, p_limite: limite })
+  if (error) throw new Error(error.message)
+  return data ?? []
+}
+
+const markPaymentReconciled = async (
+  id: string,
+  resultado: 'cuadra' | 'descuadre',
+  detalle: string | null,
+): Promise<boolean> => {
+  const { data, error } = await db.rpc('mark_payment_reconciled', {
+    p_id: id, p_resultado: resultado, p_detalle: detalle ?? '',
+  })
+  if (error) throw new Error(error.message)
+  return Boolean(data)
+}
+
+/**
+ * El resumen del último cuadre, para la pantalla de Pagos y para no cuadrar
+ * dos veces el mismo día. Vive en `server_settings` FUERA de `ALLOWED_KEYS`:
+ * no es un ajuste que se edite, es un resultado.
+ */
+export interface ResumenDelCuadre {
+  fecha: string
+  at: string
+  revisados: number
+  descuadres: number
+  sinRespuesta: number
+}
+
+const CLAVE_DEL_CUADRE = 'payphone_cuadre'
+
+const leerUltimoCuadre = async (): Promise<ResumenDelCuadre | null> => {
+  const { data, error } = await db.from('server_settings').select('value').eq('key', CLAVE_DEL_CUADRE).maybeSingle()
+  if (error) throw new Error(error.message)
+  if (!data?.value) return null
+  try {
+    const r = JSON.parse(data.value) as Partial<ResumenDelCuadre>
+    return typeof r.fecha === 'string' && typeof r.at === 'string'
+      ? { fecha: r.fecha, at: r.at, revisados: Number(r.revisados) || 0, descuadres: Number(r.descuadres) || 0, sinRespuesta: Number(r.sinRespuesta) || 0 }
+      : null
+  } catch {
+    return null
+  }
+}
+
+const guardarUltimoCuadre = async (resumen: ResumenDelCuadre): Promise<void> => {
+  const { error } = await db.from('server_settings').upsert(
+    { key: CLAVE_DEL_CUADRE, value: JSON.stringify(resumen), updated_at: new Date().toISOString() },
+    { onConflict: 'key' },
+  )
+  if (error) throw new Error(error.message)
+}
+
 export {
+  paymentsToReconcile,
+  markPaymentReconciled,
+  leerUltimoCuadre,
+  guardarUltimoCuadre,
   getCardPaymentOrder,
   startCardPayment,
   claimCardPayment,
