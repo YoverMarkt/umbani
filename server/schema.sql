@@ -10885,6 +10885,15 @@ create trigger orders_stamp_pricing
 -- panel del superadmin. La ruta del comercio pasa SIEMPRE su `businessId` del
 -- JWT (regla inviolable #1).
 
+-- Los locales de demostración (2026-09-30): la columna va AQUÍ, antes de la
+-- primera función `language sql` que la nombra (se valida al crearla). Ver
+-- `migration-2026-09-30-locales-de-demostracion.sql`.
+alter table public.businesses
+  add column if not exists is_demo boolean not null default false;
+
+comment on column public.businesses.is_demo is
+  'Local de demostración: su dinero es de prueba. Su liquidación no se paga y no cuenta en lo que gana Umbani.';
+
 create or replace function public.platform_markup_summary(
   p_from        date,
   p_to          date,
@@ -11163,6 +11172,9 @@ as $$
     and s.sold_at >= (p_from::timestamp at time zone 'America/Guayaquil')
     and s.sold_at <  (p_to::timestamp   at time zone 'America/Guayaquil')
     and (p_business_id is null or s.business_id = p_business_id)
+    -- ⚠️ Lo que gana Umbani no cuenta los locales de DEMOSTRACIÓN (2026-09-30),
+    -- salvo que se pregunte por ese local: entonces ve lo suyo.
+    and (p_business_id is not null or not b.is_demo)
   group by s.business_id
   order by round(coalesce(sum(o.platform_markup), 0), 2) desc;
 $$;
@@ -19732,6 +19744,15 @@ declare
   v_ref text := nullif(btrim(coalesce(p_reference, '')), '');
   v_fila public.settlements%rowtype;
 begin
+  -- ⚠️ Un local de DEMOSTRACIÓN no se paga (2026-09-30): su dinero es de
+  -- prueba. Su liquidación existe para que «Mis pagos» se vea como uno real.
+  if exists (
+    select 1 from public.settlements s join public.businesses b on b.id = s.business_id
+     where s.id = p_settlement_id and b.is_demo
+  ) then
+    return jsonb_build_object('result', 'demo');
+  end if;
+
   if v_ref is null or char_length(v_ref) < 3 then
     raise exception using errcode = '22023',
       message = 'Escribe la referencia de la transferencia.';
@@ -21177,3 +21198,37 @@ $$;
 
 revoke all on function public.mark_payment_reconciled(uuid, text, text) from public, anon, authenticated;
 grant execute on function public.mark_payment_reconciled(uuid, text, text) to service_role;
+
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- LOS LOCALES DE DEMOSTRACIÓN (2026-09-30).
+-- Ver `migration-2026-09-30-locales-de-demostracion.sql`: el porqué está allí.
+-- ════════════════════════════════════════════════════════════════════════════
+
+update public.businesses
+   set is_demo = true
+ where notes like 'LOCAL DE MUESTRA%'
+   and not is_demo;
+
+-- Cambiar la marca queda en el registro de dinero. Se crea DESPUÉS de marcar
+-- los 15 de muestra: esa decisión está escrita aquí, no hace falta repetirla.
+create or replace function public.businesses_registro_demo()
+returns trigger
+language plpgsql
+set search_path = public, pg_temp
+as $$
+begin
+  perform public.anotar_movimiento_de_dinero(new.id, 'local_demo', 'businesses',
+    new.id::text, jsonb_build_object('antes', old.is_demo, 'despues', new.is_demo));
+  return null;
+end;
+$$;
+
+revoke all on function public.businesses_registro_demo() from public, anon, authenticated;
+
+drop trigger if exists businesses_registro_demo on public.businesses;
+create trigger businesses_registro_demo
+  after update of is_demo on public.businesses
+  for each row when (old.is_demo is distinct from new.is_demo)
+  execute function public.businesses_registro_demo();
+

@@ -23,6 +23,8 @@ export interface BusinessRecord {
   id: string
   slug: string
   name: string
+  /** Local de demostración: su dinero es de prueba (2026-09-30). */
+  is_demo?: boolean | null
   type?: string | null
   description?: string | null
   hours?: string | null

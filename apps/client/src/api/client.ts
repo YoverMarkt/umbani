@@ -11,6 +11,8 @@ export type Business = {
   type: string | null
   suspended?: boolean
   bot_active?: boolean
+  /** Local de demostración: sus pedidos y montos son de prueba (2026-09-30). */
+  demo?: boolean
 }
 
 export type PanelUser = {

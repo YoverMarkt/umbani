@@ -15,6 +15,8 @@ export type SaldoEnCurso = {
   neto_cents: number
   umbani_cents: number
   payphone_cents: number
+  /** Local de demostración: su dinero es de prueba (2026-09-30). */
+  demo?: boolean
 }
 
 export type Liquidacion = {
@@ -32,6 +34,7 @@ export type Liquidacion = {
   paid_at: string | null
   reference: string | null
   businesses?: { name: string } | null
+  demo?: boolean
 }
 
 export type CobroConTarjeta = {
@@ -51,6 +54,7 @@ export type CobroConTarjeta = {
   reconciliation_detail?: string | null
   businesses?: { name: string } | null
   orders?: { order_number: number } | null
+  demo?: boolean
 }
 
 /** El resumen del último cuadre diario contra PayPhone. */

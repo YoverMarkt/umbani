@@ -773,3 +773,34 @@ test('el dueño le pone horario a un producto: el menú con reloj', async ({ pag
   await expect.poll(() => guardado?.available_from).toBe('07:00')
   await expect.poll(() => guardado?.available_until).toBe('11:00')
 })
+
+// Los locales de DEMOSTRACIÓN (2026-09-30): nadie puede confundir sus montos
+// con dinero de verdad, ni quien enseña la demo ni quien la mira.
+test('un local de demostración lo dice en todo el panel y en su estado de cuenta', async ({ page }) => {
+  await mockClientApi(page)
+  await page.route('**/api/client/mis-pagos', route => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      demo: true,
+      semana: { pedidos: 2, pedidosTarjeta: 1, tuyoCents: 2796, yaCobrasteCents: 1518, deAntesCents: 0, comisionCents: 240, netoCents: 1278 },
+      pedidos: [], depositos: [],
+    }),
+  }))
+  await seedClientSession(page)
+  await page.addInitScript(() => {
+    localStorage.setItem('client_biz', JSON.stringify({ id: 'biz-e2e', name: 'Burger Brava', type: 'hamburguesería', demo: true }))
+  })
+  await page.goto(`${clientUrl}#/pagos`)
+
+  await expect(page.getByRole('note').filter({ hasText: 'Local de demostración.' })).toBeVisible()
+  await expect(page.getByText('Umbani no los cobra ni los paga.')).toBeVisible()
+  await expect(page.getByText(/Estado de cuenta de ejemplo/)).toBeVisible()
+})
+
+test('un local de verdad no lleva la franja de demostración', async ({ page }) => {
+  await mockClientApi(page)
+  await seedClientSession(page)
+  await page.goto(`${clientUrl}#/`)
+  await expect(page.getByText('BotPanel').first().or(page.getByText('Negocio E2E').first())).toBeVisible()
+  await expect(page.getByText('Local de demostración.')).toHaveCount(0)
+})

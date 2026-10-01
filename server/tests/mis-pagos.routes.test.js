@@ -48,8 +48,13 @@ describe('Mis pagos', () => {
         total_cents: 1518, local_cents: 1198, reparto_cents: 200, reparto_para: 'local', umbani_cents: 120, en_mano: 'umbani' },
     ])
     const liq = vi.spyOn(db, 'listSettlements').mockResolvedValue([])
+    // ⚠️ La ruta lee también el negocio, para saber si es de demostración
+    // (2026-09-30). Sin simularlo, en el CI la lectura se queda colgada.
+    const negocio = vi.spyOn(db, 'getBusinessById').mockResolvedValue({ id: 'b1', slug: 'b1', name: 'Local', is_demo: false })
     const r = await pedir({ role: 'client', businessId: 'b1', urole: 'owner' }, { businessId: 'OTRO' })
     expect(r.status).toBe(200)
+    expect(negocio).toHaveBeenCalledWith('b1')
+    expect(r.body.demo).toBe(false)
     expect(saldos).toHaveBeenCalledWith('b1')
     expect(libro.mock.calls[0][0]).toBe('b1')
     expect(liq.mock.calls[0][0]).toMatchObject({ businessId: 'b1' })
@@ -61,11 +66,21 @@ describe('Mis pagos', () => {
   it('sin pedidos todavía, todo en cero', async () => {
     vi.spyOn(db, 'getSettlementBalances').mockResolvedValue([])
     vi.spyOn(db, 'listLedger').mockResolvedValue([])
+    vi.spyOn(db, 'getBusinessById').mockResolvedValue({ id: 'b1', slug: 'b1', name: 'Local', is_demo: false })
     vi.spyOn(db, 'listSettlements').mockResolvedValue([{ id: 's', period_start: '2026-10-05', period_end: '2026-10-11',
       orders_count: 0, derecho_cents: 0, en_mano_cents: 0, arrastre_cents: 0, cuota_cents: 0, neto_cents: 0,
       status: 'en_cero', paid_at: null, reference: null }])
     const r = await pedir({ role: 'client', businessId: 'b1', urole: 'owner' })
     expect(r.body.semana.netoCents).toBe(0)
     expect(r.body.depositos[0]).toMatchObject({ estado: 'en_cero', desde: '2026-10-05' })
+  })
+
+  it('un local de DEMOSTRACIÓN lo sabe: su estado de cuenta es de ejemplo (2026-09-30)', async () => {
+    vi.spyOn(db, 'getSettlementBalances').mockResolvedValue([])
+    vi.spyOn(db, 'listLedger').mockResolvedValue([])
+    vi.spyOn(db, 'listSettlements').mockResolvedValue([])
+    vi.spyOn(db, 'getBusinessById').mockResolvedValue({ id: 'b1', slug: 'b1', name: 'Burger Brava', is_demo: true })
+    const r = await pedir({ role: 'client', businessId: 'b1', urole: 'owner' })
+    expect(r.body.demo).toBe(true)
   })
 })

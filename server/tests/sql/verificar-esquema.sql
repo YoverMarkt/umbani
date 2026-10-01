@@ -7694,3 +7694,76 @@ end;
 $mensaje$;
 
 select '✅ pedido sin pagar: con tarjeta se ofrece pagarlo o MENÚ; con transferencia, el comprobante' as resultado;
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- LOS LOCALES DE DEMOSTRACIÓN (2026-09-30)
+-- ════════════════════════════════════════════════════════════════════════════
+do $demo$
+declare
+  v_demo  uuid;
+  v_real  uuid;
+  v_s     uuid;
+  v_r     jsonb;
+  v_antes bigint := coalesce((select max(id) from public.money_audit_log), 0);
+begin
+  insert into businesses (slug, name, type, whatsapp_provider, takes_orders, notes)
+  values ('verif-demo', 'Demo de Prueba', 'pizzería', 'marketplace', true, 'LOCAL DE MUESTRA · verificación')
+  returning id into v_demo;
+  insert into businesses (slug, name, type, whatsapp_provider, takes_orders)
+  values ('verif-no-demo', 'Real de Prueba', 'pizzería', 'marketplace', true)
+  returning id into v_real;
+
+  -- Nace NO demo: la marca de `notes` solo se leyó una vez, en la migración.
+  if (select is_demo from businesses where id = v_demo) then
+    raise exception 'un local nuevo nació demo por su notes: la verdad es is_demo';
+  end if;
+  update businesses set is_demo = true where id = v_demo;
+
+  -- ── 1. Cambiar la marca queda en el registro de dinero ───────────────────
+  if not exists (select 1 from money_audit_log where id > v_antes and action = 'local_demo'
+                   and business_id = v_demo and detail = '{"antes": false, "despues": true}'::jsonb) then
+    raise exception 'marcar un local como demo no quedó en el registro de dinero';
+  end if;
+
+  -- ── 2. La liquidación de un local demo NO se paga ────────────────────────
+  insert into settlements (business_id, party, period_start, period_end, orders_count,
+    derecho_cents, en_mano_cents, arrastre_cents, cuota_cents, neto_cents, status)
+  values (v_demo, 'local', '2026-09-28', '2026-10-04', 3, 2500, 0, 0, 0, 2500, 'por_pagar')
+  returning id into v_s;
+  v_r := public.mark_settlement_paid(v_s, 'TRF-DEMO-1');
+  if v_r ->> 'result' <> 'demo' then
+    raise exception 'la liquidación de un local demo se marcó pagada: %', v_r;
+  end if;
+  if (select status from settlements where id = v_s) <> 'por_pagar' then
+    raise exception 'la liquidación demo cambió de estado';
+  end if;
+  -- …y la de un local real, sí.
+  insert into settlements (business_id, party, period_start, period_end, orders_count,
+    derecho_cents, en_mano_cents, arrastre_cents, cuota_cents, neto_cents, status)
+  values (v_real, 'local', '2026-09-28', '2026-10-04', 1, 900, 0, 0, 0, 900, 'por_pagar')
+  returning id into v_s;
+  if public.mark_settlement_paid(v_s, 'TRF-REAL-1') ->> 'result' <> 'updated' then
+    raise exception 'la liquidación de un local real dejó de poder pagarse';
+  end if;
+
+  -- ── 3. Lo que gana Umbani no cuenta la demo, salvo preguntando por ella ──
+  insert into sales (business_id, total, status, source, sold_at)
+  values (v_demo, 40, 'completada', 'manual', '2026-09-29 12:00-05'),
+         (v_real, 15, 'completada', 'manual', '2026-09-29 12:00-05');
+  if exists (select 1 from public.platform_markup_summary('2026-09-28', '2026-10-05', null) where business_id = v_demo) then
+    raise exception 'lo que gana Umbani contó un local de demostración';
+  end if;
+  if not exists (select 1 from public.platform_markup_summary('2026-09-28', '2026-10-05', null) where business_id = v_real) then
+    raise exception 'lo que gana Umbani dejó de contar un local real';
+  end if;
+  if not exists (select 1 from public.platform_markup_summary('2026-09-28', '2026-10-05', v_demo)) then
+    raise exception 'el local demo ya no ve lo suyo al preguntar por él';
+  end if;
+
+  delete from settlements where business_id in (v_demo, v_real);
+  delete from sales where business_id in (v_demo, v_real);
+  delete from businesses where id in (v_demo, v_real);
+end;
+$demo$;
+
+select '✅ locales de demostración: su liquidación no se paga, Umbani no cuenta su dinero, y cambiar la marca queda registrado' as resultado;
