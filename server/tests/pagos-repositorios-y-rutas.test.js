@@ -168,6 +168,10 @@ describe('rutas de Pagos', () => {
     ])
     vi.spyOn(db, 'listSettlements').mockResolvedValue([{ id: 's1', business_id: 'b3', status: 'por_pagar' }])
     vi.spyOn(db, 'listCardPayments').mockResolvedValue([])
+    // ⚠️ La ruta lee también el último cuadre (2026-09-29). Sin simularlo, la
+    // consulta va a la base de verdad: en local falla al instante, y en el CI se
+    // queda colgada hasta el tiempo límite y la prueba muere a los 5 s.
+    vi.spyOn(db, 'leerUltimoCuadre').mockResolvedValue(null)
     const cuenta = vi.spyOn(db, 'getBusinessBankAccount').mockImplementation(async id => ({ account_number: `cta-${id}` }))
     const r = await despachar('get', '/api/admin/pagos', { auth: admin() })
     expect(r.status).toBe(200)

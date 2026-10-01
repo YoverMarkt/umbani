@@ -6,7 +6,14 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   test: {
     env: {
-      SUPABASE_URL: 'http://127.0.0.1:54321',
+      // ⚠️ El puerto 1, donde nunca escucha nada, y NO el 54321 (2026-09-30).
+      // El 54321 es el del Supabase de STAGING: con el staging encendido, una
+      // consulta que una prueba olvidó simular recibía un «no autorizado» al
+      // instante y la prueba pasaba; en el CI no hay nada ahí, la librería
+      // REINTENTA la lectura y la prueba moría a los 5 s. Así pasó con la del
+      // cuadre de PayPhone: verde en el Mac, rojo en el CI. Con el puerto 1, el
+      // Mac se porta como el CI.
+      SUPABASE_URL: 'http://127.0.0.1:1',
       SUPABASE_SERVICE_KEY: 'clave-sintetica-solo-para-tests',
       JWT_SECRET: 'secreto-sintetico-solo-para-tests-de-vitest',
     },
