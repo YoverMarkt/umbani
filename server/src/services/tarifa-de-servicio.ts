@@ -25,5 +25,11 @@ export async function tarifaDeServicio(
   return valor
 }
 
-/** Solo para las pruebas: olvidar lo leído. */
+/**
+ * Olvidar lo leído: la próxima apertura de la tienda pregunta a la base.
+ *
+ * Lo llama el superadmin al guardar la tarifa (`admin-settings.routes.ts`) y
+ * las pruebas. Sin esto, el carrito enseñaba la tarifa vieja hasta un minuto
+ * después de cambiarla, mientras la base ya cobraba la nueva.
+ */
 export function olvidarTarifa() { leidoEn = null; valor = 0 }

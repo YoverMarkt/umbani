@@ -650,6 +650,59 @@ describe('PUT /api/client/orders/:id/status', () => {
       error: 'Este pedido es para retirar en el local: no puede salir a reparto',
     })
   })
+
+  // El candado de la checklist (#407) respondía bien en la base y la ruta lo
+  // convertía en un 500 «respuesta inválida». Lo cazaron los recorridos.
+  it('dice qué falta meter en la bolsa en vez de un 500', async () => {
+    vi.spyOn(db, 'setOrderStatus').mockResolvedValue({
+      data: { result: 'incompleto', faltan: 'Agua sin gas x2, Brownie x1', order: { id: 'order-a', status: 'preparacion' } },
+      error: null,
+    })
+
+    const response = await dispatchStatus({ authorization: authorization(), status: 'en_camino' })
+
+    expect(response.status).toBe(409)
+    expect(response.body).toEqual({
+      error: 'Todavía falta meter en la bolsa: Agua sin gas x2, Brownie x1',
+      faltan: 'Agua sin gas x2, Brownie x1',
+    })
+  })
+
+  it('el cobro con tarjeta sin confirmar es una regla (409 con su motivo), no un fallo', async () => {
+    vi.spyOn(db, 'setOrderStatus').mockResolvedValue({
+      data: null,
+      error: { code: '22023', message: 'Este pedido se paga con tarjeta y el cobro aún no está confirmado.' },
+    })
+
+    const response = await dispatchStatus({ authorization: authorization(), status: 'aceptado' })
+
+    expect(response.status).toBe(409)
+    expect(response.body).toEqual({ error: 'Este pedido se paga con tarjeta y el cobro aún no está confirmado.' })
+  })
+
+  it('un fallo de verdad de la base sigue siendo 500', async () => {
+    vi.spyOn(db, 'setOrderStatus').mockResolvedValue({
+      data: null,
+      error: { code: '57014', message: 'canceling statement due to statement timeout' },
+    })
+
+    const response = await dispatchStatus({ authorization: authorization(), status: 'aceptado' })
+
+    expect(response.status).toBe(500)
+    expect(response.body).toEqual({ error: 'No se pudo actualizar el pedido' })
+  })
+
+  it('un pedido a domicilio no se marca «listo para retirar»: conflicto, no 500', async () => {
+    vi.spyOn(db, 'setOrderStatus').mockResolvedValue({
+      data: { result: 'not_pickable', order: { id: 'order-a', status: 'preparacion' } },
+      error: null,
+    })
+
+    const response = await dispatchStatus({ authorization: authorization(), status: 'listo_para_retiro' })
+
+    expect(response.status).toBe(409)
+    expect(response.body.error).toMatch(/a domicilio/)
+  })
 })
 
 // ═══════════════════════════════════════════════════════════════════════════

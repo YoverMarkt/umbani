@@ -114,7 +114,12 @@ es el que corre todo. Lo que el manifiesto NO dice:
   para todo el monorepo.
 - El servidor en local levanta un **túnel Cloudflare automático**; en producción
   la URL pública sale de `BASE_URL`.
-- El CI corre lint, tipos, tests y builds **en cada PR** (seis checks).
+- El CI corre lint, tipos, tests y builds **en cada PR** (siete checks). El
+  séptimo son los **recorridos de punta a punta**: servidor de verdad contra
+  Supabase de verdad, pedido entero con el dinero al centavo
+  (`npm run test:recorridos -w @botpanel/server`; en local necesita
+  `npm run staging:up` y ⚠️ vacía el staging). Ver
+  [VERIFICACION.md](VERIFICACION.md#los-recorridos-de-punta-a-punta-2026-10-01).
 - `npm run test:e2e` necesita Chromium: la primera vez, `npm run test:e2e:install`.
 - **Staging local:** `npm run staging:up` levanta el stack de Supabase en Docker
   y siembra; `npm run dev:staging -w @botpanel/server` arranca el servidor

@@ -23,6 +23,7 @@
     "errores": "node --env-file=.env tests/errores-resueltos.mjs",
     "admin:reiniciar-codigos": "node --env-file=.env tests/reiniciar-segundo-paso.mjs",
     "test:coverage": "vitest run tests/ --coverage",
+    "test:recorridos": "npm run build && vitest run --config vitest.recorridos.config.mjs",
     "pretest:coverage": "npm run build",
     "backup": "node --env-file=.env tests/respaldo.mjs backup",
     "backup:verify": "node --env-file=.env tests/respaldo.mjs verify",

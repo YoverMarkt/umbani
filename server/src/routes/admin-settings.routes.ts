@@ -25,6 +25,9 @@ interface ModuloSettings {
   setMany(values: Record<string, unknown>): Promise<void>
 }
 const settings: ModuloSettings = require('../services/settings') as typeof import('../services/settings')
+// La tarifa que ENSEÑA la tienda vive un minuto en memoria
+// (`services/tarifa-de-servicio.ts`); la que COBRA la base, no. Ver abajo.
+const tarifa = require('../services/tarifa-de-servicio') as typeof import('../services/tarifa-de-servicio')
 interface ModuloCloudinary {
   verify(values: {
     cloud_name?: string
@@ -86,6 +89,13 @@ router.get('/api/admin/server-settings', auth.authAdmin, async (_req, res) => {
 router.post('/api/admin/server-settings', auth.authAdmin, async (req, res) => {
   try {
     await settings.setMany(req.body as Record<string, unknown>)
+    // ⚠️ Cambiar la tarifa y olvidar la que la tienda tenía en memoria va
+    // JUNTO. La base cobra la nueva al instante, pero el carrito seguía
+    // enseñando la vieja hasta un minuto: el cliente veía $4,62 y se le
+    // cobraban $4,77. Lo encontraron los recorridos de punta a punta
+    // (2026-10-01). Con una sola instancia en Railway, esto lo cierra del
+    // todo; con varias, las demás tardarían como mucho ese minuto.
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, 'service_fee')) tarifa.olvidarTarifa()
     res.json({ ok: true })
   } catch (error) {
     console.error(

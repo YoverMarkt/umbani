@@ -79,15 +79,38 @@ const urlDesdeDocker = URL_BASE.replace(
   '@host.docker.internal',
 )
 
-const psql = (args, entrada) => execFileSync('docker', [
-  'run', '--rm', '-i', 'pgvector/pgvector:pg17',
-  'psql', urlDesdeDocker, '-v', 'ON_ERROR_STOP=1', ...args,
-], {
-  input: entrada,
-  encoding: 'utf8',
-  stdio: ['pipe', 'pipe', 'pipe'],
-  maxBuffer: 64 * 1024 * 1024,
-})
+// ⚠️ Con `psql` instalado se usa ESE, y si no, el de un contenedor. El Mac no
+// suele tenerlo y tira de Docker como siempre; el CI (Linux) lo instala con apt
+// y además NO conoce `host.docker.internal` —ese nombre solo existe en Docker
+// Desktop—, así que ahí el contenedor iría a ciegas. Lo descubrieron los
+// recorridos de punta a punta, que son los primeros en sembrar desde el CI.
+const hayPsqlLocal = (() => {
+  try {
+    execFileSync('psql', ['--version'], { stdio: 'ignore' })
+    return true
+  } catch {
+    return false
+  }
+})()
+
+export const psql = (args, entrada) => execFileSync(
+  hayPsqlLocal ? 'psql' : 'docker',
+  hayPsqlLocal
+    ? [URL_BASE, '-v', 'ON_ERROR_STOP=1', ...args]
+    : [
+        'run', '--rm', '-i',
+        // En Linux el contenedor comparte la red de la máquina y ve localhost.
+        ...(process.platform === 'linux' ? ['--network', 'host'] : []),
+        'pgvector/pgvector:pg17',
+        'psql', process.platform === 'linux' ? URL_BASE : urlDesdeDocker, '-v', 'ON_ERROR_STOP=1', ...args,
+      ],
+  {
+    input: entrada,
+    encoding: 'utf8',
+    stdio: ['pipe', 'pipe', 'pipe'],
+    maxBuffer: 64 * 1024 * 1024,
+  },
+)
 
 /**
  * Espera a que la base acepte consultas, en vez de rendirse al primer intento.
@@ -113,7 +136,7 @@ function esperarALaBase({ intentos = 40 } = {}) {
   process.exit(1)
 }
 
-function exigirQueEsteLevantado() {
+export function exigirQueEsteLevantado() {
   const inicio = Date.now()
   esperarALaBase()
   if (Date.now() - inicio > 3000) console.log(' listo')
@@ -198,7 +221,7 @@ function estadoDeSupabase() {
  * colarse el `SUPABASE_URL` de producción, y el staging apuntaría —sin avisar—
  * justo a lo que viene a evitar.
  */
-function entornoDeStaging() {
+export function entornoDeStaging() {
   const estado = estadoDeSupabase()
   const servicio = claveDeServicio()
   return {
@@ -225,7 +248,7 @@ const literal = valor => `'${String(valor).replace(/'/g, "''")}'`
 
 // ── preparar ────────────────────────────────────────────────────────────────
 
-function preparar() {
+export function preparar() {
   exigirQueEsteLevantado()
 
   // ⚠️ SE EMPIEZA DE CERO, y no es por comodidad: `schema.sql` tiene

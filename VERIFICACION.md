@@ -543,3 +543,90 @@ Otras trampas del día:
 El proyecto de São Paulo quedó intacto como vuelta atrás: volver es devolver
 las tres variables `SUPABASE_*` de Railway (lo escrito después del corte se
 perdería).
+
+---
+
+## Los recorridos de punta a punta (2026-10-01)
+
+`npm run test:recorridos -w @botpanel/server` · trabajo `recorridos` del CI (el
+séptimo) · `server/tests/recorridos/`.
+
+Todas las capas de arriba prueban **piezas**: Vitest prueba rutas y servicios
+con la base simulada, `verify:schema` ejecuta las funciones SQL una a una, el
+E2E de Playwright pinta los paneles con la API interceptada. Ninguna recorría
+un pedido **entero** como lo vive la gente —el cliente pide y paga, el local
+acepta, prepara y entrega, el dinero se reparte y se liquida el lunes— con el
+servidor hablando con la base por HTTP, que es como corre en producción. Un
+fallo en la **costura** entre dos piezas probadas no lo veía nadie.
+
+### Qué recorre
+
+| Archivo | El recorrido |
+|---|---|
+| `00-escenario` | Las cuatro puertas abren: servidor, cliente por WhatsApp, cliente por la app, local. Nada sale a internet. |
+| `01-efectivo` | Lo de la carta es lo que se cobra · pedido idempotente · aceptar, preparar línea a línea, salir, entregar · UNA venta · el libro cuadra al centavo (local + envío + Umbani = total) · los tres avisos al cliente · el candado de la bolsa |
+| `02-transferencia` | Por la app (la puerta de Flutter): la cuenta del local, `esperando_pago`, confirmar el pago (la segunda vez no hace nada), entregar, el dinero en manos del local |
+| `03-tarjeta-y-reembolso` | Cobro preparado desde el servidor · sin pago el local no puede aceptar · paga y vuelve → captura al instante · paga y **no vuelve** → la tarea lo confirma igual · cancelado ya cobrado → **se devuelve solo** · PayPhone cobra otro monto → no se da por pagado y se devuelve · tarjeta rechazada · la comisión de PayPhone en el libro |
+| `04-cancelaciones` | Rechazo con aviso · transferencia que caduca · cancelar en camino · un pedido entregado NO se cancela |
+| `05-liquidacion-semanal` | Efectivo + transferencia + tarjeta en una semana → cierre del lunes al centavo · cerrar dos veces no crea nada · Pagos del superadmin y «Mis pagos» dicen lo mismo · marcar pagada deja rastro en el registro de dinero y no se paga dos veces |
+| `06-precios-desde-el-panel` | Envío (dueño), margen y tarifa (superadmin) cambiados desde los paneles llegan YA a la carta, la cotización y el cobro · el pedido de antes queda congelado |
+
+### Cómo está montado
+
+- **La base es la del staging local** (`supabase start`), vaciada y sembrada con
+  el MISMO `preparar()` de `staging.mjs` —que usa la plantilla real del alta— más
+  lo que un recorrido necesita (`entorno.mjs`). ⚠️ **Vacía el staging local:**
+  los datos de mentira que hubiera se pierden.
+- **El servidor es el compilado de verdad**, arrancado con
+  `interceptor.cjs` delante: desvía TODA llamada a internet —axios, `fetch` y
+  `https.request`— al **proveedor falso** (`proveedores-falsos.mjs`), que
+  contesta como PayPhone y YCloud y anota lo que recibe. Así se comprueba qué se
+  le cobró a la tarjeta, qué se devolvió y qué mensaje le llegó al cliente, sin
+  gastar un centavo ni escribirle a nadie.
+- **Cada actor entra por su puerta real** (`actores.mjs`): el cliente por el
+  chat (simulador del panel) o por la app (código por WhatsApp); el local con su
+  correo y contraseña; el superadmin con su token (firmado: los dos pasos tienen
+  sus propias pruebas).
+- **El reloj:** la semana solo se cierra cuando terminó, así que la liquidación
+  lleva sus pedidos a una semana pasada (`reloj.llevarALaSemana`) y la base de
+  la prueba adelanta el corte. Es lo único que no pasa por una pantalla.
+- **Los frenos son de verdad** y saltaron al correr la batería entera (8 pedidos
+  por minuto por IP; 5 intentos de tarjeta por hora por cliente). No se
+  apagan: cada archivo llega desde su propia red (`X-Forwarded-For`, como detrás
+  de Railway) y `recogerLaMesa()` pasa los cobros anteriores a «ayer».
+
+### Lo que encontró el primer día
+
+Tres fallos que las otras capas no veían, los tres en la COSTURA:
+
+1. **El candado de la bolsa daba 500.** `set_order_status` respondía
+   `incompleto` / `not_pickable` desde #407, pero la ruta del panel no los
+   conocía: el dueño leía «la base de datos devolvió una respuesta inválida»
+   en vez de QUÉ faltaba. Ahora 409 con lo que falta.
+2. **La tarjeta sin cobrar daba 500.** El disparador
+   `orders_card_requires_payment` lanza `22023` y la ruta lo trataba como fallo
+   del servidor. Ahora 409 con su motivo.
+3. **💰 El cliente veía una tarifa y pagaba otra.** La tienda guarda la tarifa
+   de servicio un minuto en memoria (`tarifa-de-servicio.ts`) y nadie la
+   olvidaba al cambiarla: durante ese minuto el carrito decía $4,62 y se
+   cobraban $4,77. Guardar la tarifa en el panel ahora la olvida en el acto.
+
+### Qué NO cubre
+
+- **WhatsApp de verdad** (YCloud y Meta son falsos) ni **PayPhone de verdad**:
+  la forma de sus respuestas está copiada de su documentación y del sandbox; si
+  ellos la cambian, esto no se entera. Lo vigila producción (el cuadre diario).
+- **El comprobante por foto** (descarga del medio, Cloudinary, OpenAI): tiene
+  sus pruebas unitarias; aquí el local confirma el pago a mano.
+- **Las pantallas**: eso es el E2E de Playwright. Esto prueba la API y el dinero.
+
+### Correrlo en local
+
+```
+npm run staging:up                              # una vez: Supabase en Docker
+npm run test:recorridos -w @botpanel/server     # ~2 min, compila antes
+```
+
+El registro del servidor queda en `$TMPDIR/umbani-recorridos-servidor.log`. ⚠️
+`staging.mjs` usa `psql` si está instalado y, si no, el de un contenedor (en
+Linux con `--network host`: allí no existe `host.docker.internal`).
