@@ -570,6 +570,7 @@ fallo en la **costura** entre dos piezas probadas no lo veía nadie.
 | `04-cancelaciones` | Rechazo con aviso · transferencia que caduca · cancelar en camino · un pedido entregado NO se cancela |
 | `05-liquidacion-semanal` | Efectivo + transferencia + tarjeta en una semana → cierre del lunes al centavo · cerrar dos veces no crea nada · Pagos del superadmin y «Mis pagos» dicen lo mismo · marcar pagada deja rastro en el registro de dinero y no se paga dos veces |
 | `06-precios-desde-el-panel` | Envío (dueño), margen y tarifa (superadmin) cambiados desde los paneles llegan YA a la carta, la cotización y el cobro · el pedido de antes queda congelado |
+| `07-motorizados` | El de **Umbani**: toma, recoge y entrega · el cliente recibe sus avisos · la carrera es suya y el efectivo lo tiene él · el superadmin le **retiene** la carrera (queda en el registro de dinero) · el lunes se le liquida sin ella · el tope de efectivo frena · El del **local**: apagado de verdad (404) · el local lo registra · el de Umbani ya no ve pedidos de ese local · la carrera es del local y el local ve el efectivo que trae · desactivado, no entra |
 
 ### Cómo está montado
 
@@ -610,6 +611,11 @@ Tres fallos que las otras capas no veían, los tres en la COSTURA:
    de servicio un minuto en memoria (`tarifa-de-servicio.ts`) y nadie la
    olvidaba al cambiarla: durante ese minuto el carrito decía $4,62 y se
    cobraban $4,77. Guardar la tarifa en el panel ahora la olvida en el acto.
+
+Y el 2026-10-02, el de motorizados: **cuando el motorizado marcaba «en camino»
+o «entregado» desde su app, al cliente no le llegaba ningún aviso** — la ruta
+cambiaba el estado y no avisaba, mientras la guía de la app decía que sí. Ahora
+avisa como cuando lo mueve el local.
 
 ### Qué NO cubre
 

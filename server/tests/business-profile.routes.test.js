@@ -5,6 +5,7 @@ import profileRouter from '../dist/routes/business-profile.routes.js'
 
 const require = createRequire(import.meta.url)
 const db = require('../dist/db')
+const settings = require('../dist/services/settings')
 const JWT_SECRET = 'business-profile-test-secret'
 
 let originalJwtSecret
@@ -101,6 +102,9 @@ describe('identidad y políticas del negocio', () => {
       monthly_rate: 99,
       plan: 'enterprise',
     })
+    // La ficha dice si el local puede registrar repartidores (2026-10-02): lo
+    // lee de Ajustes. Sin simularlo, la lectura se cuelga en el CI.
+    vi.spyOn(settings, 'get').mockResolvedValue('1')
 
     const response = await dispatch('get', '/api/client/business', {
       auth: authorization(),
@@ -115,8 +119,17 @@ describe('identidad y políticas del negocio', () => {
     expect(response.body).not.toHaveProperty('plan')
     expect(response.body).toMatchObject({
       takes_orders: false,
+      flota_propia: true,
     })
     expect(db.getBusinessById).toHaveBeenCalledWith('business-a')
+  })
+
+  it('si no se puede leer el interruptor de la flota, la ficha sale igual y sin flota', async () => {
+    vi.spyOn(db, 'getBusinessById').mockResolvedValue({ id: 'business-a', name: 'Demo', takes_orders: true })
+    vi.spyOn(settings, 'get').mockRejectedValue(new Error('base caída'))
+    const response = await dispatch('get', '/api/client/business', { auth: authorization() })
+    expect(response.status).toBe(200)
+    expect(response.body.flota_propia).toBe(false)
   })
 
   it('solo actualiza campos permitidos y usa el negocio del JWT', async () => {

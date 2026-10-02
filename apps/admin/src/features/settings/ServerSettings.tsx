@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as cfg from './api'
 import { getPlatformBlocked, setPlatformBlocked } from '../clients/api'
-import { Ban, Bot as BotIcon, Check, Cloud, Plug, Receipt, Search, Store, Undo2, X } from 'lucide-react'
+import { Ban, Bot as BotIcon, Check, Cloud, Plug, Receipt, Search, Store, Undo2, X, Bike } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@botpanel/ui/components/badge'
 import { Button } from '@botpanel/ui/components/button'
@@ -184,6 +184,35 @@ export default function ServerSettings() {
               onChange={set('receipt_risk_rules')}
               placeholder={saved.receipt_risk_rules || '{"monto_menor":60,"cuenta_incorrecta":80}'}
             />
+          </div>
+        </div>
+      </Card>
+
+      {/* Los repartidores propios de los locales */}
+      <Card className={card}>
+        <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2"><Bike className="w-4 h-4" /> Repartidores propios de los locales</h2>
+        <p className="text-xs text-muted-foreground mb-3">
+          Enciende la pantalla «Repartidores» en el panel de cada local: el dueño registra a su
+          gente, que entra a la app del motorizado con su WhatsApp y solo ve los pedidos de ese
+          local. El envío sigue siendo del local; Umbani solo liquida con él.
+        </p>
+        <p className="text-xs text-amber-700 dark:text-amber-400 mb-3">
+          ⚠️ Enciéndelo cuando exista la app del motorizado: sin ella, los locales registrarían
+          repartidores que no tienen dónde entrar.
+        </p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <Label htmlFor="server-flota-local">Estado</Label>
+            <Select
+              value={val('flota_del_local') || saved.flota_del_local || '0'}
+              onValueChange={v => setF(p => ({ ...p, flota_del_local: v }))}
+            >
+              <SelectTrigger id="server-flota-local" className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="0">Apagado — los locales no lo ven (por defecto)</SelectItem>
+                <SelectItem value="1">Encendido — cada local registra a sus repartidores</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
       </Card>
