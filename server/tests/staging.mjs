@@ -409,6 +409,37 @@ select '000000000000', 'Motorizado de Pruebas', 'moto', id from businesses where
 on conflict (phone) do nothing;
 `)
 
+  // 🏪 EL LOCAL DE PRUEBAS, COMO UNO DE VERDAD (2026-10-01). Con lo que dejaba
+  // la plantilla del alta no se podía revisar nada: abría de 9 a 18 (de noche,
+  // «cerrado»), solo aceptaba transferencia y no tenía envío, ni margen ni
+  // tarifa — así que la línea «Tarifa de servicio» no había cómo verla. Ahora:
+  // abierto siempre, los tres cobros, cuenta para transferir, envío, y el
+  // dinero de Umbani como en PRODUCCIÓN (10 % por producto y $0,10 de tarifa).
+  // Los recorridos lo reajustan desde los paneles al empezar.
+  ejecutar(['-q'], `
+do $$
+declare
+  v_negocio uuid := (select id from businesses where slug = ${literal(SLUG)});
+begin
+  delete from business_schedule where business_id = v_negocio;
+  update businesses set delivery_fee = 1.50 where id = v_negocio;
+
+  insert into business_bank_accounts (business_id, bank_name, account_type, account_number, holder_name)
+  values (v_negocio, 'Banco de Pruebas', 'ahorros', '2200000000', 'Local de Pruebas');
+
+  insert into business_payment_methods (business_id, method_code, enabled, sort)
+  select v_negocio, m.code, true, m.sort from payment_methods m
+   where m.code in ('efectivo', 'transferencia', 'pago_al_retirar')
+  on conflict (business_id, method_code) do update set enabled = true;
+
+  insert into pricing_rules (business_id, scope, strategy, percentage, markup_mode, notes)
+  values (v_negocio, 'business', 'percentage', 10, 'on_top', 'Como en producción (semilla del staging)');
+end $$;
+
+insert into server_settings (key, value) values ('service_fee', '0.10')
+on conflict (key) do update set value = excluded.value, updated_at = now();
+`)
+
   const [negocios, productos, usuarios] = ejecutar(['-tAc', `
     select (select count(*) from businesses),
            (select count(*) from products),
