@@ -32,6 +32,20 @@ const baseUrlLocal = (valor: string | undefined): boolean => {
   }
 }
 
+/**
+ * ¿Este proceso es un STAGING —local o en internet—? Lo dice una sola
+ * variable, `UMBANI_ENTORNO=staging`, y se le pregunta a ESTA función.
+ *
+ * ⚠️ No es lo contrario de `isProductionEnvironment`: el staging en internet
+ * corre en Railway y para el resto del código ES un despliegue de verdad
+ * (tareas de fondo, BASE_URL obligatoria…), solo que contra su propia base. Lo
+ * que cambia por ser staging: la franja, la tarjeta siempre en pruebas, y el
+ * candado de la base (`config/identidad-de-la-base.ts`).
+ */
+export function esStaging(env: NodeJS.ProcessEnv): boolean {
+  return String(env.UMBANI_ENTORNO || '').trim().toLowerCase() === 'staging'
+}
+
 export function isProductionEnvironment(env: NodeJS.ProcessEnv): boolean {
   // ⚠️ Una `BASE_URL` que apunta a localhost NO es producción, y esto nació de
   // un problema concreto (2026-09-19): el staging necesita `BASE_URL` para

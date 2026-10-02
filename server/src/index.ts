@@ -12,7 +12,8 @@ import express, {
 } from 'express'
 import rateLimit from 'express-rate-limit'
 import dotenv from 'dotenv'
-import { assertEnvironment } from './config/environment'
+import { assertEnvironment, esStaging } from './config/environment'
+import { comprobarIdentidadDeLaBase } from './config/identidad-de-la-base'
 import { decidirTareasDeFondo, explicarDecision } from './config/tareas-de-fondo'
 import { asyncHandler } from './middleware/async'
 import { getRecentWebhookFailures } from './services/channel-health'
@@ -60,6 +61,8 @@ import { alEntrarUnMensaje } from './lib/despertador-de-la-cola'
 
 interface StartupDatabase {
   getProductImageById(productId: string): Promise<{ image_url?: string | null } | null>
+  /** El candado del arranque: `'staging'` o `null`. Ver `config/identidad-de-la-base.ts`. */
+  leerMarcaDeEntorno(): Promise<string | null>
   carryCommissionAdjustments(periodStart: string): Promise<{
     periodo: string
     ajustes: number
@@ -572,7 +575,10 @@ async function cleanupStorefrontSessions(): Promise<void> {
 }
 
 const port = process.env.PORT || 3000
-httpServer = app.listen(port, () => {
+
+// Lo que pasa al abrir el puerto. Va en una constante y no dentro de
+// `app.listen` para poder abrirlo DESPUÉS del candado de abajo.
+const alAbrirElPuerto = (): void => {
   logEnvironment()
   console.log(`\n🚀 BotPanel corriendo en http://localhost:${port}`)
   console.log(`👑 Admin:   http://localhost:${port}/app-admin`)
@@ -686,4 +692,19 @@ httpServer = app.listen(port, () => {
         })
     }, 2500)
   }
+}
+
+// 🔐 EL CANDADO DE LA BASE (2026-10-01): antes de abrir el puerto —y por tanto
+// antes de arrancar ninguna tarea de fondo—, la base tiene que ser la que este
+// proceso cree que es. Un staging contra la base de producción, o al revés, no
+// arranca. Ver `config/identidad-de-la-base.ts`.
+void comprobarIdentidadDeLaBase({
+  staging: esStaging(process.env),
+  leerMarca: () => db.leerMarcaDeEntorno(),
+}).then((identidad) => {
+  if (!identidad.ok) {
+    console.error(`\n❌ ${identidad.motivo}\n`)
+    process.exit(1)
+  }
+  httpServer = app.listen(port, alAbrirElPuerto)
 })

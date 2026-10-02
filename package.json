@@ -20,7 +20,8 @@
     "staging:up": "node server/tests/staging.mjs levantar",
     "staging:actualizar": "node server/tests/staging.mjs actualizar",
     "staging:down": "supabase stop",
-    "staging:reset": "supabase db reset --no-seed && npm run staging:preparar -w @botpanel/server"
+    "staging:reset": "supabase db reset --no-seed && npm run staging:preparar -w @botpanel/server",
+    "staging:subir": "npm run staging:remoto -w @botpanel/server -- subir"
   },
   "engines": {
     "node": ">=22.0.0"

@@ -18,7 +18,7 @@
 // con su ETag y sin leer el archivo a mano. Esa es la condición que no se puede
 // romper al tocar este archivo.
 
-import { isProductionEnvironment } from '../config/environment'
+import { esStaging, isProductionEnvironment } from '../config/environment'
 import { apuntaAUnaBaseLocal } from '../config/tareas-de-fondo'
 
 export interface AvisoDeEntorno {
@@ -29,6 +29,12 @@ export interface AvisoDeEntorno {
 
 /** Qué aviso toca, o `null` si esto es producción y no toca ninguno. */
 export function avisoDeEntorno(env: NodeJS.ProcessEnv): AvisoDeEntorno | null {
+  // ⚠️ ANTES que la pregunta de producción: el staging en internet corre en
+  // Railway y para `isProductionEnvironment` es un despliegue de verdad. Sin
+  // esto, el dueño abriría el staging en su móvil sin ninguna señal de que no
+  // es la app de sus clientes (2026-10-01).
+  if (esStaging(env)) return { texto: 'STAGING · datos de mentira', color: '#4338ca' }
+
   if (isProductionEnvironment(env)) return null
 
   if (apuntaAUnaBaseLocal(env.SUPABASE_URL)) {

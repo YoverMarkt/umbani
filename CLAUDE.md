@@ -123,7 +123,12 @@ es el que corre todo. Lo que el manifiesto NO dice:
 - `npm run test:e2e` necesita Chromium: la primera vez, `npm run test:e2e:install`.
 - **Staging local:** `npm run staging:up` levanta el stack de Supabase en Docker
   y siembra; `npm run dev:staging -w @botpanel/server` arranca el servidor
-  contra él. ⚠️ **`server/.env` apunta a PRODUCCIÓN**, así que arrancar en local
+  contra él.
+- **Staging en internet** (2026-10-01): entorno «staging» de Railway + Supabase
+  gratis. `npm run staging:subir` despliega la rama en revisión. 🔐 Un servidor
+  con `UMBANI_ENTORNO=staging` NO arranca si su base no lleva la marca de
+  staging, y producción no arranca si la lleva. Ver
+  [VERIFICACION.md](VERIFICACION.md#el-staging-en-internet-y-el-candado-de-la-base-2026-10-01). ⚠️ **`server/.env` apunta a PRODUCCIÓN**, así que arrancar en local
   sin más procesaría mensajes reales y a los 30 s cancelaría pedidos de
   clientes: `config/tareas-de-fondo.ts` lo impide y lo avisa al arrancar.
 
@@ -259,7 +264,7 @@ en `main` y la rama sobra; GitHub conserva sus commits en la pestaña del PR.
 
 ### `main` está protegida, y se aplica también a los admins
 
-Exige PR, los **seis** checks del CI en verde, estar al día con `main`, y
+Exige PR, los **siete** checks del CI en verde (el séptimo, los recorridos de punta a punta), estar al día con `main`, y
 prohíbe force-push y borrado. No se debilita para «salir del paso»: si el CI
 molesta, es que el CI está diciendo algo.
 

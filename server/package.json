@@ -30,6 +30,7 @@
     "staging:preparar": "node tests/staging.mjs preparar",
     "dev:staging": "npm run build && node tests/staging.mjs servidor",
     "verify:smoke:staging": "node tests/staging.mjs humo",
+    "staging:remoto": "npm run build && node tests/staging-remoto.mjs",
     "tipos:generar": "node --env-file=.env tests/tipos-generados.mjs",
     "tipos:verificar": "node --env-file=.env tests/tipos-generados.mjs --verificar"
   },
