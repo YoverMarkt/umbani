@@ -956,7 +956,11 @@ const bindStorefrontSession = async (sessionId: string, deviceHash: string) => {
  * compila. La alternativa era un cast, que es justo lo que se quitó de esta
  * capa.
  */
-const CAMPOS_DEL_SEGUIMIENTO = 'id,order_number,status,total,shipping,currency,fulfillment,created_at,payment_confirmed_at,payment_method,order_items(product_name,variant_name,extras_names,item_note,quantity,line_total,order_item_options(option_group_name,option_name,quantity,group_sort))' as const
+// ⚠️ `service_fee` viaja para enseñar la tarifa aparte, y el margen NO: lo que
+// sale de aquí lo pasa la ruta por `pedidoParaElCliente`
+// (`lib/precio-para-el-cliente.ts`), que convierte cada línea al precio que
+// pagó el CLIENTE. `line_total` en la base es el precio del LOCAL.
+const CAMPOS_DEL_SEGUIMIENTO = 'id,order_number,status,total,shipping,service_fee,currency,fulfillment,created_at,payment_confirmed_at,payment_method,order_items(product_name,variant_name,extras_names,item_note,quantity,line_total,order_item_options(option_group_name,option_name,quantity,group_sort))' as const
 
 /**
  * Los pedidos de UN cliente en ESTE negocio, para su pestaña de Cuenta.
@@ -982,6 +986,41 @@ const getStorefrontOrders = async (input: {
     .limit(Math.min(50, Math.max(1, input.limit || 20)))
   if (error) return { data: null, error }
   return { data: data || [], error: null }
+}
+
+/**
+ * «Mis pedidos» de la APP: los de ESTE teléfono en TODOS los locales.
+ *
+ * ⚠️ El teléfono sale del token de la app —lo demostró WhatsApp al iniciar
+ * sesión—, nunca de la petición. Se busca con sus variantes (`593…`,
+ * `+593…`): el mismo número entra con y sin `+` según por dónde pidió.
+ * Es la misma frontera que el pedido suelto de la tienda: el teléfono.
+ */
+const getAppOrders = async (telefono: string, limite = 30) => {
+  const digitos = String(telefono || '').replace(/\D/g, '')
+  if (!digitos) return { data: [], error: null }
+  const { data, error } = await db
+    .from('orders')
+    .select(`business_id,contact_phone,${CAMPOS_DEL_SEGUIMIENTO},businesses(name,slug)`)
+    .in('contact_phone', [digitos, `+${digitos}`])
+    .order('created_at', { ascending: false })
+    .limit(Math.min(50, Math.max(1, limite)))
+  if (error) return { data: null, error }
+  return { data: data || [], error: null }
+}
+
+/** De quién es un pedido, si es de este teléfono: para abrir su detalle. */
+const getAppOrderOwner = async (telefono: string, orderId: string) => {
+  const digitos = String(telefono || '').replace(/\D/g, '')
+  if (!digitos) return null
+  const { data, error } = await db
+    .from('orders')
+    .select('business_id,contact_phone,businesses(name,slug)')
+    .eq('id', orderId)
+    .in('contact_phone', [digitos, `+${digitos}`])
+    .maybeSingle()
+  if (error) throw new Error(error.message)
+  return data as { business_id: string; contact_phone: string; businesses: { name: string; slug: string } | null } | null
 }
 
 const getStorefrontOrder = async (input: {
@@ -1076,5 +1115,7 @@ export = {
   getOrderMoney,
   getStorefrontOrders,
   getStorefrontOrder,
+  getAppOrders,
+  getAppOrderOwner,
   attachStorefrontPaymentProof,
 }

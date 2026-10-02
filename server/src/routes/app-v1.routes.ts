@@ -6,6 +6,9 @@ import { issueStorefrontSession } from '../services/storefront-link'
 import {
   CODIGO_VALIDO, VIGENCIA_DEL_CODIGO_MS, authApp, firmarSesionApp, generarCodigo, mensajeDelCodigo, telefonoDe,
 } from '../services/sesion-app'
+import { conOpcionesAgrupadas } from '../services/order-detail'
+import { reglaDeMargen } from '../services/storefront'
+import { pedidoParaElCliente, porcentajePorProducto } from '../lib/precio-para-el-cliente'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // LA API DE LA APP DEL CLIENTE (v1)
@@ -105,6 +108,54 @@ router.post('/api/v1/locales/:slug/sesion', appLimiter, authApp, async (req, res
   })
   if (!token) return res.status(409).json({ error: 'Este local no está recibiendo pedidos ahora mismo' })
   return res.status(201).json({ token })
+})
+
+// ── «Mis pedidos»: los de este teléfono en TODOS los locales (2026-10-01) ──
+//
+// La tienda solo enseña los pedidos del local de su sesión; una app necesita
+// la lista entera. El teléfono sale del TOKEN (lo demostró WhatsApp), nunca de
+// la petición, y cada pedido se enseña con lo que pagó el cliente: nada del
+// local ni del margen (`lib/precio-para-el-cliente.ts`).
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const porcentajeDe = async (businessId: string): Promise<number | null> =>
+  porcentajePorProducto(reglaDeMargen(await db.getBusinessPricingRule(businessId).catch(() => null)))
+const elLocal = (fila: { businesses?: { name?: string | null; slug?: string | null } | null }) => ({
+  nombre: fila.businesses?.name ?? null,
+  slug: fila.businesses?.slug ?? null,
+})
+
+router.get('/api/v1/pedidos', appLimiter, authApp, async (req, res) => {
+  const { data, error } = await db.getAppOrders(telefonoDe(req))
+  if (error) return res.status(500).json({ error: 'No pudimos consultar tus pedidos' })
+  const porLocal = new Map<string, number | null>()
+  const pedidos = []
+  for (const fila of (data || []) as Record<string, unknown>[]) {
+    const negocio = String(fila.business_id)
+    if (!porLocal.has(negocio)) porLocal.set(negocio, await porcentajeDe(negocio))
+    const { business_id: _negocio, contact_phone: _telefono, businesses, ...pedido } = fila
+    pedidos.push({
+      ...pedidoParaElCliente(conOpcionesAgrupadas(pedido), porLocal.get(negocio) ?? null),
+      local: elLocal({ businesses: businesses as { name?: string; slug?: string } | null }),
+    })
+  }
+  return res.json({ pedidos })
+})
+
+router.get('/api/v1/pedidos/:id', appLimiter, authApp, async (req, res) => {
+  const id = String(req.params.id || '').trim()
+  if (!UUID.test(id)) return res.status(404).json({ error: 'No encontramos ese pedido' })
+  // El mismo 404 para «no existe» y «es de otro»: no se confirma qué ids hay.
+  const dueno = await db.getAppOrderOwner(telefonoDe(req), id).catch(() => null)
+  if (!dueno) return res.status(404).json({ error: 'No encontramos ese pedido' })
+  const { data, error } = await db.getStorefrontOrder({
+    businessId: dueno.business_id, contactPhone: dueno.contact_phone, orderId: id,
+  })
+  if (error) return res.status(500).json({ error: 'No pudimos consultar tu pedido' })
+  if (!data) return res.status(404).json({ error: 'No encontramos ese pedido' })
+  return res.json({
+    ...pedidoParaElCliente(conOpcionesAgrupadas(data as Record<string, unknown>), await porcentajeDe(dueno.business_id)),
+    local: elLocal(dueno),
+  })
 })
 
 export = router

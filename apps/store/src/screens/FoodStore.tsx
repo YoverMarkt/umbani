@@ -486,6 +486,8 @@ export default function FoodStore({
         total: pedido.total ?? null,
         subtotal: cartTotal(lineas),
         envio: needsAddress(datos.fulfillment) ? (business.deliveryFee || 0) : 0,
+        // La misma que enseñó el carrito; el total oficial la incluye.
+        tarifa: lineas.length ? (business.serviceFee || 0) : 0,
         // El detalle sale de `lib/resumen.ts`, el mismo sitio que lo arma
         // cuando el cliente VUELVE a un pedido guardado: dos caminos, una
         // sola forma. El importe se pone aquí porque el dinero no se calcula
@@ -528,7 +530,7 @@ export default function FoodStore({
     } finally {
       setEnviando(false)
     }
-  }, [slug, lineas, business.deliveryFee, onFalloEnlace])
+  }, [slug, lineas, business.deliveryFee, business.serviceFee, onFalloEnlace])
 
   /**
    * Guarda una dirección nueva y DEVUELVE su id.
@@ -649,7 +651,9 @@ export default function FoodStore({
           // exactamente el total oficial, en vez de tomar el `subtotal` de la
           // fila, que es lo del COMERCIO y no incluye el margen.
           envio: Number(pagoPendiente.shipping) || 0,
-          subtotal: (Number(pagoPendiente.total) || 0) - (Number(pagoPendiente.shipping) || 0),
+          tarifa: Number(pagoPendiente.service_fee) || 0,
+          subtotal: (Number(pagoPendiente.total) || 0) - (Number(pagoPendiente.shipping) || 0)
+            - (Number(pagoPendiente.service_fee) || 0),
           // Lo que pidió, tal como lo congeló la base —y ya agrupado por el
           // servidor—. Aquí no hay carrito del que sacarlo: el cliente cerró
           // la app hace rato.

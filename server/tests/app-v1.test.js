@@ -131,6 +131,72 @@ describe('las rutas con sesión', () => {
   })
 })
 
+describe('«Mis pedidos» de la app: los de este teléfono en todos los locales', () => {
+  const conSesion = () => ({ authorization: `Bearer ${sesion.firmarSesionApp('593999111222')}` })
+  beforeEach(() => {
+    vi.spyOn(db, 'getBusinessPricingRule').mockResolvedValue({ strategy: 'percentage', percentage: 10, mode: 'on_top' })
+  })
+
+  it('el teléfono sale del TOKEN, nunca de la petición', async () => {
+    const consulta = vi.spyOn(db, 'getAppOrders').mockResolvedValue({ data: [], error: null })
+    const r = await correr(router, 'get', '/api/v1/pedidos', {
+      headers: conSesion(), query: { telefono: '593000000000' }, body: { telefono: '593000000000' },
+    })
+    expect(r.status).toBe(200)
+    expect(consulta).toHaveBeenCalledWith('593999111222')
+  })
+
+  it('cada pedido con su local, a precio del cliente y sin nada del local ni del margen', async () => {
+    vi.spyOn(db, 'getAppOrders').mockResolvedValue({
+      data: [{
+        business_id: 'negocio-a', contact_phone: '593999111222',
+        businesses: { name: 'Pizzería', slug: 'pizzeria' },
+        id: 'o1', total: 2.43, shipping: 1.5, service_fee: 0.1,
+        merchant_subtotal: 0.75, platform_markup: 0.18,
+        order_items: [{ product_name: 'Agua', quantity: 1, line_total: 0.75 }],
+      }],
+      error: null,
+    })
+    const r = await correr(router, 'get', '/api/v1/pedidos', { headers: conSesion() })
+    const [pedido] = r.body.pedidos
+    expect(pedido.local).toEqual({ nombre: 'Pizzería', slug: 'pizzeria' })
+    expect(pedido.order_items[0].line_total).toBe(0.83)
+    for (const clave of ['merchant_subtotal', 'platform_markup', 'business_id', 'contact_phone']) {
+      expect(pedido).not.toHaveProperty(clave)
+    }
+  })
+
+  it('el pedido de OTRO teléfono responde lo mismo que uno que no existe', async () => {
+    vi.spyOn(db, 'getAppOrderOwner').mockResolvedValue(null)
+    const r = await correr(router, 'get', '/api/v1/pedidos/:id', {
+      headers: conSesion(), params: { id: '11111111-2222-4333-8444-555555555555' },
+    })
+    expect(r.status).toBe(404)
+    expect(r.body.error).toBe('No encontramos ese pedido')
+  })
+
+  it('el detalle se lee con el negocio y el teléfono DEL PEDIDO', async () => {
+    vi.spyOn(db, 'getAppOrderOwner').mockResolvedValue({
+      business_id: 'negocio-a', contact_phone: '+593999111222', businesses: { name: 'Pizzería', slug: 'pizzeria' },
+    })
+    const detalle = vi.spyOn(db, 'getStorefrontOrder').mockResolvedValue({
+      data: { id: 'o1', total: 2.43, shipping: 1.5, service_fee: 0.1, order_items: [{ product_name: 'Agua', quantity: 1, line_total: 0.75 }] },
+      error: null,
+    })
+    const id = '11111111-2222-4333-8444-555555555555'
+    const r = await correr(router, 'get', '/api/v1/pedidos/:id', { headers: conSesion(), params: { id } })
+    expect(r.status).toBe(200)
+    expect(detalle).toHaveBeenCalledWith({ businessId: 'negocio-a', contactPhone: '+593999111222', orderId: id })
+    expect(r.body.local.slug).toBe('pizzeria')
+    expect(r.body.order_items[0].line_total).toBe(0.83)
+  })
+
+  it('sin sesión de la app, nada', async () => {
+    const r = await correr(router, 'get', '/api/v1/pedidos', {})
+    expect(r.status).toBe(401)
+  })
+})
+
 describe('el salto a PayPhone desde la app', () => {
   it('⚠️ solo lleva a PayPhone, y con el origen', async () => {
     expect((await correr(pagos, 'get', '/pagos/payphone/ir', { query: { destino: 'https://phishing.example/x' } })).status).toBe(404)

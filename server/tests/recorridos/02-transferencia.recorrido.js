@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
-  centavos, cerrarSql, clientePorLaApp, configurarElDinero, entrarComoLocal, exigir,
+  centavos, cerrarSql, clientePorLaApp, configurarElDinero, entrarComoLocal, exigir, http,
   lineaDelLibro, llevarHastaEntregar, productosSimples, recogerLaMesa, sql,
 } from './actores.mjs'
 
@@ -68,7 +68,8 @@ describe('un pedido por TRANSFERENCIA, de punta a punta', () => {
     expect(linea.en_mano).toBe('local')
     expect(linea.total_cents).toBe(centavos(cotizacion.total))
     expect(linea.local_cents + linea.reparto_cents + linea.umbani_cents).toBe(linea.total_cents)
-    expect(linea.umbani_cents).toBe(centavos(cotizacion.platformMarkup))
+    const [fila] = await sql('select platform_markup from orders where id = $1', [pedido.id])
+    expect(linea.umbani_cents).toBe(centavos(fila.platform_markup))
     expect(linea.provider_fee_cents).toBe(0)
   })
 
@@ -76,5 +77,32 @@ describe('un pedido por TRANSFERENCIA, de punta a punta', () => {
     const mios = await exigir(200, cliente.pedir('GET', '/api/store/:slug/orders'))
     const lista = Array.isArray(mios) ? mios : mios.orders || []
     expect(lista.some(p => p.id === pedido.id)).toBe(true)
+  })
+
+  it('📱 y en «Mis pedidos» de la APP (todos los locales), con su local y sus precios', async () => {
+    const { pedidos } = await exigir(200, http('GET', '/api/v1/pedidos', { token: cliente.tokenApp }))
+    const este = pedidos.find(p => p.id === pedido.id)
+    expect(este?.local?.slug).toBe('demo')
+    expect(este.status).toBe('completado')
+    expect(centavos(este.subtotal) + centavos(este.shipping) + centavos(este.service_fee)).toBe(centavos(este.total))
+    expect(este.order_items.reduce((t, i) => t + centavos(i.line_total), 0)).toBe(centavos(este.subtotal))
+    for (const clave of ['merchant_subtotal', 'platform_markup', 'business_id', 'contact_phone']) {
+      expect(este).not.toHaveProperty(clave)
+    }
+
+    const detalle = await exigir(200, http('GET', `/api/v1/pedidos/${pedido.id}`, { token: cliente.tokenApp }))
+    expect(detalle.id).toBe(pedido.id)
+    expect(detalle.local.slug).toBe('demo')
+  })
+
+  it('🔒 el pedido de OTRO teléfono no aparece ni se abre', async () => {
+    const [ajeno] = await sql(`select id from orders where contact_phone <> '000000000000' limit 1`)
+    if (ajeno) {
+      const r = await http('GET', `/api/v1/pedidos/${ajeno.id}`, { token: cliente.tokenApp })
+      expect(r.status).toBe(404)
+    }
+    const { pedidos } = await exigir(200, http('GET', '/api/v1/pedidos', { token: cliente.tokenApp }))
+    const [{ propios }] = await sql(`select count(*)::int as propios from orders where contact_phone in ('000000000000','+000000000000')`)
+    expect(pedidos.length).toBe(Math.min(propios, 30))
   })
 })

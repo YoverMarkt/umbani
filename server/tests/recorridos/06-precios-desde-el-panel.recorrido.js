@@ -48,7 +48,8 @@ describe('los precios se cambian desde el panel', () => {
     antes = await cliente.cotizar({ items: items(), fulfillment: 'delivery' })
     expect(antes.shipping).toBe(1.5)
     expect(antes.serviceFee).toBe(0.1)
-    expect(antes.markupPercentage).toBe(10)
+    // El 10 % ya no viaja al teléfono (2026-10-01): se ve en el precio de la carta.
+    expect(antes).not.toHaveProperty('markupPercentage')
   })
 
   it('el dueño sube el envío y el superadmin el margen y la tarifa', async () => {
@@ -56,14 +57,16 @@ describe('los precios se cambian desde el panel', () => {
     despues = await cliente.cotizar({ items: items(), fulfillment: 'delivery' })
     expect(despues.shipping).toBe(2)
     expect(despues.serviceFee).toBe(0.25)
-    expect(despues.markupPercentage).toBe(12)
-    expect(centavos(despues.customerSubtotal)).toBeGreaterThan(centavos(antes.customerSubtotal))
+    expect(centavos(despues.subtotal)).toBeGreaterThan(centavos(antes.subtotal))
   })
 
   it('la CARTA ya enseña el precio nuevo, y es el que se cotiza', async () => {
     const carta = await cliente.catalogo()
     const enLaCarta = carta.products.find(p => p.id === producto.id)
-    expect(centavos(enLaCarta.priceFrom) * 3).toBe(centavos(despues.customerSubtotal))
+    expect(centavos(enLaCarta.priceFrom) * 3).toBe(centavos(despues.subtotal))
+    // Y es el del 12 %: el margen nuevo, redondeado por unidad como la base.
+    const [{ price }] = await sql('select price from products where id = $1', [producto.id])
+    expect(centavos(enLaCarta.priceFrom)).toBe(centavos(price) + Math.round(centavos(price) * 12 / 100))
   })
 
   it('lo que el cliente vio es lo que se le cobra, justo después del cambio', async () => {
@@ -76,7 +79,7 @@ describe('los precios se cambian desde el panel', () => {
   })
 
   it('el pedido de ANTES no cambió: se entrega y se liquida con sus números', async () => {
-    const [fila] = await sql('select total, service_fee, shipping, platform_markup from orders where id = $1', [viejo.id])
+    const [fila] = await sql('select total, service_fee, shipping, platform_markup, merchant_subtotal from orders where id = $1', [viejo.id])
     expect(centavos(fila.total)).toBe(centavos(antes.total))
     expect(centavos(fila.service_fee)).toBe(10)
     expect(centavos(fila.shipping)).toBe(150)
@@ -85,14 +88,14 @@ describe('los precios se cambian desde el panel', () => {
     const linea = await lineaDelLibro(viejo.id)
     expect(linea.total_cents).toBe(centavos(antes.total))
     expect(linea.reparto_cents).toBe(150)
-    expect(linea.umbani_cents).toBe(centavos(antes.platformMarkup))
+    expect(linea.umbani_cents).toBe(centavos(fila.platform_markup))
   })
 
   it('con la tarifa en cero, no se cobra ni se enseña', async () => {
     await configurarElDinero({ envio: 1.5, margen: 10, tarifa: 0 })
     const sinTarifa = await cliente.cotizar({ items: items(), fulfillment: 'delivery' })
     expect(sinTarifa.serviceFee).toBe(0)
-    expect(centavos(sinTarifa.total)).toBe(centavos(sinTarifa.customerSubtotal) + centavos(sinTarifa.shipping))
+    expect(centavos(sinTarifa.total)).toBe(centavos(sinTarifa.subtotal) + centavos(sinTarifa.shipping))
   })
 
   it('quien retira en el local no paga envío', async () => {

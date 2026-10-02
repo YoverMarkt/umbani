@@ -25,6 +25,7 @@ import { avisarAlDuenoDelPedido } from '../services/owner-order-notice'
 import { metodoTarjeta, pagosConTarjeta, tarjetaDisponible } from '../services/pago-con-tarjeta'
 import { leerConfiguracionPayphone } from '../config/payphone'
 import { tarifaDeServicio } from '../services/tarifa-de-servicio'
+import { cotizacionParaElCliente, pedidoParaElCliente, porcentajePorProducto } from '../lib/precio-para-el-cliente'
 
 // Rutas de la mini app del negocio.
 //
@@ -851,12 +852,18 @@ router.post('/api/store/:slug/orders', orderLimiter, requireStorefrontSession, a
  * ruta con parámetro no se traga esta porque son caminos distintos, pero
  * dejarlas juntas y en este orden evita sorpresas si mañana cambia una.
  */
+/** El porcentaje por producto de ESTE local, para enseñar cada línea con su precio. */
+const porcentajeDelLocal = async (businessId: string): Promise<number | null> =>
+  porcentajePorProducto(reglaDeMargen(await db.getBusinessPricingRule(businessId).catch(() => null)))
+
 router.get('/api/store/:slug/orders', requireStorefrontSession, async (req, res) => {
   const { businessId, contactPhone } = req.storefront!
   const { data, error } = await db.getStorefrontOrders({ businessId, contactPhone })
   if (error) return res.status(500).json({ error: 'No pudimos consultar tus pedidos' })
   // Agrupadas aquí, como en el pedido suelto: la lista enseña lo que se pidió.
-  return res.json((data || []).map(pedido => conOpcionesAgrupadas(pedido as Record<string, unknown>)))
+  // Y con los precios que pagó el CLIENTE, nunca los del local (2026-10-01).
+  const pct = await porcentajeDelLocal(businessId)
+  return res.json((data || []).map(pedido => pedidoParaElCliente(conOpcionesAgrupadas(pedido as Record<string, unknown>), pct)))
 })
 
 router.get('/api/store/:slug/orders/:id', requireStorefrontSession, async (req, res) => {
@@ -869,7 +876,10 @@ router.get('/api/store/:slug/orders/:id', requireStorefrontSession, async (req, 
   if (!data) return res.status(404).json({ error: 'No encontramos ese pedido' })
   // Agrupadas aquí y no en la app: el mismo plato tiene que leerse igual en el
   // seguimiento, en el panel del dueño y en el WhatsApp del cliente.
-  return res.json(conOpcionesAgrupadas(data as Record<string, unknown>))
+  return res.json(pedidoParaElCliente(
+    conOpcionesAgrupadas(data as Record<string, unknown>),
+    await porcentajeDelLocal(businessId),
+  ))
 })
 
 /** Datos bancarios para transferir. Solo con sesión y solo del propio negocio. */
@@ -1126,7 +1136,9 @@ router.post('/api/store/:slug/quote', cotizarLimiter, readStorefrontSession, asy
   })
 
   if (cotizacion.error) return res.status(400).json({ error: cotizacion.error })
-  return res.json(cotizacion)
+  // ⚠️ Solo lo que paga el cliente (decisión del dueño, 2026-10-01): hasta
+  // aquí viajaban el precio del local y el porcentaje de Umbani.
+  return res.json(cotizacionParaElCliente(cotizacion, porcentajePorProducto(reglaPrecio)))
 })
 
 export = router

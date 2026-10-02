@@ -1143,6 +1143,25 @@ describe('la cotización del carrito', () => {
     expect(db.getStorefrontProducts).toHaveBeenCalledWith('negocio-a')
   })
 
+  // Decisión del dueño (2026-10-01): «esconderlo». Hasta ese día viajaban al
+  // teléfono el precio del local y el porcentaje de Umbani.
+  it('🔒 no lleva el precio del local ni el margen: solo lo que paga el cliente', async () => {
+    db.getBusinessPricingRule.mockResolvedValue({ strategy: 'percentage', percentage: 10, mode: 'on_top' })
+
+    const respuesta = await cotizar({
+      items: [{ productId: 'p1', quantity: 2 }], fulfillment: 'delivery',
+    })
+
+    expect(respuesta.status).toBe(200)
+    for (const clave of ['merchantSubtotal', 'platformMarkup', 'markupPercentage', 'customerSubtotal']) {
+      expect(respuesta.body).not.toHaveProperty(clave)
+    }
+    // $10 + 10 % = $11 cada una, como en la carta.
+    expect(respuesta.body.lines[0].unitPrice).toBe(11)
+    expect(respuesta.body.subtotal).toBe(22)
+    expect(respuesta.body.total).toBe(23.5)
+  })
+
   it('un fallo leyendo la regla de margen no tumba la cotización', async () => {
     // Quedarse sin cotizar por un problema NUESTRO deja al cliente sin poder
     // pagar. Sin regla, el precio es el de catálogo: se cobra de menos, nunca
@@ -1161,7 +1180,35 @@ describe('lo que el cliente consulta de su pedido', () => {
   const SESION = {
     businessId: 'negocio-a', customerId: 'cliente-a', contactPhone: '593900000001',
   }
+  // Las rutas leen la regla de margen para enseñar cada línea con su precio.
+  beforeEach(() => {
+    vi.spyOn(db, 'getBusinessPricingRule').mockResolvedValue({ strategy: 'percentage', percentage: 10, mode: 'on_top' })
+  })
   afterEach(() => vi.restoreAllMocks())
+
+  it('🔒 el pedido llega con los precios del CLIENTE y sin nada del local ni del margen', async () => {
+    // Quien volvía a un pedido pendiente leía «Agua $0,75» cuando pagó $0,83,
+    // y las líneas no sumaban el total (2026-10-01).
+    vi.spyOn(db, 'getStorefrontOrder').mockResolvedValue({
+      data: {
+        id: 'o1', total: 2.43, shipping: 1.5, service_fee: 0.1,
+        merchant_subtotal: 0.75, platform_markup: 0.18,
+        order_items: [{ product_name: 'Agua', quantity: 1, line_total: 0.75 }],
+      },
+      error: null,
+    })
+
+    const respuesta = await ejecutar('/api/store/:slug/orders/:id', 'get', {
+      storefront: SESION, params: { slug: 'pizzeria', id: 'o1' },
+    })
+
+    expect(respuesta.status).toBe(200)
+    expect(respuesta.body.order_items[0].line_total).toBe(0.83)
+    expect(respuesta.body.subtotal).toBe(0.83)
+    expect(respuesta.body.service_fee).toBe(0.1)
+    expect(respuesta.body).not.toHaveProperty('merchant_subtotal')
+    expect(respuesta.body).not.toHaveProperty('platform_markup')
+  })
 
   it('la lista de pedidos se pide por negocio Y por teléfono', async () => {
     // Las dos claves juntas, siempre: solo con `businessId` un cliente vería

@@ -390,6 +390,25 @@ insert into server_settings (key, value) values ('entorno', 'staging')
 on conflict (key) do update set value = 'staging', updated_at = now();
 `)
 
+  // 📱 Lo que necesitan las APPS (2026-10-01) para probarse contra el staging:
+  //
+  //   · un número de Umbani, aunque sea falso: sin él la app no puede pedir el
+  //     código de inicio de sesión («El número de Umbani no está configurado»).
+  //     El código se manda desde el SIMULADOR del superadmin. La clave es
+  //     falsa: lo que el staging intente enviar a YCloud lo rechaza YCloud.
+  //   · un REPARTIDOR del local de pruebas, con el teléfono del simulador, para
+  //     la app del motorizado. Es de la flota del local: no cambia quién cobra.
+  ejecutar(['-q'], `
+insert into server_settings (key, value) values
+  ('platform_ycloud_api_key', 'clave-falsa-del-staging'),
+  ('platform_ycloud_number', '593990000001')
+on conflict (key) do update set value = excluded.value, updated_at = now();
+
+insert into couriers (phone, name, vehicle, fleet_business_id)
+select '000000000000', 'Motorizado de Pruebas', 'moto', id from businesses where slug = ${literal(SLUG)}
+on conflict (phone) do nothing;
+`)
+
   const [negocios, productos, usuarios] = ejecutar(['-tAc', `
     select (select count(*) from businesses),
            (select count(*) from products),
