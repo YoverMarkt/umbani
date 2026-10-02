@@ -13,13 +13,12 @@ import {
 // queda repartido al centavo en el libro: lo del local, el envío y lo de
 // Umbani suman exactamente lo que pagó el cliente.
 //
-// ⚠️ Cómo se lee el dinero de una cotización (y por qué no se suma `subtotal`):
-//   · `merchantSubtotal` — lo que cobra el LOCAL por sus productos;
-//   · `platformMarkup`   — lo de UMBANI: su margen MÁS la tarifa de servicio;
-//   · `customerSubtotal` — lo que el CLIENTE paga por los productos (precio de
-//                          la carta, con el margen ya dentro);
-//   · `serviceFee`       — la tarifa, enseñada aparte (ya está en el markup).
-// Total = customerSubtotal + envío + tarifa = merchantSubtotal + markup + envío.
+// ⚠️ Cómo se lee el dinero (desde el 2026-10-01, con el margen ESCONDIDO):
+//   · la cotización y el seguimiento traen solo lo del CLIENTE: `subtotal`
+//     (sus productos, a precio de carta), envío, tarifa y total, y suman;
+//   · lo del LOCAL (`merchant_subtotal`) y lo de UMBANI (`platform_markup`: su
+//     margen MÁS la tarifa) solo existen en la base, y de ahí se leen aquí.
+// Total = subtotal + envío + tarifa = merchant_subtotal + platform_markup + envío.
 
 let cliente
 let local
@@ -46,17 +45,21 @@ describe('un pedido en EFECTIVO, de punta a punta', () => {
     cotizacion = await cliente.cotizar({ items, fulfillment: 'delivery' })
 
     // El precio de la CARTA (con el margen dentro) por la cantidad, al centavo.
-    expect(centavos(cotizacion.customerSubtotal))
+    expect(centavos(cotizacion.subtotal))
       .toBe(centavos(primero.priceFrom) * 2 + centavos(segundo.priceFrom))
+    expect(cotizacion.lines.map(l => l.unitPrice)).toEqual([primero.priceFrom, segundo.priceFrom])
+    expect(cotizacion.lines.reduce((t, l) => t + centavos(l.lineTotal), 0)).toBe(centavos(cotizacion.subtotal))
     expect(cotizacion.shipping).toBe(1.5)
     expect(cotizacion.serviceFee).toBe(0.1)
     expect(centavos(cotizacion.total)).toBe(
-      centavos(cotizacion.customerSubtotal) + centavos(cotizacion.shipping) + centavos(cotizacion.serviceFee),
+      centavos(cotizacion.subtotal) + centavos(cotizacion.shipping) + centavos(cotizacion.serviceFee),
     )
-    // Y por el otro lado: lo del local + lo de Umbani + el envío.
-    expect(centavos(cotizacion.total)).toBe(
-      centavos(cotizacion.merchantSubtotal) + centavos(cotizacion.platformMarkup) + centavos(cotizacion.shipping),
-    )
+  })
+
+  it('🔒 la cotización NO lleva el precio del local ni el margen de Umbani', () => {
+    for (const clave of ['merchantSubtotal', 'platformMarkup', 'markupPercentage', 'customerSubtotal']) {
+      expect(cotizacion).not.toHaveProperty(clave)
+    }
   })
 
   it('pide a domicilio en efectivo: entra «pendiente» y por lo que dijo la cotización', async () => {
@@ -97,6 +100,15 @@ describe('un pedido en EFECTIVO, de punta a punta', () => {
     expect((visto.order || visto).status).toBe('completado')
   })
 
+  it('🔒 el cliente sigue su pedido con SUS precios: las líneas suman y no hay nada del local', async () => {
+    const visto = await cliente.pedido(pedido.id)
+    const lineas = cotizacion.lines.map(l => centavos(l.lineTotal))
+    expect(visto.order_items.map(i => centavos(i.line_total)).sort()).toEqual(lineas.sort())
+    expect(centavos(visto.subtotal) + centavos(visto.shipping) + centavos(visto.service_fee)).toBe(centavos(visto.total))
+    expect(visto).not.toHaveProperty('merchant_subtotal')
+    expect(visto).not.toHaveProperty('platform_markup')
+  })
+
   it('queda UNA venta por el total del pedido', async () => {
     const ventas = await sql('select total from sales where order_id = $1', [pedido.id])
     expect(ventas).toHaveLength(1)
@@ -105,12 +117,19 @@ describe('un pedido en EFECTIVO, de punta a punta', () => {
 
   it('el libro reparte el total al centavo: local + envío + Umbani', async () => {
     const linea = await lineaDelLibro(pedido.id)
+    // Lo del local y lo de Umbani se leen de la BASE: al teléfono no viajan.
+    const [fila] = await sql('select merchant_subtotal, platform_markup, service_fee from orders where id = $1', [pedido.id])
     expect(linea).toBeTruthy()
     expect(linea.total_cents).toBe(centavos(cotizacion.total))
     expect(linea.local_cents + linea.reparto_cents + linea.umbani_cents).toBe(linea.total_cents)
-    expect(linea.local_cents).toBe(centavos(cotizacion.merchantSubtotal))
+    expect(linea.local_cents).toBe(centavos(fila.merchant_subtotal))
     expect(linea.reparto_cents).toBe(150)
-    expect(linea.umbani_cents).toBe(centavos(cotizacion.platformMarkup))
+    expect(linea.umbani_cents).toBe(centavos(fila.platform_markup))
+    // Lo de Umbani es su margen MÁS la tarifa, y el margen es lo que el
+    // cliente pagó por encima de lo del local.
+    expect(centavos(fila.platform_markup)).toBe(
+      centavos(cotizacion.subtotal) - centavos(fila.merchant_subtotal) + centavos(fila.service_fee),
+    )
     // Efectivo cobrado por la gente del local: el dinero y el envío son suyos.
     expect(linea.payment_method).toBe('efectivo')
     expect(linea.en_mano).toBe('local')

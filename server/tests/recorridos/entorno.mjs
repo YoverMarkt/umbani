@@ -53,32 +53,11 @@ as $$
   select date '2026-01-05'
 $$;
 
--- El canal de la plataforma. Sin él la app no puede iniciar sesión por
--- WhatsApp (no hay número al que mandar el código). La clave es falsa: lo que
--- salga hacia YCloud lo contesta el proveedor falso.
-insert into server_settings (key, value) values
-  ('platform_ycloud_api_key', 'clave-falsa-de-los-recorridos'),
-  ('platform_ycloud_number', '593990000001')
-on conflict (key) do update set value = excluded.value, updated_at = now();
-
 -- La tarjeta, en pruebas: el servidor arranca con PAYPHONE_MODO=pruebas.
 update businesses set card_mode = 'pruebas' where slug = '${SLUG}';
 
--- Abierto siempre: los recorridos corren a cualquier hora, el CI de madrugada.
--- Sin días activos, el horario no cierra nunca.
-delete from business_schedule where business_id = (select id from businesses where slug = '${SLUG}');
-
--- La cuenta a la que se transfiere.
-insert into business_bank_accounts (business_id, bank_name, account_type, account_number, holder_name)
-select id, 'Banco de Pruebas', 'ahorros', '2200000000', 'Local de Pruebas'
-  from businesses where slug = '${SLUG}';
-
--- Los tres métodos que cobra un local de verdad hoy.
-insert into business_payment_methods (business_id, method_code, enabled, sort)
-select b.id, m.code, true, m.sort
-  from businesses b cross join payment_methods m
- where b.slug = '${SLUG}' and m.code in ('efectivo', 'transferencia', 'pago_al_retirar')
-on conflict (business_id, method_code) do update set enabled = true;
+-- Lo demás (abierto siempre, los tres cobros, la cuenta, el número falso de
+-- Umbani, el repartidor) ya lo pone la siembra común del staging.
 `
 
 async function esperarSalud(base, hijo) {

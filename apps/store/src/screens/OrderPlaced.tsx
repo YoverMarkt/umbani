@@ -64,6 +64,8 @@ export interface PedidoRecibido {
    */
   lineas: LineaResumen[]
   envio: number
+  /** La tarifa de servicio: va aparte, como en el carrito. */
+  tarifa?: number
   subtotal: number
 }
 
@@ -313,6 +315,14 @@ export default function OrderPlaced({
                 <div className="flex items-baseline justify-between text-[14px] texto-cuerpo">
                   <span>Envío</span>
                   <span className="tabular-nums">{money(pedido.envio)}</span>
+                </div>
+              )}
+              {/* ⚠️ Sin esta línea, desde que la tarifa se encendió el desglose
+                  no sumaba: «Agua $0,83 + Envío $1,50 = Total $2,43». */}
+              {(pedido.tarifa || 0) > 0 && (
+                <div className="flex items-baseline justify-between text-[14px] texto-cuerpo">
+                  <span>Tarifa de servicio</span>
+                  <span className="tabular-nums">{money(pedido.tarifa || 0)}</span>
                 </div>
               )}
               <div className="flex items-baseline justify-between border-t borde-tema pt-3">

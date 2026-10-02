@@ -24,7 +24,7 @@
 // cuando el proceso NO es producción, y esa es la única condición que hay que
 // no romper nunca al tocar este archivo.
 
-import { isProductionEnvironment } from './environment'
+import { esStaging, isProductionEnvironment } from './environment'
 
 /** Se pone a `si` para arrancar en local contra la base real a propósito. */
 export const ESCAPE_ENV = 'PERMITIR_TAREAS_CONTRA_PRODUCCION'
@@ -75,7 +75,10 @@ export function apuntaAUnaBaseLocal(supabaseUrl: string | undefined): boolean {
  */
 export function decidirTareasDeFondo(env: NodeJS.ProcessEnv): DecisionDeTareas {
   if (isProductionEnvironment(env)) {
-    return { permitido: true, motivo: 'producción' }
+    // El staging en internet (Railway) también llega aquí: es un despliegue de
+    // verdad contra SU base, y el candado del arranque ya comprobó que no es la
+    // de producción. Solo cambia cómo se dice en el registro.
+    return { permitido: true, motivo: esStaging(env) ? 'staging en internet' : 'producción' }
   }
 
   if (apuntaAUnaBaseLocal(env.SUPABASE_URL)) {

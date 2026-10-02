@@ -1,8 +1,12 @@
 # La API de Umbani para las apps
 
-Base: `https://web-production-3433c.up.railway.app` (producción). Para
-desarrollar, un servidor de pruebas (staging) cuando esté listo — **nunca**
-desarrolles contra producción.
+| Servidor | Base | Para qué |
+|---|---|---|
+| **PRUEBAS** | `https://umbani-pruebas.up.railway.app` | **Aquí se desarrolla.** Datos de mentira: la pizzería de prueba (`demo`). |
+| Producción | `https://web-production-3433c.up.railway.app` | Clientes reales. **Nunca** se desarrolla contra ella. |
+
+El de pruebas lleva abajo a la izquierda la franja «STAGING · datos de mentira».
+No tiene número de WhatsApp de verdad: mira §1a para iniciar sesión ahí.
 
 ## 1. La sesión, en dos niveles
 
@@ -33,6 +37,13 @@ reintenta en unos segundos, no la borres.
 
 El teléfono lo prueba WhatsApp (es el remitente del mensaje), no el cliente
 escribiendo un número.
+
+🧪 **En PRUEBAS no hay WhatsApp de verdad.** El paso 2 se hace a mano: entra al
+superadmin de pruebas (`https://umbani-pruebas.up.railway.app/app-admin`, la
+cuenta te la da el dueño) → **Simulador** → escribe `Mi código de Umbani: XXXXXX`
+con el código que enseña la app. El simulador es el teléfono `000000000000`:
+con él inicias sesión como cliente de prueba (y como repartidor de prueba, que
+tiene ese mismo número).
 
 **b) La sesión de tienda (en qué local está).** Para entrar en un local:
 `POST /api/v1/locales/{slug}/sesion` → `{ token }`. Con ese token la app usa
@@ -69,8 +80,20 @@ Algunos traen `reason`:
 - Todo importe llega **en dólares con dos decimales** desde el servidor. La app
   no suma, no redondea y no aplica porcentajes.
 - Antes de confirmar, `POST /api/store/{slug}/quote` devuelve el desglose
-  oficial: `subtotal`, `shipping`, `serviceFee` (tarifa de servicio), `total`.
-  Enseña esas líneas tal cual.
+  oficial, y **siempre suma**:
+
+  | Campo | Se enseña como |
+  |---|---|
+  | `lines[]` (`name`, `quantity`, `lineTotal`) | cada producto, con su importe |
+  | `subtotal` | «Productos» |
+  | `shipping` | «Envío» (si es 0 y es a domicilio: «Envío gratis») |
+  | `serviceFee` | «Tarifa de servicio» — **solo si es mayor que 0** |
+  | `total` | «Total» |
+
+  `subtotal + shipping + serviceFee = total`, y las líneas suman el `subtotal`.
+- Los precios que llegan son los del **cliente** (los de la carta). El precio
+  del local y lo que gana Umbani **no viajan** a la app (decisión del dueño,
+  2026-10-01): no los busques, no están.
 - El `total` que devuelve `POST /api/store/{slug}/orders` es **el que se
   cobra**. Si difiere de la cotización, manda el del pedido.
 
@@ -88,3 +111,14 @@ Algunos traen `reason`:
 
 Si `business.paymentMethods` trae la tarjeta con `test_mode: true`, enseña una
 franja visible «PAGOS DE PRUEBA»: no se cobra dinero real.
+
+## 5. «Mis pedidos»
+
+`GET /api/v1/pedidos` (con la sesión de la **app**, no la de tienda) devuelve
+los pedidos de ese teléfono en **todos** los locales, los 30 más recientes:
+`{ pedidos: [...] }`. Cada uno trae `local: { nombre, slug }`, su `status`, sus
+líneas (`order_items[].line_total`, lo que pagó el cliente) y el desglose
+`subtotal`, `shipping`, `service_fee`, `total` — que suma igual que la
+cotización. El detalle, con la línea de tiempo de sus estados:
+`GET /api/v1/pedidos/{id}`. Un pedido de otro teléfono responde `404`, igual que
+uno que no existe.

@@ -675,7 +675,7 @@ const alAbrirElPuerto = (): void => {
     setInterval(() => { void vigilarElCaminoDelCliente() }, 12 * 60 * 60 * 1000)
 
     setupTelegram(app, bot.handleMessage).then(() => {
-      if (process.env.BASE_URL) console.log(`🌐 Producción: ${process.env.BASE_URL}`)
+      if (process.env.BASE_URL) console.log(`🌐 ${esStaging(process.env) ? 'Staging' : 'Producción'}: ${process.env.BASE_URL}`)
     }).catch(error => console.error('❌ Telegram setup:', errorMessage(error)))
   }
 

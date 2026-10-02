@@ -7,6 +7,8 @@ info:
     Reglas completas en docs/apps/API-UMBANI.md. Tipos detallados de la carta
     y del pedido en apps/store/src/lib/types.ts (la mini app web usa esta misma API).
 servers:
+  - url: https://umbani-pruebas.up.railway.app
+    description: PRUEBAS — aquí se desarrolla (datos de mentira; ver docs/apps/README.md)
   - url: https://web-production-3433c.up.railway.app
     description: Producción (NO desarrollar contra ella)
 
@@ -60,13 +62,66 @@ components:
               quantity: { type: integer, minimum: 1 }
     Cotizacion:
       type: object
+      description: |
+        Solo lo que PAGA el cliente. Siempre suma: subtotal + shipping + serviceFee = total,
+        y las líneas suman el subtotal. (Desde 2026-10-01 no viaja nada del local ni del margen.)
       properties:
         error: { type: string, description: Si viene, el carrito no se puede pedir así }
-        subtotal: { type: number }
+        subtotal: { type: number, description: Los productos, a precio del cliente («Productos») }
         shipping: { type: number, description: Envío }
-        serviceFee: { type: number, description: Tarifa de servicio (0 = no se cobra) }
+        serviceFee: { type: number, description: Tarifa de servicio (0 = no se cobra; no enseñar la línea) }
         total: { type: number }
-        lines: { type: array, items: { type: object } }
+        lines:
+          type: array
+          items:
+            type: object
+            properties:
+              productId: { type: string }
+              name: { type: string }
+              quantity: { type: integer }
+              unitPrice: { type: number, description: El de la carta }
+              lineTotal: { type: number, description: El que se enseña en la línea }
+              options:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    name: { type: string }
+                    groupName: { type: string }
+                    quantity: { type: integer }
+    PedidoDelCliente:
+      type: object
+      description: |
+        Un pedido tal como lo ve su cliente: cada línea con lo que pagó ÉL. Siempre suma:
+        subtotal + shipping + service_fee = total. Los estados, en APP-CLIENTE.md §7.
+      properties:
+        id: { type: string }
+        order_number: { type: integer }
+        status: { type: string }
+        total: { type: number }
+        subtotal: { type: number, description: Los productos, a precio del cliente }
+        shipping: { type: number }
+        service_fee: { type: number, description: Tarifa de servicio (0 = no enseñar la línea) }
+        fulfillment: { type: string, enum: [delivery, pickup] }
+        payment_method: { type: string }
+        payment_confirmed_at: { type: [string, 'null'] }
+        created_at: { type: string }
+        order_items:
+          type: array
+          items:
+            type: object
+            properties:
+              product_name: { type: string }
+              variant_name: { type: [string, 'null'] }
+              quantity: { type: integer }
+              line_total: { type: number, description: Lo que pagó el cliente por esta línea }
+              options: { type: array, items: { type: object } }
+        local:
+          type: object
+          description: Solo en /api/v1/pedidos (en la tienda ya se sabe de qué local es)
+          properties:
+            nombre: { type: string }
+            slug: { type: string, description: Para abrir su tienda (POST /api/v1/locales/{slug}/sesion) }
 
 paths:
   /api/v1/auth/whatsapp:
@@ -147,6 +202,32 @@ paths:
         '404': { description: No existe ese local }
         '409': { description: El local no recibe pedidos }
 
+  /api/v1/pedidos:
+    get:
+      summary: «Mis pedidos» — los de este teléfono en TODOS los locales (los 30 más recientes)
+      security: [{ sesionApp: [] }]
+      responses:
+        '200':
+          description: '{ pedidos: PedidoDelCliente[] }'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pedidos: { type: array, items: { $ref: '#/components/schemas/PedidoDelCliente' } }
+        '401': { description: Sesión vencida o cerrada desde WhatsApp }
+  /api/v1/pedidos/{id}:
+    get:
+      summary: Un pedido de este teléfono, con su seguimiento
+      security: [{ sesionApp: [] }]
+      parameters: [{ $ref: '#/components/parameters/id' }]
+      responses:
+        '200':
+          description: El pedido, con `local` y la línea de tiempo de sus estados
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PedidoDelCliente' }
+        '404': { description: No existe o no es de este teléfono (mismo mensaje) }
   /api/v1/motorizado/yo:
     get:
       summary: El motorizado de la sesión y su semana en curso
@@ -310,14 +391,22 @@ paths:
       security: [{ sesionTienda: [] }]
       parameters: [{ $ref: '#/components/parameters/slug' }]
       responses:
-        '200': { description: Ver TrackedOrder en apps/store/src/lib/types.ts }
+        '200':
+          description: Lista de PedidoDelCliente (sin `local`)
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/PedidoDelCliente' } }
   /api/store/{slug}/orders/{id}:
     get:
       summary: Un pedido del cliente
       security: [{ sesionTienda: [] }]
       parameters: [{ $ref: '#/components/parameters/slug' }, { $ref: '#/components/parameters/id' }]
       responses:
-        '200': { description: Ver TrackedOrder }
+        '200':
+          description: El pedido, con la línea de tiempo de sus estados
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PedidoDelCliente' }
         '404': { description: No existe o no es suyo }
   /api/store/{slug}/payment-info:
     get:

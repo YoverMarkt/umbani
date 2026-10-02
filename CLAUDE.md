@@ -66,6 +66,8 @@ entera de verdad, que era el problema cuando todo estaba junto:
 >   `routes/` endpoints · `integrations/` proveedores externos).
 > · Paneles: `apps/admin` (superadmin) · `apps/client` (dueño) ·
 >   `apps/store` (mini app) · `packages/ui` (shadcn compartido).
+> · Apps móviles (Flutter, 2026-10-01): `mobile/cliente` y `mobile/motorizado`.
+>   Solo consumen la API (`docs/apps/`); sus reglas, en `mobile/CLAUDE.md`.
 > · Migraciones: `server/migration-*.sql`, en orden por fecha. `schema.sql`
 >   es el consolidado vivo y **toda tabla o función nueva tiene que llegar
 >   ahí** (lo vigila `verify:drift`).

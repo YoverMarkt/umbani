@@ -316,6 +316,11 @@ export interface TrackedOrder {
    * explicar es justo lo que hace dudar de un total que se va a transferir.
    */
   shipping?: number | string | null
+  /**
+   * La tarifa de servicio que se cobró en ESTE pedido (2026-10-01). Sin ella,
+   * las líneas y el envío no sumaban el total desde que la tarifa se encendió.
+   */
+  service_fee?: number | string | null
   currency?: string | null
   fulfillment: Fulfillment | null
   created_at: string
