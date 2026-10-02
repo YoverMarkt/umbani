@@ -640,7 +640,9 @@ dueño tenía que revisar los cambios en SU teléfono, y los desarrolladores de 
 apps Flutter necesitan un servidor de pruebas (nunca se desarrolla contra
 producción). Desde el 2026-10-01 hay uno en internet:
 
-- **Servidor:** el entorno «staging» del proyecto de Railway, el mismo código.
+- **Servidor:** un PROYECTO de Railway aparte («umbani-staging»), el mismo código.
+  ⚠️ Nunca un entorno dentro del de producción: duplicarlo copiaría sus
+  variables y nacería una segunda producción procesando los pedidos de verdad.
 - **Base:** un proyecto de Supabase en una organización GRATUITA (se duerme a los
   7 días sin uso y se despierta desde su panel). ~3 USD/mes en total, aprobado.
 - **Credenciales:** variables del entorno «staging» de Railway y

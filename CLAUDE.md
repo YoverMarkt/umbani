@@ -124,7 +124,7 @@ es el que corre todo. Lo que el manifiesto NO dice:
 - **Staging local:** `npm run staging:up` levanta el stack de Supabase en Docker
   y siembra; `npm run dev:staging -w @botpanel/server` arranca el servidor
   contra él.
-- **Staging en internet** (2026-10-01): entorno «staging» de Railway + Supabase
+- **Staging en internet** (2026-10-01): proyecto de Railway APARTE + Supabase
   gratis. `npm run staging:subir` despliega la rama en revisión. 🔐 Un servidor
   con `UMBANI_ENTORNO=staging` NO arranca si su base no lleva la marca de
   staging, y producción no arranca si la lleva. Ver

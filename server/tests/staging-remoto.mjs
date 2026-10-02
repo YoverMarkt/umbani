@@ -13,8 +13,9 @@
 //   npm run staging:remoto -w @botpanel/server -- humo       la prueba de humo, contra él
 //
 // Base: un proyecto de Supabase en una organización GRATIS (se duerme a los 7
-// días sin uso; se despierta desde su panel). Servidor: el entorno «staging»
-// del proyecto de Railway. Cuesta ~3 USD/mes (aprobado por el dueño).
+// días sin uso; se despierta desde su panel). Servidor: un PROYECTO de Railway
+// aparte («umbani-staging»), nunca un entorno dentro del de producción. Cuesta
+// ~3 USD/mes (aprobado por el dueño).
 //
 // Las credenciales viven en `server/.env.staging-remoto` (ignorado por git) y
 // en las variables del entorno «staging» de Railway. NUNCA en este archivo.
@@ -146,10 +147,33 @@ function correr(comando, args, extra = {}) {
   hijo.on('exit', codigo => process.exit(codigo ?? 0))
 }
 
-/** Despliega ESTA carpeta (la rama que se está revisando) al entorno «staging». */
+/**
+ * Despliega ESTA carpeta (la rama que se está revisando) al staging.
+ *
+ * ⚠️ A un PROYECTO de Railway aparte, nunca a un entorno dentro del de
+ * producción, y siempre nombrándolo: la carpeta está enlazada al proyecto de
+ * PRODUCCIÓN (lo usan `railway status` y `railway run`), así que un `railway up`
+ * sin `--project` desplegaría ahí. Y un entorno duplicado de producción nacería
+ * con sus variables: una segunda producción procesando los pedidos de verdad.
+ */
 function subir() {
+  const proyecto = exigir('STAGING_REMOTO_RAILWAY_PROYECTO')
+  const produccion = (() => {
+    try {
+      return JSON.parse(execFileSync('npx', ['-y', '@railway/cli@latest', 'status', '--json'], {
+        cwd: raiz, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'],
+      })).id
+    } catch {
+      return null
+    }
+  })()
+  if (produccion && produccion === proyecto) {
+    console.error('\n❌ STAGING_REMOTO_RAILWAY_PROYECTO es el proyecto de PRODUCCIÓN. No se despliega ahí.\n')
+    process.exit(1)
+  }
   // `--ci`: sigue el build hasta el final y devuelve error si falla.
-  correr('npx', ['-y', '@railway/cli@latest', 'up', '--environment', 'staging', '--service', 'web', '--ci'])
+  correr('npx', ['-y', '@railway/cli@latest', 'up', '--project', proyecto,
+    '--environment', config.STAGING_REMOTO_RAILWAY_ENTORNO || 'production', '--service', 'web', '--ci'])
 }
 
 /** La misma prueba de humo de producción, contra el staging en internet. */
