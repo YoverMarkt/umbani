@@ -14,6 +14,8 @@
 // propósito — adivinar «pruebas» dejaría producción aprobando pagos sin
 // cobrar; adivinar «produccion» cobraría de verdad creyendo probar.
 
+import { esStaging } from './environment'
+
 export type ModoPayphone = 'pruebas' | 'produccion'
 
 export interface ConfiguracionPayphone {
@@ -42,6 +44,12 @@ export function leerConfiguracionPayphone(
   const modo = String(env[VARIABLES_PAYPHONE.modo] || '').trim().toLowerCase()
   if (!token) return null
   if (modo !== 'pruebas' && modo !== 'produccion') return null
+  // ⚠️ UN STAGING NUNCA COBRA DE VERDAD (2026-10-01). Las credenciales de
+  // pruebas y de producción de PayPhone son las mismas —el modo es lo único que
+  // cambia—, así que copiar las variables de producción al staging bastaría
+  // para cobrar tarjetas reales sobre pedidos de mentira. Sin tarjeta, antes
+  // que eso.
+  if (modo === 'produccion' && esStaging(env as NodeJS.ProcessEnv)) return null
   return { token, storeId: storeId || null, modo }
 }
 

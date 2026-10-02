@@ -248,8 +248,15 @@ const literal = valor => `'${String(valor).replace(/'/g, "''")}'`
 
 // ── preparar ────────────────────────────────────────────────────────────────
 
-export function preparar() {
-  exigirQueEsteLevantado()
+/**
+ * Vacía la base de staging, aplica el esquema y siembra.
+ *
+ * Por defecto, la del Docker de esta máquina. `staging-remoto.mjs` la reutiliza
+ * para el staging en INTERNET pasándole su propio `ejecutar` y una clave del
+ * dueño que no está escrita en ningún sitio público (esta lo está: aquí abajo).
+ */
+export function preparar({ ejecutar = psql, claveDelDueno = DUENO_CLAVE, esperar = exigirQueEsteLevantado } = {}) {
+  esperar()
 
   // ⚠️ SE EMPIEZA DE CERO, y no es por comodidad: `schema.sql` tiene
   // `alter table … add constraint` que NO son idempotentes, así que
@@ -260,7 +267,7 @@ export function preparar() {
   // Vaciar es seguro AQUÍ porque la guardia de arriba ya se negó a correr
   // contra nada que no sea una base local de esta máquina.
   console.log('\n🧹 Vaciando la base de staging…')
-  psql(['-q'], `
+  ejecutar(['-q'], `
 drop schema if exists public cascade;
 create schema public;
 grant usage on schema public to anon, authenticated, service_role;
@@ -268,7 +275,7 @@ grant all on schema public to postgres;
 `)
 
   console.log('📐 Aplicando el esquema…')
-  psql(['-q'], readFileSync(path.join(servidor, 'schema.sql'), 'utf8'))
+  ejecutar(['-q'], readFileSync(path.join(servidor, 'schema.sql'), 'utf8'))
   console.log('   ✅ schema.sql aplicado')
 
   // ⚠️ Y SE DEVUELVEN LOS PERMISOS. Al vaciar el esquema se van también los
@@ -277,20 +284,29 @@ grant all on schema public to postgres;
   // base falla con «permission denied for table customers». Verde por fuera y
   // muerto por dentro, que es la peor forma de estar roto.
   //
-  // Esto reproduce lo que hace Supabase en un proyecto nuevo. El aislamiento
-  // real lo siguen poniendo las políticas RLS de `schema.sql`.
-  psql(['-q'], `
-grant all on all tables    in schema public to postgres, anon, authenticated, service_role;
-grant all on all functions in schema public to postgres, anon, authenticated, service_role;
-grant all on all sequences in schema public to postgres, anon, authenticated, service_role;
+  // ⚠️ SOLO a `postgres` y `service_role`, NUNCA a `anon` ni `authenticated`
+  // (2026-10-01). Antes se devolvía todo a todos, como hace Supabase de
+  // fábrica, y eso DESHACÍA los 135 `revoke … from anon` que `schema.sql` pone
+  // en las funciones del dinero, y abría a la clave pública las tablas sin RLS
+  // (`server_settings`, con la clave de dos pasos del superadmin). En el Docker
+  // de una máquina daba igual; desde que existe el staging en INTERNET, no.
+  // El servidor solo usa `service_role` —los paneles nunca hablan con la base—,
+  // así que nadie más necesita nada.
+  ejecutar(['-q'], `
+revoke all on all tables    in schema public from anon, authenticated;
+revoke all on all functions in schema public from public, anon, authenticated;
+revoke all on all sequences in schema public from anon, authenticated;
+grant all on all tables    in schema public to postgres, service_role;
+grant all on all functions in schema public to postgres, service_role;
+grant all on all sequences in schema public to postgres, service_role;
 alter default privileges in schema public
-  grant all on tables    to postgres, anon, authenticated, service_role;
+  grant all on tables    to postgres, service_role;
 alter default privileges in schema public
-  grant all on functions to postgres, anon, authenticated, service_role;
+  grant all on functions to postgres, service_role;
 alter default privileges in schema public
-  grant all on sequences to postgres, anon, authenticated, service_role;
+  grant all on sequences to postgres, service_role;
 `)
-  console.log('   ✅ permisos de Supabase devueltos')
+  console.log('   ✅ permisos devueltos (solo al servidor: postgres y service_role)')
 
   const bcrypt = require('bcryptjs')
   const plantillas = require(path.join(servidor, 'dist/services/business-templates.js'))
@@ -309,7 +325,7 @@ alter default privileges in schema public
   const plantilla = JSON.stringify(plantillas.templateForBusinessType(tipo))
 
   console.log(`🌱 Sembrando «${SLUG}» (tipo: ${tipo})…`)
-  psql(['-q'], `
+  ejecutar(['-q'], `
 do $$
 declare
   v_negocio uuid;
@@ -353,7 +369,7 @@ begin
   end if;
 
   insert into client_users (business_id, email, password_hash, name, role)
-  values (v_negocio, ${literal(DUENO_EMAIL)}, ${literal(bcrypt.hashSync(DUENO_CLAVE, 10))},
+  values (v_negocio, ${literal(DUENO_EMAIL)}, ${literal(bcrypt.hashSync(claveDelDueno, 10))},
           'Dueño de Pruebas', 'owner');
 end $$;
 `)
@@ -363,9 +379,18 @@ end $$;
   // funciona pero no para probar la tienda: sin categorías ni opciones no hay
   // nada que le exija nada al motor. Ese archivo pone una pizzería completa.
   console.log('🍕 Montando el menú de la pizzería…')
-  psql(['-q'], readFileSync(path.join(aqui, 'menu-de-pruebas.sql'), 'utf8'))
+  ejecutar(['-q'], readFileSync(path.join(aqui, 'menu-de-pruebas.sql'), 'utf8'))
 
-  const [negocios, productos, usuarios] = psql(['-tAc', `
+  // 🔐 LA MARCA: esta base es de staging. Sin ella, un servidor con
+  // UMBANI_ENTORNO=staging se niega a arrancar (podría ser la de producción), y
+  // uno de producción se niega si la encuentra. Ver
+  // `src/config/identidad-de-la-base.ts`.
+  ejecutar(['-q'], `
+insert into server_settings (key, value) values ('entorno', 'staging')
+on conflict (key) do update set value = 'staging', updated_at = now();
+`)
+
+  const [negocios, productos, usuarios] = ejecutar(['-tAc', `
     select (select count(*) from businesses),
            (select count(*) from products),
            (select count(*) from client_users)

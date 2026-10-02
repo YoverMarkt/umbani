@@ -18,3 +18,6 @@ respaldos/
 
 # Permisos personales de Claude Code (incluye despliegue a producción)
 .claude/settings.local.json
+
+# El staging en internet: sus credenciales nunca van a git (server/tests/staging-remoto.mjs)
+server/.env.staging-remoto

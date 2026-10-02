@@ -630,3 +630,83 @@ npm run test:recorridos -w @botpanel/server     # ~2 min, compila antes
 El registro del servidor queda en `$TMPDIR/umbani-recorridos-servidor.log`. ⚠️
 `staging.mjs` usa `psql` si está instalado y, si no, el de un contenedor (en
 Linux con `--network host`: allí no existe `host.docker.internal`).
+
+---
+
+## El staging en internet, y el candado de la base (2026-10-01)
+
+El staging local solo se ve en el escritorio, en el modo móvil del navegador; el
+dueño tenía que revisar los cambios en SU teléfono, y los desarrolladores de las
+apps Flutter necesitan un servidor de pruebas (nunca se desarrolla contra
+producción). Desde el 2026-10-01 hay uno en internet:
+
+- **Servidor:** un PROYECTO de Railway aparte («umbani-staging»), el mismo código.
+  ⚠️ Nunca un entorno dentro del de producción: duplicarlo copiaría sus
+  variables y nacería una segunda producción procesando los pedidos de verdad.
+- **Base:** un proyecto de Supabase en una organización GRATUITA (se duerme a los
+  7 días sin uso y se despierta desde su panel). ~3 USD/mes en total, aprobado.
+- **Credenciales:** variables del entorno «staging» de Railway y
+  `server/.env.staging-remoto` (ignorado por git). Ninguna en el repositorio.
+
+```
+npm run staging:remoto -w @botpanel/server -- preparar   # vacía y siembra SU base
+npm run staging:subir                                     # despliega la rama en revisión
+npm run staging:remoto -w @botpanel/server -- humo        # la prueba de humo, contra él
+```
+
+### `UMBANI_ENTORNO=staging`
+
+Para el resto del código el staging en Railway ES un despliegue de verdad
+(tareas de fondo, `BASE_URL` obligatoria). Lo que cambia por ser staging lo
+decide `esStaging(env)`:
+
+- pinta la franja «STAGING · datos de mentira» (antes se apagaba en Railway);
+- **la tarjeta nunca cobra de verdad**: con `PAYPHONE_MODO=produccion` se queda
+  sin tarjeta. Las credenciales de PayPhone son las mismas en pruebas y en
+  producción; copiar las variables bastaría para cobrar tarjetas reales.
+
+### 🔐 El candado de la base
+
+Una variable mal copiada pondría un staging a procesar los pedidos de los
+clientes de verdad —sus tareas de fondo expiran pedidos y cierran la semana—, o
+a producción a servir locales inventados. No se le pregunta a quien despliega:
+se le pregunta a la BASE. La de staging lleva `server_settings.entorno =
+'staging'` (la pone su semilla, y está FUERA de `ALLOWED_KEYS`: ninguna pantalla
+puede escribirla); la de producción no lleva nada. Antes de abrir el puerto
+(`config/identidad-de-la-base.ts`):
+
+| Proceso | Base | Qué pasa |
+|---|---|---|
+| staging | marcada | arranca |
+| staging | sin marca | **NO arranca** (podría ser producción) |
+| staging | no responde | **NO arranca** |
+| producción | sin marca | arranca |
+| producción | marcada | **NO arranca** (datos de mentira) |
+| producción | no responde | arranca — una caída de red al desplegar no puede tumbarla |
+
+Comprobado de verdad, no solo en pruebas: con la marca borrada, el servidor de
+staging sale con código 1 y dice por qué.
+
+### Los permisos de la siembra, cerrados
+
+Al vaciar el esquema se van los `grant` de Supabase y la siembra los devolvía
+**a todos los roles, también `anon`**: eso deshacía los 135 `revoke … from anon`
+de `schema.sql` sobre las funciones del dinero y abría a la clave pública las
+tablas sin RLS (`server_settings`, con la clave de dos pasos del superadmin). En
+el Docker de una máquina daba igual; en internet, no. Ahora solo reciben
+permisos `postgres` y `service_role` —el servidor no usa otro—, en el staging
+local y en el de internet, y los 49 recorridos pasan igual.
+
+### La guardia del `preparar` remoto
+
+Vacía una base, así que se niega si: la dirección es local, la dirección es la
+de producción (la de `server/.env`), o la base tiene negocios y NO lleva la
+marca de staging. La última es la que de verdad protege.
+
+### Qué NO cubre
+
+- **WhatsApp:** el staging no tiene número. Las conversaciones se prueban con el
+  simulador de su panel de superadmin (también el código de inicio de sesión de
+  la app: «Mi código de Umbani: XXXXXX»).
+- **La tarjeta** solo funciona si su dominio está registrado en PayPhone
+  (pruebas): lo registra el dueño en su portal.
