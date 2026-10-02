@@ -102,6 +102,36 @@ describe('configuración global del superadmin', () => {
     expect(response.body).toEqual({ ok: true })
   })
 
+  // El carrito enseñaba la tarifa vieja hasta un minuto después de cambiarla,
+  // mientras la base ya cobraba la nueva (lo cazaron los recorridos).
+  it('al guardar la tarifa de servicio, la tienda olvida la que tenía en memoria', async () => {
+    vi.spyOn(settings, 'setMany').mockResolvedValue()
+    const tarifa = require('../dist/services/tarifa-de-servicio')
+    await tarifa.tarifaDeServicio(async () => 0.1, Date.now())
+    expect(await tarifa.tarifaDeServicio(async () => 0.25, Date.now())).toBe(0.1)
+
+    await dispatch('post', '/api/admin/server-settings', {
+      auth: authorization(), body: { service_fee: '0.25' },
+    })
+
+    expect(await tarifa.tarifaDeServicio(async () => 0.25, Date.now())).toBe(0.25)
+    tarifa.olvidarTarifa()
+  })
+
+  it('guardar otro ajuste no toca la tarifa en memoria', async () => {
+    vi.spyOn(settings, 'setMany').mockResolvedValue()
+    const tarifa = require('../dist/services/tarifa-de-servicio')
+    tarifa.olvidarTarifa()
+    await tarifa.tarifaDeServicio(async () => 0.1, Date.now())
+
+    await dispatch('post', '/api/admin/server-settings', {
+      auth: authorization(), body: { ai_provider: 'openai' },
+    })
+
+    expect(await tarifa.tarifaDeServicio(async () => 0.25, Date.now())).toBe(0.1)
+    tarifa.olvidarTarifa()
+  })
+
   it('no responde éxito ni expone PostgreSQL cuando guardar falla', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     vi.spyOn(settings, 'setMany').mockRejectedValue(

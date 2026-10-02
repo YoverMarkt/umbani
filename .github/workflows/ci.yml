@@ -253,3 +253,51 @@ jobs:
 
       - name: Probar login, navegación y responsive
         run: npm run test:e2e
+
+  # ── Los recorridos de punta a punta (2026-10-01) ──────────────────────
+  # Todo lo de arriba prueba PIEZAS: Vitest las rutas con la base simulada,
+  # `esquema` las funciones SQL una a una. Esto arranca el servidor de verdad
+  # contra un Supabase de verdad (el mismo del staging local) y recorre un
+  # pedido ENTERO como lo vive la gente: pedir, pagar en efectivo, por
+  # transferencia o con tarjeta, cancelar, devolver, entregar y liquidar el
+  # lunes, comprobando el dinero al centavo. PayPhone y WhatsApp son falsos
+  # (`tests/recorridos/proveedores-falsos.mjs`): no sale nada a internet.
+  # Ver VERIFICACION.md → «Los recorridos de punta a punta».
+  recorridos:
+    name: Recorridos de punta a punta (servidor + Supabase)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Instalar dependencias (workspaces)
+        run: npm ci
+
+      # El staging siembra con `psql`. En Linux el contenedor no conoce
+      # `host.docker.internal` (solo existe en Docker Desktop): con el cliente
+      # instalado, `staging.mjs` lo usa directamente.
+      - name: Instalar cliente de PostgreSQL
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.117.0
+
+      # Solo la base, PostgREST y su pasarela: el servidor habla con la base
+      # por HTTP y no usa nada más (Auth, Storage y Realtime ya van apagados en
+      # supabase/config.toml).
+      - name: Levantar Supabase (base + API)
+        run: supabase start -x studio,postgres-meta,edge-runtime,logflare,vector,imgproxy,supavisor,mailpit
+
+      - name: Recorrer los pedidos de punta a punta
+        run: npm run test:recorridos -w @botpanel/server
+
+      - name: Registro del servidor (si falló)
+        if: failure()
+        run: cat /tmp/umbani-recorridos-servidor.log || true

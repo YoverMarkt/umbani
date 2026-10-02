@@ -60,6 +60,7 @@
     "unlisted": "warn"
   },
   "ignoreBinaries": [
-    "supabase"
+    "supabase",
+    "psql"
   ]
 }

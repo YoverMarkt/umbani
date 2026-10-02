@@ -42,6 +42,16 @@ describe('el CI corre las pruebas de cada workspace', () => {
     })
   }
 
+  // Los recorridos de punta a punta van APARTE de `npm test` (necesitan
+  // Docker): la regla de arriba no los ve, y es justo la familia de fallo que
+  // esta prueba existe para impedir — una red que solo corre en el portátil.
+  it('el CI corre los recorridos de punta a punta (servidor + Supabase)', () => {
+    expect(ci, 'el CI no corre `npm run test:recorridos -w @botpanel/server`')
+      .toMatch(/npm run test:recorridos -w @botpanel\/server/)
+    const pkg = JSON.parse(readFileSync(`${raiz}/server/package.json`, 'utf8'))
+    expect(pkg.scripts['test:recorridos']).toContain('vitest.recorridos.config.mjs')
+  })
+
   it('ningún workspace con pruebas se queda fuera, aunque sea nuevo', () => {
     // Lo que de verdad protege: un panel nuevo con pruebas que nadie añada al
     // CI hace fallar ESTA prueba, en vez de pasar en verde sin mirarlas.

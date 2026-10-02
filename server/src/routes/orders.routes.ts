@@ -478,11 +478,22 @@ router.put(
         String(status),
       )
       if (error) {
+        // ⚠️ 22023 es una REGLA dicha por la base, no un fallo: «este pedido se
+        // paga con tarjeta y el cobro aún no está confirmado»
+        // (`orders_card_requires_payment`). El panel enseña ese pedido con
+        // «no lo prepares todavía», y si el dueño tocaba igual leía «no se pudo
+        // actualizar el pedido», como si algo se hubiera roto. Lo encontraron
+        // los recorridos de punta a punta (2026-10-01).
+        if ((error as { code?: string }).code === '22023') {
+          return res.status(409).json({ error: error.message })
+        }
         console.error('❌ actualizar pedido:', error.message || 'Error desconocido')
         return res.status(500).json({ error: 'No se pudo actualizar el pedido' })
       }
       const result = data as {
         result?: 'updated' | 'not_found' | 'invalid_transition' | 'not_deliverable'
+          | 'not_pickable' | 'incompleto'
+        faltan?: string
         order?: unknown
       } | null
       if (result?.result === 'not_found') {
@@ -491,6 +502,23 @@ router.put(
       if (result?.result === 'not_deliverable') {
         return res.status(409).json({
           error: 'Este pedido es para retirar en el local: no puede salir a reparto',
+        })
+      }
+      // ⚠️ Las dos respuestas del candado de la checklist (#407). La base las
+      // daba desde entonces, pero esta ruta no las conocía y caían en el 500 de
+      // «respuesta inválida»: el dueño que tocaba «salió» con algo sin meter en
+      // la bolsa leía un fallo de la base en vez de QUÉ le faltaba. La pantalla
+      // esconde el botón mientras falte algo, así que casi nunca se veía; lo
+      // encontraron los recorridos de punta a punta (2026-10-01).
+      if (result?.result === 'not_pickable') {
+        return res.status(409).json({
+          error: 'Este pedido es a domicilio: no se marca «listo para retirar», sale a reparto',
+        })
+      }
+      if (result?.result === 'incompleto') {
+        return res.status(409).json({
+          error: `Todavía falta meter en la bolsa: ${result.faltan || 'productos sin marcar'}`,
+          faltan: result.faltan || null,
         })
       }
       if (result?.result === 'invalid_transition') {
