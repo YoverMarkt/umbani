@@ -289,11 +289,16 @@ jobs:
         with:
           version: 2.117.0
 
-      # Solo la base, PostgREST y su pasarela: el servidor habla con la base
-      # por HTTP y no usa nada más (Auth, Storage y Realtime ya van apagados en
+      # La base, PostgREST y su pasarela: el servidor habla con la base por
+      # HTTP y no usa nada más (Auth, Storage y Realtime ya van apagados en
       # supabase/config.toml).
+      # ⚠️ `edge-runtime` NO se excluye aunque no se use: con Auth apagado,
+      # `supabase status` no enseña las claves, y la de servicio solo queda
+      # escrita en el archivo de arranque de ESE contenedor
+      # (`supabase/.temp/start-secrets/…/docker.env`), que es de donde la lee
+      # `staging.mjs`. Excluirlo dejó al primer CI sin clave (2026-10-01).
       - name: Levantar Supabase (base + API)
-        run: supabase start -x studio,postgres-meta,edge-runtime,logflare,vector,imgproxy,supavisor,mailpit
+        run: supabase start -x studio,postgres-meta,logflare,vector,imgproxy,supavisor,mailpit
 
       - name: Recorrer los pedidos de punta a punta
         run: npm run test:recorridos -w @botpanel/server
