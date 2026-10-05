@@ -100,6 +100,9 @@ describe('identidad y políticas del negocio', () => {
       meta_token: 'no-debe-salir',
       monthly_rate: 99,
       plan: 'enterprise',
+      // Sus repartidores propios, encendidos por el superadmin en SU ficha.
+      own_fleet: true,
+      delivery_by: 'local',
     })
 
     const response = await dispatch('get', '/api/client/business', {
@@ -115,8 +118,25 @@ describe('identidad y políticas del negocio', () => {
     expect(response.body).not.toHaveProperty('plan')
     expect(response.body).toMatchObject({
       takes_orders: false,
+      flota_propia: true,
     })
     expect(db.getBusinessById).toHaveBeenCalledWith('business-a')
+  })
+
+  // Local por local (2026-10-04): solo si el superadmin la encendió en ESTE
+  // local y además reparte él mismo. Con «Umbani», la pestaña no sale.
+  it('la flota propia solo sale encendida en su local y si reparte él', async () => {
+    for (const [local, esperado] of [
+      [{ own_fleet: true, delivery_by: 'local' }, true],
+      [{ own_fleet: false, delivery_by: 'local' }, false],
+      [{ own_fleet: true, delivery_by: 'umbani' }, false],
+      [{}, false],
+    ]) {
+      vi.spyOn(db, 'getBusinessById').mockResolvedValue({ id: 'business-a', name: 'Demo', takes_orders: true, ...local })
+      const response = await dispatch('get', '/api/client/business', { auth: authorization() })
+      expect(response.status).toBe(200)
+      expect(response.body.flota_propia).toBe(esperado)
+    }
   })
 
   it('solo actualiza campos permitidos y usa el negocio del JWT', async () => {
@@ -129,6 +149,9 @@ describe('identidad y políticas del negocio', () => {
         slogan: 'Nuevo slogan',
         ycloud_api_key: 'intento-de-cambio',
         plan: 'enterprise',
+        // Quién lleva sus pedidos lo decide el superadmin, no el local.
+        own_fleet: true,
+        delivery_by: 'local',
         businessId: 'business-b',
       },
     })

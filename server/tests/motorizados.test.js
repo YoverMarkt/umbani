@@ -9,6 +9,7 @@ const db = require('../dist/db')
 const sesion = require('../dist/services/sesion-app')
 const appMoto = require('../dist/routes/app-motorizado.routes')
 const adminMoto = require('../dist/routes/admin-motorizados.routes')
+const aviso = require('../dist/services/order-status-notice')
 
 // ═══════════════════════════════════════════════════════════════════════════
 // LOS MOTORIZADOS: las reglas del dinero se prueban en PostgreSQL real (bloque
@@ -49,6 +50,26 @@ const conSesion = () => ({ authorization: `Bearer ${sesion.firmarSesionApp('5939
 const admin = () => ({ authorization: `Bearer ${jwt.sign({ role: 'admin', mfa: true }, SECRET)}` })
 
 describe('la app del motorizado', () => {
+  // La ruta cambiaba el estado y NO avisaba al cliente: con motorizado, nadie le
+  // decía «en camino» ni «entregado». Lo cazó el recorrido de motorizados.
+  it('al recoger y al entregar, el cliente recibe su aviso (del negocio DEL PEDIDO)', async () => {
+    vi.spyOn(db, 'getActiveCourierByPhone').mockResolvedValue(moto)
+    vi.spyOn(db, 'courierAdvanceOrder').mockResolvedValue({ result: 'updated', order: { business_id: 'b9' } })
+    const avisar = vi.spyOn(aviso, 'avisarAlCliente').mockResolvedValue()
+    await correr(appMoto, 'post', '/api/v1/motorizado/pedidos/:id/recogido', { headers: conSesion(), params: { id: 'o1' } })
+    await correr(appMoto, 'post', '/api/v1/motorizado/pedidos/:id/entregado', { headers: conSesion(), params: { id: 'o1' } })
+    expect(avisar).toHaveBeenNthCalledWith(1, 'b9', 'o1', 'en_camino')
+    expect(avisar).toHaveBeenNthCalledWith(2, 'b9', 'o1', 'completado')
+  })
+
+  it('si no se pudo mover el pedido, no se avisa nada', async () => {
+    vi.spyOn(db, 'getActiveCourierByPhone').mockResolvedValue(moto)
+    vi.spyOn(db, 'courierAdvanceOrder').mockResolvedValue({ result: 'not_found' })
+    const avisar = vi.spyOn(aviso, 'avisarAlCliente').mockResolvedValue()
+    await correr(appMoto, 'post', '/api/v1/motorizado/pedidos/:id/entregado', { headers: conSesion(), params: { id: 'o1' } })
+    expect(avisar).not.toHaveBeenCalled()
+  })
+
   it('sin sesión 401; con sesión pero sin ser motorizado activo 403', async () => {
     expect((await correr(appMoto, 'get', '/api/v1/motorizado/yo')).status).toBe(401)
     vi.spyOn(db, 'getActiveCourierByPhone').mockResolvedValue(null)
@@ -150,6 +171,14 @@ describe('el superadmin', () => {
     const fuente = fs.readFileSync('src/routes/admin-clients.routes.ts', 'utf8')
     expect(fuente).toMatch(/'delivery_by',/)
     expect(fuente).toMatch(/body\.delivery_by !== 'local' && body\.delivery_by !== 'umbani'/)
+  })
+
+  // Local por local (2026-10-04). Un «true» en texto o un 1 no se adivinan:
+  // decide qué repartidores pueden llevar la comida de ese local.
+  it('«Repartidores propios» lo edita el superadmin, y solo con un sí o un no', () => {
+    const fuente = fs.readFileSync('src/routes/admin-clients.routes.ts', 'utf8')
+    expect(fuente).toMatch(/'own_fleet',/)
+    expect(fuente).toMatch(/typeof body\.own_fleet !== 'boolean'/)
   })
 })
 

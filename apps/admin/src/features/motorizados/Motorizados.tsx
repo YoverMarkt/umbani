@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Badge } from '@botpanel/ui/components/badge'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@botpanel/ui/components/dialog'
 import { Button } from '@botpanel/ui/components/button'
 import { Card } from '@botpanel/ui/components/card'
 import { Input } from '@botpanel/ui/components/input'
@@ -33,6 +34,12 @@ type Liquidacion = {
   reference: string | null; couriers?: { name: string } | null
 }
 
+type Carrera = {
+  order_id: string; sold_at: string; reparto_cents: number; payment_method: string | null
+  retenido: boolean; retenido_motivo: string | null
+  orders?: { order_number: number | null } | null; businesses?: { name: string } | null
+}
+
 const dinero = (c: number) => (c < 0 ? '-$' : '$') + (Math.abs(c) / 100).toFixed(2)
 const UMBANI = 'umbani'
 
@@ -46,6 +53,31 @@ export default function Motorizados() {
   const [f, setF] = useState({ nombre: '', telefono: '', vehiculo: '', flota: UMBANI, tope: '150' })
   const [refs, setRefs] = useState<Record<string, string>>({})
   const refrescar = () => qc.invalidateQueries({ queryKey: ['adm-motorizados'] })
+
+  // ── Retener una carrera (2026-10-02) ──────────────────────────────────
+  // Si se le cae la comida, responde quien la dejó caer: la carrera sale de su
+  // liquidación y el local cobra igual. Solo los de Umbani tienen carrera
+  // propia, y solo se retiene lo que aún no se liquidó. No se puede deshacer.
+  const [viendo, setViendo] = useState<Motorizado | null>(null)
+  const [motivo, setMotivo] = useState('')
+  const [aRetener, setARetener] = useState<string | null>(null)
+  const carreras = useQuery({
+    queryKey: ['adm-motorizado-carreras', viendo?.id],
+    queryFn: () => api<{ carreras: Carrera[] }>(`/api/admin/motorizados/${viendo!.id}/carreras`),
+    enabled: Boolean(viendo),
+  })
+  const retener = useMutation({
+    mutationFn: (pedidoId: string) => api('/api/admin/motorizados/retener', {
+      method: 'POST', body: JSON.stringify({ pedidoId, motivo }),
+    }),
+    onSuccess: () => {
+      toast.success('Carrera retenida: no se le pagará en su liquidación')
+      setARetener(null); setMotivo('')
+      qc.invalidateQueries({ queryKey: ['adm-motorizado-carreras'] })
+      refrescar()
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
 
   const crear = useMutation({
     mutationFn: () => api('/api/admin/motorizados', { method: 'POST', body: JSON.stringify({
@@ -129,7 +161,13 @@ export default function Motorizados() {
                       <Badge variant="outline">{!m.active ? 'Inactivo' : m.available ? 'Disponible' : 'No disponible'}</Badge>
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button size="sm" variant="outline" onClick={() => activar.mutate(m)}>{m.active ? 'Desactivar' : 'Activar'}</Button>
+                      <div className="flex items-center justify-end gap-2">
+                        {/* Solo los de Umbani: la carrera de la flota de un local es del local. */}
+                        {!m.fleet_business_id && (
+                          <Button size="sm" variant="outline" onClick={() => { setViendo(m); setARetener(null); setMotivo('') }}>Carreras</Button>
+                        )}
+                        <Button size="sm" variant="outline" onClick={() => activar.mutate(m)}>{m.active ? 'Desactivar' : 'Activar'}</Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -183,6 +221,59 @@ export default function Motorizados() {
             </Table>
           )}
       </Card>
+
+      <Dialog open={Boolean(viendo)} onOpenChange={abierto => { if (!abierto) setViendo(null) }}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Carreras de {viendo?.name}</DialogTitle>
+            <DialogDescription>
+              Las que aún no se liquidaron. Retener una la quita de su liquidación (se le cayó la comida):
+              el local cobra igual. No se puede deshacer.
+            </DialogDescription>
+          </DialogHeader>
+          {carreras.isLoading
+            ? <Skeleton className="h-24 w-full" />
+            : (carreras.data?.carreras || []).length === 0
+              ? <p className="text-sm text-muted-foreground">No tiene carreras pendientes de liquidar.</p>
+              : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Pedido</TableHead>
+                      <TableHead className="text-right">Carrera</TableHead>
+                      <TableHead className="text-right">Acción</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(carreras.data?.carreras || []).map(c => (
+                      <TableRow key={c.order_id}>
+                        <TableCell>
+                          <div className="font-medium">#{c.orders?.order_number ?? '—'} · {c.businesses?.name || 'Local'}</div>
+                          <div className="text-xs text-muted-foreground">{new Date(c.sold_at).toLocaleString('es-EC', { timeZone: 'America/Guayaquil' })}</div>
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">{dinero(c.reparto_cents)}</TableCell>
+                        <TableCell className="text-right">
+                          {c.retenido
+                            ? <Badge variant="outline" title={c.retenido_motivo || ''}>Retenida</Badge>
+                            : aRetener === c.order_id
+                              ? (
+                                <div className="flex items-center justify-end gap-2">
+                                  <Input className="h-8 w-48" placeholder="Motivo (obligatorio)" aria-label="Motivo de la retención"
+                                    value={motivo} onChange={e => setMotivo(e.target.value)} />
+                                  <Button size="sm" variant="destructive" disabled={motivo.trim().length < 3 || retener.isPending}
+                                    onClick={() => retener.mutate(c.order_id)}>Retener</Button>
+                                  <Button size="sm" variant="ghost" onClick={() => { setARetener(null); setMotivo('') }}>Cancelar</Button>
+                                </div>
+                              )
+                              : <Button size="sm" variant="outline" onClick={() => { setARetener(c.order_id); setMotivo('') }}>Retener…</Button>}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

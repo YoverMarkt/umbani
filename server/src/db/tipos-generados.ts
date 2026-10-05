@@ -603,6 +603,7 @@ export type Database = {
           name: string
           notes: string | null
           notify_owner_whatsapp: boolean
+          own_fleet: boolean
           owner_phone: string | null
           payment_methods: string | null
           payment_window_minutes: number
@@ -659,6 +660,7 @@ export type Database = {
           name: string
           notes?: string | null
           notify_owner_whatsapp?: boolean
+          own_fleet?: boolean
           owner_phone?: string | null
           payment_methods?: string | null
           payment_window_minutes?: number
@@ -715,6 +717,7 @@ export type Database = {
           name?: string
           notes?: string | null
           notify_owner_whatsapp?: boolean
+          own_fleet?: boolean
           owner_phone?: string | null
           payment_methods?: string | null
           payment_window_minutes?: number

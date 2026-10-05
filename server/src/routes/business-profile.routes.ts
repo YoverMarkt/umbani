@@ -1,4 +1,5 @@
 import type { RequestHandler } from 'express'
+import { tieneFlotaPropia } from '../lib/flota-propia'
 import { getClientBusinessId } from '../lib/request'
 import { leerUbicacion } from '../lib/ubicacion'
 import { createRouter } from '../middleware/async'
@@ -115,6 +116,9 @@ router.get('/api/client/business', auth.authClient, async (req, res) => {
     payment_window_minutes: Number(business.payment_window_minutes ?? 120),
     suspended: business.suspended,
     bot_active: business.bot_active,
+    // ¿Puede registrar a sus propios repartidores? Lo enciende el superadmin
+    // en la ficha de ESTE local; mientras tanto el menú no lo enseña.
+    flota_propia: tieneFlotaPropia(business),
   })
 })
 

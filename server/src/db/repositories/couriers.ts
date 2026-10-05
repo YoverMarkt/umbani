@@ -104,8 +104,91 @@ const setCourierActive = async (courierId: string, active: boolean) => {
   if (error) throw new Error(error.message)
 }
 
+/**
+ * Las carreras de un motorizado que aún no se liquidaron: de ahí se elige la
+ * que se RETIENE cuando se le cae la comida (superadmin). Solo las de Umbani
+ * tienen carrera propia: la de un repartidor del local es del local.
+ */
+const listCourierRuns = async (courierId: string) => {
+  const { data, error } = await db
+    .from('order_ledger')
+    .select('order_id, sold_at, reparto_cents, total_cents, payment_method, en_mano, retenido, retenido_motivo, orders!order_ledger_order_fk(order_number), businesses(name)')
+    .eq('courier_id', courierId)
+    .eq('kind', 'venta')
+    .is('courier_settlement_id', null)
+    .order('sold_at', { ascending: false })
+    .limit(100)
+  if (error) throw new Error(error.message)
+  return data || []
+}
+
+// ── LA FLOTA DE UN LOCAL (2026-10-02) ───────────────────────────────────────
+//
+// El local registra a SUS repartidores desde su panel. ⚠️ Todo va filtrado
+// por `fleet_business_id` = el negocio del JWT: un local no ve ni toca a los
+// repartidores de otro, ni a los de Umbani. La regla de qué pedidos puede
+// llevar cada uno sigue en la base (`orders_courier_permitido`).
+
+const listFleetCouriers = async (businessId: string): Promise<Courier[]> => {
+  const { data, error } = await db.from('couriers').select(COLUMNAS)
+    .eq('fleet_business_id', businessId).order('created_at', { ascending: true })
+  if (error) throw new Error(error.message)
+  return (data || []) as Courier[]
+}
+
+/** `true` si el repartidor era de ESTE local y se cambió; `false` si no es suyo. */
+const setFleetCourierActive = async (businessId: string, courierId: string, active: boolean): Promise<boolean> => {
+  const { data, error } = await db.from('couriers')
+    .update({ active, ...(active ? {} : { available: false }), updated_at: new Date().toISOString() })
+    .eq('id', courierId).eq('fleet_business_id', businessId)
+    .select('id')
+  if (error) throw new Error(error.message)
+  return (data || []).length > 0
+}
+
+/**
+ * El efectivo de cada repartidor del local: lo que va a cobrar en los pedidos
+ * que lleva ahora, y lo que ya cobró HOY. Es lo que el local le pide al final
+ * del turno. Centavos enteros; `desde` es el inicio del día en Ecuador.
+ */
+const fleetCash = async (businessId: string, courierIds: string[], desde: string) => {
+  const porRepartidor = new Map<string, { enCursoCents: number; cobradoHoyCents: number; entregasHoy: number }>()
+  for (const id of courierIds) porRepartidor.set(id, { enCursoCents: 0, cobradoHoyCents: 0, entregasHoy: 0 })
+  if (!courierIds.length) return porRepartidor
+  const efectivo = 'payment_method.is.null,payment_method.in.(efectivo,pago_al_retirar)'
+  const centavos = (v: unknown) => Math.round((Number(v) || 0) * 100)
+
+  const enCurso = await db.from('orders').select('courier_id, total')
+    .eq('business_id', businessId).in('courier_id', courierIds).or(efectivo)
+    .not('status', 'in', '("completado","cancelado","rechazado","expirado")')
+  if (enCurso.error) throw new Error(enCurso.error.message)
+  for (const p of enCurso.data || []) {
+    const fila = porRepartidor.get(String(p.courier_id))
+    if (fila) fila.enCursoCents += centavos(p.total)
+  }
+
+  // Entregado HOY = su venta es de hoy (la venta nace al entregar).
+  const ventas = await db.from('sales').select('order_id, total')
+    .eq('business_id', businessId).eq('status', 'completada').gte('sold_at', desde).not('order_id', 'is', null)
+  if (ventas.error) throw new Error(ventas.error.message)
+  const totalDe = new Map((ventas.data || []).map(v => [String(v.order_id), centavos(v.total)]))
+  if (totalDe.size) {
+    const suyos = await db.from('orders').select('id, courier_id')
+      .eq('business_id', businessId).in('id', [...totalDe.keys()]).in('courier_id', courierIds).or(efectivo)
+    if (suyos.error) throw new Error(suyos.error.message)
+    for (const p of suyos.data || []) {
+      const fila = porRepartidor.get(String(p.courier_id))
+      if (!fila) continue
+      fila.cobradoHoyCents += totalDe.get(String(p.id)) || 0
+      fila.entregasHoy += 1
+    }
+  }
+  return porRepartidor
+}
+
 export {
   getActiveCourierByPhone, setCourierAvailable, getCourierOrders, courierTakeOrder, courierAdvanceOrder,
   getCourierBalance, retainCourierFee, closeWeeklyCourierSettlements, markCourierSettlementPaid,
   listCourierSettlements, listCouriers, createCourier, setCourierActive,
+  listCourierRuns, listFleetCouriers, setFleetCourierActive, fleetCash,
 }

@@ -398,11 +398,16 @@ on conflict (key) do update set value = 'staging', updated_at = now();
   //     falsa: lo que el staging intente enviar a YCloud lo rechaza YCloud.
   //   · un REPARTIDOR del local de pruebas, con el teléfono del simulador, para
   //     la app del motorizado. Es de la flota del local: no cambia quién cobra.
+  //     ⚠️ Con los repartidores propios ENCENDIDOS en ese local (2026-10-04):
+  //     se encienden local por local y nacen apagados, y apagados la base no
+  //     le ofrece ningún pedido — la app del motorizado se vería vacía.
   ejecutar(['-q'], `
 insert into server_settings (key, value) values
   ('platform_ycloud_api_key', 'clave-falsa-del-staging'),
   ('platform_ycloud_number', '593990000001')
 on conflict (key) do update set value = excluded.value, updated_at = now();
+
+update businesses set own_fleet = true, delivery_by = 'local' where slug = ${literal(SLUG)};
 
 insert into couriers (phone, name, vehicle, fleet_business_id)
 select '000000000000', 'Motorizado de Pruebas', 'moto', id from businesses where slug = ${literal(SLUG)}

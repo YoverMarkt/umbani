@@ -62,6 +62,15 @@ router.post('/api/admin/motorizados/liquidaciones/:id/marcar', auth.authAdmin, a
   return res.json({ status: r.status })
 })
 
+// Las carreras sin liquidar de UN motorizado: de aquí se elige la que se
+// retiene (2026-10-02). La retención la hace la base y queda en el registro
+// de dinero con quién la hizo.
+router.get('/api/admin/motorizados/:id/carreras', auth.authAdmin, async (req, res) => {
+  const id = String(req.params.id || '')
+  if (!UUID.test(id)) return res.status(400).json({ error: 'Motorizado no válido' })
+  return res.json({ carreras: await db.listCourierRuns(id) })
+})
+
 router.post('/api/admin/motorizados/retener', auth.authAdmin, async (req, res) => {
   const body = (req.body || {}) as Record<string, unknown>
   const pedido = String(body.pedidoId || '')

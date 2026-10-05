@@ -14,6 +14,8 @@ export type BusinessInfo = {
   address: string | null; phone: string | null; social: string | null
   payment_methods: string | null; suspended: boolean; bot_active: boolean
   takes_orders: boolean
+  /** ¿Puede registrar a sus propios repartidores? (lo enciende el superadmin) */
+  flota_propia?: boolean
 }
 
 // Pedidos es capacidad propia del negocio (takes_orders), independiente de

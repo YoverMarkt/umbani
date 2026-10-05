@@ -250,6 +250,32 @@ export async function pedirYPagarConTarjeta(cliente, cuerpoDelPedido) {
   return { pedido, cobro: await cobroDelPedido(pedido.id), idPayPhone: id }
 }
 
+// ── El motorizado ───────────────────────────────────────────────────────────
+
+/**
+ * La sesión de la app para un teléfono cualquiera. ⚠️ Se FIRMA aquí: el
+ * simulador del chat es un solo teléfono (el del cliente de los recorridos),
+ * y el inicio de sesión por WhatsApp ya lo recorre `00-escenario`. Se firma
+ * con la misma función y el mismo secreto que el servidor.
+ */
+export function sesionDeLaAppPara(telefono) {
+  process.env.JWT_SECRET = inject('jwtSecret')
+  return require('../../dist/services/sesion-app').firmarSesionApp(telefono)
+}
+
+export function comoMotorizado(telefono) {
+  const token = sesionDeLaAppPara(telefono)
+  const pedir = (metodo, ruta, cuerpo) => http(metodo, `/api/v1/motorizado${ruta}`, { token, cuerpo })
+  return {
+    pedir,
+    disponible: () => exigir(200, pedir('PUT', '/disponible', { disponible: true })),
+    pedidos: async () => (await exigir(200, pedir('GET', '/pedidos'))).pedidos,
+    tomar: id => pedir('POST', `/pedidos/${id}/tomar`),
+    recogido: id => pedir('POST', `/pedidos/${id}/recogido`),
+    entregado: id => pedir('POST', `/pedidos/${id}/entregado`),
+  }
+}
+
 // ── Los proveedores falsos ──────────────────────────────────────────────────
 
 const control = async (ruta, cuerpo) => (await fetch(`${inject('falso')}/__control/${ruta}`, {
