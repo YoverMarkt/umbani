@@ -8,6 +8,12 @@
 El de pruebas lleva abajo a la izquierda la franja «STAGING · datos de mentira».
 No tiene número de WhatsApp de verdad: mira §1a para iniciar sesión ahí.
 
+**Ciudades (2026-10-05):** cada cliente ve solo los locales de SU ciudad. La
+app pregunta «¿En qué ciudad estás?» con `GET /api/v1/ciudades` y guarda la
+respuesta con `PUT /api/v1/yo/ciudad`; `GET /api/v1/marketplace` exige
+`?ciudad=` (sin ella, `400`). Pantalla por pantalla en
+[APP-CLIENTE.md §1b](APP-CLIENTE.md). El local de pruebas está en Chone.
+
 ## 1. La sesión, en dos niveles
 
 **a) La sesión de la app (quién es el cliente).** Se inicia con WhatsApp, sin

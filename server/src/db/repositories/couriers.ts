@@ -24,12 +24,14 @@ export interface Courier {
   name: string
   vehicle: string | null
   fleet_business_id: string | null
+  /** Su ciudad (2026-10-05): el de Umbani solo ve pedidos de ella. */
+  city_id: string | null
   active: boolean
   available: boolean
   cash_limit_cents: number
 }
 
-const COLUMNAS = 'id, phone, name, vehicle, fleet_business_id, active, available, cash_limit_cents'
+const COLUMNAS = 'id, phone, name, vehicle, fleet_business_id, city_id, active, available, cash_limit_cents'
 
 /** El motorizado ACTIVO de ese teléfono (el de su sesión de la app), o null. */
 const getActiveCourierByPhone = async (phone: string): Promise<Courier | null> => {
@@ -82,17 +84,18 @@ const listCourierSettlements = async (courierId?: string | null, limite = 100) =
 }
 
 const listCouriers = async () => {
-  const { data, error } = await db.from('couriers').select(`${COLUMNAS}, created_at, businesses(name)`).order('created_at', { ascending: false })
+  const { data, error } = await db.from('couriers').select(`${COLUMNAS}, created_at, businesses(name), cities(name)`).order('created_at', { ascending: false })
   if (error) throw new Error(error.message)
   return data || []
 }
 
-const createCourier = async (input: { phone: string; name: string; vehicle?: string | null; fleetBusinessId?: string | null; cashLimitCents?: number }) => {
+const createCourier = async (input: { phone: string; name: string; vehicle?: string | null; fleetBusinessId?: string | null; cityId?: string | null; cashLimitCents?: number }) => {
   const { data, error } = await db.from('couriers').insert({
     phone: input.phone,
     name: input.name,
     vehicle: input.vehicle ?? null,
     fleet_business_id: input.fleetBusinessId ?? null,
+    city_id: input.cityId ?? null,
     ...(input.cashLimitCents != null ? { cash_limit_cents: input.cashLimitCents } : {}),
   }).select(COLUMNAS).single()
   if (error) throw Object.assign(new Error(error.message), { code: error.code })

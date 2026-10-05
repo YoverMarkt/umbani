@@ -148,9 +148,9 @@ describe('la misma respuesta no sale dos veces seguidas', () => {
 // ── Con la función REAL del marketplace ────────────────────────────────────
 
 const CATEGORIAS = [
-  { code: 'pizzerias', label: 'Pizzerías', emoji: '🍕', locales: 1 },
-  { code: 'panaderias', label: 'Panaderías', emoji: '🥖', locales: 1 },
-  { code: 'minimarkets', label: 'Minimarkets', emoji: '🛒', locales: 1 },
+  { city_id: 'ciudad-chone', city_name: 'Chone', code: 'pizzerias', label: 'Pizzerías', emoji: '🍕', locales: 1 },
+  { city_id: 'ciudad-chone', city_name: 'Chone', code: 'panaderias', label: 'Panaderías', emoji: '🥖', locales: 1 },
+  { city_id: 'ciudad-chone', city_name: 'Chone', code: 'minimarkets', label: 'Minimarkets', emoji: '🛒', locales: 1 },
 ]
 const LOCALES = {
   pizzerias: [{ id: 'biz-pizza', slug: 'monster-pizza', name: 'Monster Pizza', type: 'pizzería', prep_min: 30 }],

@@ -8,7 +8,7 @@ Hay dos clases, y la app es la misma para las dos (`flota` en `/yo`):
 
 | | Lo registra | Lleva pedidos de | La carrera es de | El efectivo |
 |---|---|---|---|---|
-| **De Umbani** (`flota: "umbani"`) | el superadmin | los locales con «Quién reparte: Umbani» | él | lo guarda él y liquida el lunes |
+| **De Umbani** (`flota: "umbani"`) | el superadmin, con su **ciudad** | los locales de SU ciudad con «Quién reparte: Umbani» | él | lo guarda él y liquida el lunes |
 | **Del local** (`flota: "local"`) | el dueño del local, en su panel → Repartidores | solo ese local | el local | se lo entrega al local |
 
 Los **del local** solo reciben pedidos mientras ese local tenga los

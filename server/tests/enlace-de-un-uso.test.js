@@ -185,7 +185,7 @@ describe('resolverReinicio distingue las TRES respuestas', () => {
   })
 })
 
-const CATEGORIAS = [{ code: 'pizzerias', label: 'Pizzerías', emoji: '🍕', locales: 1 }]
+const CATEGORIAS = [{ city_id: 'ciudad-chone', city_name: 'Chone', code: 'pizzerias', label: 'Pizzerías', emoji: '🍕', locales: 1 }]
 
 const armarEntrada = ({ enChat = false, url = 'https://umbani.app/s/tok3n' } = {}) => {
   const enviados = []

@@ -52,7 +52,7 @@ function armar({ horario } = {}) {
     }),
     advanceConversation: async () => ({ conflicto: false }),
     getBusinessById: async () => NEGOCIO,
-    getMarketplaceCategories: async () => ([{ code: 'almuerzos', label: 'Almuerzos', emoji: '🍱' }]),
+    getMarketplaceCategories: async () => ([{ city_id: 'ciudad-chone', city_name: 'Chone', code: 'almuerzos', label: 'Almuerzos', emoji: '🍱' }]),
     getMarketplaceBusinesses: async () => ([
       { id: 'b1', slug: 'la-abuelita', name: 'La Abuelita', type: 'almuerzos' },
     ]),

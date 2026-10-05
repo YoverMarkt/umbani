@@ -1,9 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { enSegundoPlano } from '../../lib/segundo-plano'
 import type { Database } from '../tipos-generados'
-import type {
-  MarketplaceBusiness, MarketplaceCategory,
-} from '../../services/marketplace-menu'
+import type { MarketplaceBusiness } from '../../services/marketplace-menu'
+import type { CategoriaEnCiudad } from '../../services/marketplace-ciudad'
 
 // El catálogo del marketplace: qué categorías tienen locales hoy, y cuáles.
 //
@@ -14,19 +13,30 @@ import type {
 
 const db: SupabaseClient<Database> = require('../client') as typeof import('../client')
 
-/** Las categorías con al menos un local disponible. Nunca una vacía. */
-const getMarketplaceCategories = async (): Promise<MarketplaceCategory[]> => {
+/**
+ * Las categorías con al menos un local disponible, UNA FILA POR CIUDAD Y
+ * CATEGORÍA (2026-10-05). Nunca una vacía. De aquí salen también las ciudades
+ * con locales: ver `services/marketplace-ciudad.ts`.
+ */
+const getMarketplaceCategories = async (): Promise<CategoriaEnCiudad[]> => {
   const { data, error } = await db.rpc('marketplace_categories_disponibles')
   if (error) throw new Error(error.message)
-  return (data || []) as MarketplaceCategory[]
+  return (data || []) as CategoriaEnCiudad[]
 }
 
-/** Los locales de una categoría, por nombre. */
+/**
+ * Los locales de una categoría EN UNA CIUDAD, por nombre.
+ *
+ * ⚠️ Sin ciudad la base no devuelve ninguno (falla cerrado): enseñar los de
+ * otra ciudad es el fallo que nadie notaría.
+ */
 const getMarketplaceBusinesses = async (
   code: string,
+  cityId: string | null = null,
 ): Promise<MarketplaceBusiness[]> => {
   const { data, error } = await db.rpc('marketplace_negocios_de_categoria', {
     p_code: code,
+    p_city_id: cityId as string,
   })
   if (error) throw new Error(error.message)
   return (data || []) as MarketplaceBusiness[]
@@ -165,10 +175,13 @@ export interface MarketplaceHit {
 const searchMarketplaceBusinesses = async (
   query: string,
   limite = 8,
+  cityId: string | null = null,
 ): Promise<MarketplaceHit[]> => {
+  // ⚠️ En la ciudad del cliente; sin ella, la base no devuelve nada.
   const { data, error } = await db.rpc('marketplace_buscar_negocios', {
     p_query: query,
     p_limite: limite,
+    p_city_id: cityId as string,
   })
   if (error) throw new Error(error.message)
   return (data || []) as MarketplaceHit[]

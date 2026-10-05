@@ -16,7 +16,7 @@ const { handleMarketplaceMessage: handle } = require('../dist/services/marketpla
 // `claim_platform_block_state`) y se prueba contra PostgreSQL real en
 // `verificar-esquema.sql`; aquí, lo que el cliente LEE.
 
-const CATEGORIAS = [{ code: 'pizzerias', label: 'Pizzerías', emoji: '🍕', locales: 1 }]
+const CATEGORIAS = [{ city_id: 'ciudad-chone', city_name: 'Chone', code: 'pizzerias', label: 'Pizzerías', emoji: '🍕', locales: 1 }]
 
 const armar = ({ falta = { accion: 'advertido' }, estado = { bloqueado: false } } = {}) => {
   const enviados = []

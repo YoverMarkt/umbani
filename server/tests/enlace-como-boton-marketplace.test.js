@@ -15,7 +15,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 //     `bot-entry`. Quien escribía a Umbani veía un solo tic hasta la
 //     respuesta, que en un chat de venta se lee como «no me están leyendo».
 
-const CATEGORIAS = [{ code: 'pizzerias', label: 'Pizzerías', emoji: '🍕', locales: 1 }]
+const CATEGORIAS = [{ city_id: 'ciudad-chone', city_name: 'Chone', code: 'pizzerias', label: 'Pizzerías', emoji: '🍕', locales: 1 }]
 const LOCAL = {
   id: 'biz-1', slug: 'monster-pizza', name: 'Monster Pizza',
   type: 'pizzeria', prep_min: 30,

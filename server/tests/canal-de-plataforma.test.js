@@ -137,8 +137,8 @@ describe('la migración no revierte lo que ya existía', () => {
 
 describe('el menú del marketplace, de punta a punta', () => {
   const CATEGORIAS = [
-    { code: 'pizzerias', label: 'Pizzerías', emoji: '🍕', locales: 1 },
-    { code: 'almuerzos', label: 'Almuerzos', emoji: '🍽️', locales: 2 },
+    { city_id: 'ciudad-chone', city_name: 'Chone', code: 'pizzerias', label: 'Pizzerías', emoji: '🍕', locales: 1 },
+    { city_id: 'ciudad-chone', city_name: 'Chone', code: 'almuerzos', label: 'Almuerzos', emoji: '🍽️', locales: 2 },
   ]
   const MONSTER = {
     id: 'biz-1', slug: 'monster-pizza', name: 'Monster Pizza',
@@ -222,7 +222,8 @@ describe('el menú del marketplace, de punta a punta', () => {
     // escribir dos veces para ver una lista, y cada mensaje se paga.
     const ultimo = ctx.enviados.at(-1)
     expect(ultimo.options).toContain('Monster Pizza')
-    expect(ctx.database.getMarketplaceBusinesses).toHaveBeenCalledWith('pizzerias')
+    // Con la ciudad del cliente (2026-10-05): la que tiene locales, Chone.
+    expect(ctx.database.getMarketplaceBusinesses).toHaveBeenCalledWith('pizzerias', 'ciudad-chone')
   })
 
   it('elegir local manda su enlace y deja la conversación en ese local', async () => {
@@ -600,7 +601,7 @@ describe('el marketplace contesta al comprobante', () => {
           getConversation: async () => ({
             version: 1, current_state: 'navegando', selected_business_id: null,
           }),
-          getMarketplaceCategories: async () => ([{ code: 'pizza', label: 'Pizzas' }]),
+          getMarketplaceCategories: async () => ([{ city_id: 'ciudad-chone', city_name: 'Chone', code: 'pizza', label: 'Pizzas' }]),
           getBusinessById: async () => null,
           advanceConversation,
         },

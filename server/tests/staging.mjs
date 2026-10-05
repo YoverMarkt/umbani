@@ -401,13 +401,16 @@ on conflict (key) do update set value = 'staging', updated_at = now();
   //     ⚠️ Con los repartidores propios ENCENDIDOS en ese local (2026-10-04):
   //     se encienden local por local y nacen apagados, y apagados la base no
   //     le ofrece ningún pedido — la app del motorizado se vería vacía.
+  //   · el local de pruebas EN CHONE (2026-10-05): sin ciudad, un local no
+  //     aparece a ningún cliente — ni en el chat ni en la app.
   ejecutar(['-q'], `
 insert into server_settings (key, value) values
   ('platform_ycloud_api_key', 'clave-falsa-del-staging'),
   ('platform_ycloud_number', '593990000001')
 on conflict (key) do update set value = excluded.value, updated_at = now();
 
-update businesses set own_fleet = true, delivery_by = 'local' where slug = ${literal(SLUG)};
+update businesses set own_fleet = true, delivery_by = 'local',
+  city_id = (select id from cities where lower(name) = 'chone') where slug = ${literal(SLUG)};
 
 insert into couriers (phone, name, vehicle, fleet_business_id)
 select '000000000000', 'Motorizado de Pruebas', 'moto', id from businesses where slug = ${literal(SLUG)}

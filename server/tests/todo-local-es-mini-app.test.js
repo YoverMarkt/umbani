@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url'
 // los comprobantes, los avisos de estado, la ubicación y MENÚ. Lo único que
 // desaparece es ARMAR EL CARRITO por chat.
 
-const CATEGORIAS = [{ code: 'almuerzos', label: 'Almuerzos', emoji: '🍽️', locales: 1 }]
+const CATEGORIAS = [{ city_id: 'ciudad-chone', city_name: 'Chone', code: 'almuerzos', label: 'Almuerzos', emoji: '🍽️', locales: 1 }]
 const LOCAL = {
   id: 'biz-1', slug: 'la-abuelita', name: 'La Abuelita',
   type: 'almuerzos', prep_min: 20,

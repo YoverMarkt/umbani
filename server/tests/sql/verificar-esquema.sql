@@ -118,6 +118,13 @@ begin
 end;
 $$;
 
+
+-- Las verificaciones del menú corren en CHONE (2026-10-05): desde las ciudades,
+-- un local sin ciudad no aparece a nadie y las funciones del menú sin ciudad no
+-- devuelven nada (falla cerrado). La sembró el propio esquema.
+create or replace function pg_temp.chone() returns uuid language sql stable
+as $c$ select id from public.cities where lower(name) = 'chone' $c$;
+
 do $$
 declare
   v_business uuid;
@@ -2201,6 +2208,7 @@ begin
       'marketplace', true, true
     )
     returning id into v_local_menu;
+    update public.businesses set city_id = pg_temp.chone() where id = v_local_menu;
 
     -- Ahora Pizzerías tiene algo detrás y DEBE aparecer.
     if not exists (
@@ -2209,7 +2217,7 @@ begin
       raise exception 'El menú no ofrece una categoría que sí tiene locales';
     end if;
     if not exists (
-      select 1 from public.marketplace_negocios_de_categoria('pizzerias')
+      select 1 from public.marketplace_negocios_de_categoria('pizzerias', pg_temp.chone())
       where id = v_local_menu
     ) then
       raise exception 'El local no aparece dentro de su categoría';
@@ -2218,7 +2226,7 @@ begin
     -- Suspenderlo lo saca del menú: ofrecerlo sería una calle sin salida.
     update public.businesses set suspended = true where id = v_local_menu;
     if exists (
-      select 1 from public.marketplace_negocios_de_categoria('pizzerias')
+      select 1 from public.marketplace_negocios_de_categoria('pizzerias', pg_temp.chone())
       where id = v_local_menu
     ) then
       raise exception 'Un local suspendido sigue saliendo en el menú';
@@ -2228,7 +2236,7 @@ begin
     update public.businesses set suspended = false, storefront_enabled = false
      where id = v_local_menu;
     if exists (
-      select 1 from public.marketplace_negocios_de_categoria('pizzerias')
+      select 1 from public.marketplace_negocios_de_categoria('pizzerias', pg_temp.chone())
       where id = v_local_menu
     ) then
       raise exception 'Un local sin tienda sigue saliendo en el menú';
@@ -2258,13 +2266,14 @@ begin
       'marketplace', true, true
     )
     returning id into v_local_busq;
+    update public.businesses set city_id = pg_temp.chone() where id = v_local_busq;
 
     insert into public.products (business_id, name, description, price, active)
     values (v_local_busq, 'Ceviche mixto', 'Camarón y concha', 8.50, true);
 
     -- Por alias: «cebiche» no casa por texto con «ceviche», y aun así encuentra.
     if not exists (
-      select 1 from public.marketplace_buscar_negocios('quiero cebiche')
+      select 1 from public.marketplace_buscar_negocios('quiero cebiche', 8, pg_temp.chone())
       where id = v_local_busq
     ) then
       raise exception 'La búsqueda no encuentra el local por alias';
@@ -2281,7 +2290,7 @@ begin
     -- que no encontrar ninguno, porque el cliente ya eligió.
     update public.businesses set suspended = true where id = v_local_busq;
     if exists (
-      select 1 from public.marketplace_buscar_negocios('ceviche')
+      select 1 from public.marketplace_buscar_negocios('ceviche', 8, pg_temp.chone())
       where id = v_local_busq
     ) then
       raise exception 'Un local suspendido sigue saliendo en la búsqueda';
@@ -2310,9 +2319,10 @@ begin
        'Relevancia verificada sucursal sur', 'pizzería', 'marketplace', true, true),
       (v_mejor, 'verificacion-relevancia-3',
        'Relevancia verificada', 'pizzería', 'marketplace', true, true);
+    update public.businesses set city_id = pg_temp.chone() where slug like 'verificacion-relevancia-%';
 
     select id into v_primero
-    from public.marketplace_buscar_negocios('relevancia verificada', 1);
+    from public.marketplace_buscar_negocios('relevancia verificada', 1, pg_temp.chone());
     if v_primero is distinct from v_mejor then
       raise exception 'La búsqueda recorta por identificador: el local más parecido se quedó fuera';
     end if;
@@ -2322,7 +2332,7 @@ begin
       select 1
       from (
         select r.orden, lag(r.orden) over (order by r.n) as anterior
-        from public.marketplace_buscar_negocios('relevancia verificada', 3)
+        from public.marketplace_buscar_negocios('relevancia verificada', 3, pg_temp.chone())
           with ordinality as r(id, slug, name, type, motivo, orden, n)
       ) s
       where s.anterior < s.orden
@@ -3290,11 +3300,12 @@ begin
   values ('verif-cajones-solo-tipo', 'Sin elegir', 'pizzería', 'ycloud',
     '+593900999002', '+593900999002', true, true)
   returning id into v_solo_tipo;
+  update businesses set city_id = pg_temp.chone() where id in (v_tipica, v_solo_tipo);
 
   -- ── 1. Sin filas propias manda el TIPO, como siempre ──────────────────────
   -- Es lo que mantiene vivos a los locales de antes: nadie tuvo que elegir.
   select array_agg(code order by code) into v_codigos
-  from marketplace_negocios_de_categoria('pizzerias') n
+  from marketplace_negocios_de_categoria('pizzerias', pg_temp.chone()) n
   join marketplace_categories c on c.code = 'pizzerias'
   where n.id = v_solo_tipo;
   if v_codigos is null then
@@ -3305,10 +3316,10 @@ begin
   insert into business_marketplace_categories (business_id, category_id, principal)
   values (v_tipica, v_restaurantes, true), (v_tipica, v_almuerzos, false);
 
-  if not exists (select 1 from marketplace_negocios_de_categoria('restaurantes') where id = v_tipica) then
+  if not exists (select 1 from marketplace_negocios_de_categoria('restaurantes', pg_temp.chone()) where id = v_tipica) then
     raise exception 'el local no salió en su cajón principal';
   end if;
-  if not exists (select 1 from marketplace_negocios_de_categoria('almuerzos') where id = v_tipica) then
+  if not exists (select 1 from marketplace_negocios_de_categoria('almuerzos', pg_temp.chone()) where id = v_tipica) then
     raise exception 'el local no salió en su cajón secundario';
   end if;
 
@@ -3384,7 +3395,7 @@ begin
 
   -- Vaciar es una decisión válida: vuelve a mandar el tipo.
   perform public.set_business_marketplace_categories(v_tipica, array[]::text[]);
-  if not exists (select 1 from marketplace_negocios_de_categoria('restaurantes') where id = v_tipica) then
+  if not exists (select 1 from marketplace_negocios_de_categoria('restaurantes', pg_temp.chone()) where id = v_tipica) then
     raise exception 'al vaciar sus cajones, el local no volvió al de su tipo';
   end if;
 
@@ -3474,6 +3485,7 @@ begin
   values ('verif-reloj', 'Doña Rosa', 'comida típica', 'ycloud',
     '+593900666001', '+593900666001', true, true)
   returning id into v_business;
+  update businesses set city_id = pg_temp.chone() where id = v_business;
   -- Uno en su franja ahora mismo, y otro que abre dentro de dos horas.
   insert into products (business_id, name, price, available_from, available_until)
   values (v_business, 'Lo de ahora', 3.50, v_local - interval '1 hour', v_local + interval '1 hour')
@@ -3518,21 +3530,21 @@ begin
   update products set available_from = v_local + interval '2 hours',
          available_until = v_local + interval '3 hours', available_days = null
    where business_id = v_business;
-  if (select con_carta from marketplace_negocios_de_categoria('pizzerias') where id = v_business) then
+  if (select con_carta from marketplace_negocios_de_categoria('pizzerias', pg_temp.chone()) where id = v_business) then
     raise exception 'un local con toda su carta fuera de hora se ofreció como si se pudiera pedir';
   end if;
-  if (select carta_desde from marketplace_negocios_de_categoria('pizzerias') where id = v_business)
+  if (select carta_desde from marketplace_negocios_de_categoria('pizzerias', pg_temp.chone()) where id = v_business)
      is null then
     raise exception 'no se dijo desde qué hora vuelve su carta';
   end if;
   -- Con una sola cosa pedible ya hay carta.
   update products set available_from = null, available_until = null where id = v_ahora;
-  if not (select con_carta from marketplace_negocios_de_categoria('pizzerias') where id = v_business) then
+  if not (select con_carta from marketplace_negocios_de_categoria('pizzerias', pg_temp.chone()) where id = v_business) then
     raise exception 'un local con algo pedible se marcó como sin carta';
   end if;
   -- Y un local SIN catálogo no tiene un problema de hora: no se marca.
   delete from products where business_id = v_business;
-  if not (select con_carta from marketplace_negocios_de_categoria('pizzerias') where id = v_business) then
+  if not (select con_carta from marketplace_negocios_de_categoria('pizzerias', pg_temp.chone()) where id = v_business) then
     raise exception 'un local sin catálogo se marcó como «sin carta a esta hora»';
   end if;
 
@@ -7096,9 +7108,11 @@ declare
 begin
   insert into businesses (slug, name, type, whatsapp_provider, whatsapp_number, ycloud_number, takes_orders, storefront_enabled)
   values ('verif-moto', 'Moto', 'pizzería', 'ycloud', '+593900111001', '+593900111001', true, true) returning id into v_local;
+  -- En Chone, como su motorizado de Umbani (2026-10-05): solo lleva los de su ciudad.
+  update businesses set city_id = pg_temp.chone() where id = v_local;
   insert into businesses (slug, name, type, whatsapp_provider, whatsapp_number, ycloud_number, takes_orders, storefront_enabled)
   values ('verif-moto-otro', 'Otro', 'pizzería', 'ycloud', '+593900111002', '+593900111002', true, true) returning id into v_otro;
-  insert into couriers (phone, name) values ('593900111100', 'Luis') returning id into v_moto;
+  insert into couriers (phone, name, city_id) values ('593900111100', 'Luis', pg_temp.chone()) returning id into v_moto;
   insert into couriers (phone, name, fleet_business_id) values ('593900111101', 'Pedro', v_otro) returning id into v_ajeno;
 
   insert into orders (business_id, contact_phone, source, status, fulfillment, subtotal, shipping, total, payment_method)
@@ -7130,7 +7144,7 @@ begin
   -- ── 4. Lo toma, y el segundo llega tarde ──────────────────────────────────
   if public.courier_take_order(v_moto, v_ped) ->> 'result' <> 'ok' then raise exception 'no pudo tomar el pedido'; end if;
   if public.courier_cash_in_hand(v_moto) <> 1518 then raise exception 'el efectivo por cobrar no cuenta: %', public.courier_cash_in_hand(v_moto); end if;
-  insert into couriers (phone, name) values ('593900111102', 'Ana') returning id into v_ajeno;
+  insert into couriers (phone, name, city_id) values ('593900111102', 'Ana', pg_temp.chone()) returning id into v_ajeno;
   if public.courier_take_order(v_ajeno, v_ped) ->> 'result' <> 'ya_tomado' then raise exception 'dos motorizados tomaron el mismo pedido'; end if;
   if public.courier_advance_order(v_ajeno, v_ped, 'en_camino') ->> 'result' <> 'not_found' then
     raise exception 'otro motorizado movió un pedido que no es suyo';
@@ -7292,6 +7306,88 @@ end;
 $flota$;
 
 select '✅ repartidores propios: local por local; apagados no ven ni toman nada nuevo, y lo que llevan lo terminan' as resultado;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- LAS CIUDADES (2026-10-05)
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Un cliente de Chone no ve los locales de Portoviejo; sin ciudad no se ve
+-- nada (falla cerrado); y el motorizado de Umbani solo lleva los de la suya.
+do $ciudades$
+declare
+  v_chone uuid := pg_temp.chone();
+  v_porto uuid := (select id from cities where lower(name) = 'portoviejo');
+  v_en_chone uuid; v_en_porto uuid; v_sin uuid; v_moto uuid; v_ped uuid; v_falló boolean;
+begin
+  if v_chone is null or v_porto is null then
+    raise exception 'el esquema no sembró Chone y Portoviejo';
+  end if;
+  insert into businesses (slug, name, type, whatsapp_provider, whatsapp_number, ycloud_number, takes_orders, storefront_enabled, city_id)
+  values ('verif-ciudad-chone', 'Cevichería de Chone', 'marisquería', 'ycloud', '+593900222001', '+593900222001', true, true, v_chone)
+  returning id into v_en_chone;
+  insert into businesses (slug, name, type, whatsapp_provider, whatsapp_number, ycloud_number, takes_orders, storefront_enabled, city_id)
+  values ('verif-ciudad-porto', 'Cevichería de Portoviejo', 'marisquería', 'ycloud', '+593900222002', '+593900222002', true, true, v_porto)
+  returning id into v_en_porto;
+  insert into businesses (slug, name, type, whatsapp_provider, whatsapp_number, ycloud_number, takes_orders, storefront_enabled)
+  values ('verif-ciudad-sin', 'Cevichería sin ciudad', 'marisquería', 'ycloud', '+593900222003', '+593900222003', true, true)
+  returning id into v_sin;
+
+  -- ── 1. Las categorías vienen POR CIUDAD, y el local sin ciudad no cuenta ──
+  if not exists (select 1 from marketplace_categories_disponibles() where city_id = v_chone and code = 'mariscos')
+     or not exists (select 1 from marketplace_categories_disponibles() where city_id = v_porto and code = 'mariscos') then
+    raise exception 'las categorías no salen por ciudad: %', (select json_agg(c) from marketplace_categories_disponibles() c);
+  end if;
+  if exists (select 1 from marketplace_categories_disponibles() where city_id is null) then
+    raise exception 'un local sin ciudad cuenta en el menú';
+  end if;
+
+  -- ── 2. Los locales y la búsqueda: solo los de ESA ciudad ─────────────────
+  if exists (select 1 from marketplace_negocios_de_categoria('mariscos', v_chone) where id in (v_en_porto, v_sin))
+     or not exists (select 1 from marketplace_negocios_de_categoria('mariscos', v_chone) where id = v_en_chone) then
+    raise exception 'el menú de Chone no es solo de Chone';
+  end if;
+  if exists (select 1 from marketplace_buscar_negocios('ceviche', 8, v_chone) where id in (v_en_porto, v_sin))
+     or not exists (select 1 from marketplace_buscar_negocios('ceviche', 8, v_chone) where id = v_en_chone) then
+    raise exception 'la búsqueda en Chone trae locales de otra ciudad';
+  end if;
+
+  -- ── 3. Sin ciudad, NADA (falla cerrado) ──────────────────────────────────
+  if exists (select 1 from marketplace_negocios_de_categoria('mariscos', null))
+     or exists (select 1 from marketplace_buscar_negocios('ceviche', 8, null)) then
+    raise exception 'sin ciudad, el menú enseña locales: debía fallar cerrado';
+  end if;
+
+  -- ── 4. La ciudad apagada sale del menú ───────────────────────────────────
+  update cities set active = false where id = v_porto;
+  if exists (select 1 from marketplace_categories_disponibles() where city_id = v_porto) then
+    raise exception 'una ciudad apagada sigue en el menú';
+  end if;
+  update cities set active = true where id = v_porto;
+
+  -- ── 5. El motorizado de Umbani, solo en su ciudad ────────────────────────
+  update businesses set delivery_by = 'umbani' where id in (v_en_chone, v_en_porto);
+  insert into couriers (phone, name, city_id) values ('593900222100', 'Mario', v_chone) returning id into v_moto;
+  insert into orders (business_id, contact_phone, source, status, fulfillment, subtotal, shipping, total, payment_method)
+  values (v_en_porto, '593900222200', 'manual', 'preparacion', 'delivery', 10, 1.5, 11.5, 'efectivo') returning id into v_ped;
+  if exists (select 1 from jsonb_array_elements(public.courier_orders(v_moto)) p where (p ->> 'id')::uuid = v_ped) then
+    raise exception 'un motorizado de Chone ve un pedido de Portoviejo';
+  end if;
+  if public.courier_take_order(v_moto, v_ped) ->> 'result' <> 'no_disponible' then
+    raise exception 'un motorizado de Chone tomó un pedido de Portoviejo';
+  end if;
+  v_falló := false;
+  begin update orders set courier_id = v_moto where id = v_ped;
+  exception when insufficient_privilege then v_falló := true; end;
+  if not v_falló then raise exception 'se le asignó a mano un pedido de otra ciudad'; end if;
+  -- Uno de un local de SU ciudad: sí.
+  insert into orders (business_id, contact_phone, source, status, fulfillment, subtotal, shipping, total, payment_method)
+  values (v_en_chone, '593900222201', 'manual', 'preparacion', 'delivery', 10, 1.5, 11.5, 'efectivo') returning id into v_ped;
+  if public.courier_take_order(v_moto, v_ped) ->> 'result' <> 'ok' then
+    raise exception 'el motorizado de Chone no pudo tomar un pedido de Chone';
+  end if;
+end;
+$ciudades$;
+
+select '✅ ciudades: cada cliente ve solo los locales de la suya, sin ciudad no se ve nada, y el motorizado reparte en la suya' as resultado;
 
 -- ════════════════════════════════════════════════════════════════════════════
 -- EL REGISTRO DE QUIÉN MUEVE DINERO (2026-09-29)

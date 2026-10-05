@@ -24,8 +24,8 @@ const { NO_CONTINUAR, SI_REINICIAR } = require('../dist/services/marketplace-men
 // enlace, que es la credencial de la tienda.
 
 const CATEGORIAS = [
-  { code: 'pizzerias', label: 'Pizzerías', emoji: '🍕', locales: 2 },
-  { code: 'hamburguesas', label: 'Hamburguesas', emoji: '🍔', locales: 1 },
+  { city_id: 'ciudad-chone', city_name: 'Chone', code: 'pizzerias', label: 'Pizzerías', emoji: '🍕', locales: 2 },
+  { city_id: 'ciudad-chone', city_name: 'Chone', code: 'hamburguesas', label: 'Hamburguesas', emoji: '🍔', locales: 1 },
 ]
 
 const LOCAL = {
@@ -488,6 +488,10 @@ describe('guardián: el orden de las puertas', () => {
       // una palabra no frena a nadie—. Decisión del dueño.
       'menuPausado(deps, conversation',
       'pausarSiReincide(deps, customer.id',
+      // La ciudad (2026-10-05): ANTES que MENÚ —MENÚ pinta el menú, y sin
+      // ciudad no hay nada que pintar— y DESPUÉS de la pausa y del techo —a
+      // quien está silenciado no se le pregunta nada—.
+      'atenderLaCiudad(deps, text',
       // MENÚ, que es la salida de cualquier sitio.
       'atenderComandoMenu(deps, text',
       // Los marcadores del webhook, detrás de MENÚ.

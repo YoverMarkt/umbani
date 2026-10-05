@@ -9,6 +9,7 @@ import {
 import { conOpcionesAgrupadas } from '../services/order-detail'
 import { reglaDeMargen } from '../services/storefront'
 import { pedidoParaElCliente, porcentajePorProducto } from '../lib/precio-para-el-cliente'
+import { ciudadesDe } from '../services/marketplace-ciudad'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // LA API DE LA APP DEL CLIENTE (v1)
@@ -63,16 +64,49 @@ router.post('/api/v1/auth/whatsapp/verificar', verificarLimiter, async (req, res
   return res.status(410).json({ error: 'Ese código ya no vale. Pide uno nuevo.' })
 })
 
-router.get('/api/v1/yo', appLimiter, authApp, (req, res) => res.json({ telefono: telefonoDe(req) }))
+/** Con la ciudad que eligió el cliente (2026-10-05), si eligió alguna. */
+router.get('/api/v1/yo', appLimiter, authApp, async (req, res) => {
+  const cliente = await db.resolveMarketplaceCustomer(telefonoDe(req))
+  return res.json({ telefono: telefonoDe(req), ciudadId: cliente.city_id ?? null })
+})
 
-// ── El marketplace: categorías y sus locales ──────────────────────────────
-router.get('/api/v1/marketplace', appLimiter, async (_req, res) => {
-  const categorias = await db.getMarketplaceCategories()
+// ── Las ciudades (2026-10-05) ─────────────────────────────────────────────
+//
+// Como las grandes, la app pregunta DÓNDE está el cliente antes de enseñarle
+// nada. Solo salen las ciudades con al menos un local que puede recibir un
+// pedido ahora; con una sola, la app la elige sin preguntar.
+router.get('/api/v1/ciudades', appLimiter, async (_req, res) => {
+  const filas = await db.getMarketplaceCategories()
+  return res.json({ ciudades: ciudadesDe(filas).map(c => ({ id: c.id, nombre: c.nombre })) })
+})
+
+/**
+ * La ciudad que eligió en la app. Es la MISMA que usa el chat de WhatsApp: el
+ * cliente es uno, entre por donde entre.
+ */
+router.put('/api/v1/yo/ciudad', appLimiter, authApp, async (req, res) => {
+  const ciudadId = String((req.body as Record<string, unknown> | undefined)?.ciudadId || '').trim()
+  if (!UUID.test(ciudadId)) return res.status(400).json({ error: 'Ciudad no válida' })
+  const ciudad = await db.getCity(ciudadId)
+  if (!ciudad || !ciudad.active) return res.status(404).json({ error: 'No atendemos en esa ciudad' })
+  const cliente = await db.resolveMarketplaceCustomer(telefonoDe(req))
+  await db.setCustomerCity(cliente.id, ciudad.id)
+  return res.json({ ciudadId: ciudad.id, nombre: ciudad.name })
+})
+
+// ── El marketplace de UNA ciudad: categorías y sus locales ────────────────
+//
+// ⚠️ La ciudad es OBLIGATORIA (2026-10-05): sin ella, un cliente de Chone
+// vería los locales de Portoviejo. La app la saca de `/api/v1/ciudades`.
+router.get('/api/v1/marketplace', appLimiter, async (req, res) => {
+  const ciudadId = String(req.query.ciudad || '').trim()
+  if (!UUID.test(ciudadId)) return res.status(400).json({ error: 'Falta la ciudad (?ciudad=<id> de /api/v1/ciudades)' })
+  const categorias = (await db.getMarketplaceCategories()).filter(c => c.city_id === ciudadId)
   const conLocales = await Promise.all(categorias.map(async categoria => ({
     codigo: categoria.code,
     nombre: categoria.label,
     emoji: categoria.emoji,
-    locales: (await db.getMarketplaceBusinesses(categoria.code)).map(local => ({
+    locales: (await db.getMarketplaceBusinesses(categoria.code, ciudadId)).map(local => ({
       slug: local.slug,
       nombre: local.name,
       tipo: local.type,

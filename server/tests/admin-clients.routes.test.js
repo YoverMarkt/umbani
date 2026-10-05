@@ -297,13 +297,20 @@ describe('clientes y onboarding del superadmin', () => {
   // él la revisa. «Lo mejor, al momento de dar de alta»: lo real ocupa el
   // sitio de los productos de ejemplo, nunca los dos.
   describe('el alta con la carta revisada', () => {
+    const CHONE = '11111111-2222-4333-8444-555555555555'
+    // La ciudad se guarda después del alta (2026-10-05): sin simularla, la
+    // consulta iría a la base de verdad y la prueba se quedaría esperando.
+    beforeEach(() => {
+      vi.spyOn(db, 'getCity').mockResolvedValue({ id: CHONE, name: 'Chone', active: true })
+      vi.spyOn(db, 'updateBusiness').mockResolvedValue({ data: null, error: null })
+    })
     const altaCon = carta => dispatch('post', '/api/admin/clients', {
       auth: authorization(),
       body: {
         name: 'La Abuelita 2', whatsapp_number: '+593999000010', type: 'almuerzos',
         client_email: 'abuelita@example.com', client_password: 'safe-password-12',
         ycloud_api_key: 'k', ycloud_webhook_endpoint_id: 'e', ycloud_webhook_secret: 's',
-        carta,
+        carta, city_id: CHONE,
       },
     })
     const cartaRevisada = {
@@ -317,6 +324,7 @@ describe('clientes y onboarding del superadmin', () => {
       vi.spyOn(db, 'createBusinessOnboarding').mockResolvedValue({
         data: { id: 'business-carta', name: 'La Abuelita 2' }, error: null,
       })
+      const ciudad = db.updateBusiness
       const plantilla = vi.spyOn(db, 'applyBusinessTemplate')
       const menu = vi.spyOn(db, 'applyBusinessMenu').mockResolvedValue({
         data: { aplicada: true, categorias: 1, listas: 0, productos: 1, grupos: 1, opciones: 2, variantes: 0 },
@@ -334,6 +342,29 @@ describe('clientes y onboarding del superadmin', () => {
       })
       expect(respuesta.body.carta).toMatchObject({ aplicada: true, productos: 1 })
       expect(respuesta.body.aviso).toBeUndefined()
+      // Y su ciudad, después del alta (2026-10-05): sin ella no aparece a nadie.
+      expect(ciudad).toHaveBeenCalledWith('business-carta', { city_id: CHONE })
+    })
+
+    it('un local dado de alta SIN ciudad se crea, pero se avisa de que no aparecerá', async () => {
+      vi.spyOn(db, 'createBusinessOnboarding').mockResolvedValue({
+        data: { id: 'business-sin-ciudad', name: 'La Abuelita 2' }, error: null,
+      })
+      vi.spyOn(db, 'applyBusinessMenu').mockResolvedValue({
+        data: { aplicada: true, categorias: 1, listas: 0, productos: 1, grupos: 1, opciones: 2, variantes: 0 },
+        error: null,
+      })
+      const respuesta = await dispatch('post', '/api/admin/clients', {
+        auth: authorization(),
+        body: {
+          name: 'La Abuelita 2', whatsapp_number: '+593999000010', type: 'almuerzos',
+          client_email: 'abuelita@example.com', client_password: 'safe-password-12',
+          ycloud_api_key: 'k', ycloud_webhook_endpoint_id: 'e', ycloud_webhook_secret: 's',
+          carta: cartaRevisada,
+        },
+      })
+      expect(respuesta.status).toBe(201)
+      expect(respuesta.body.aviso).toMatch(/Sin ciudad/)
     })
 
     it('una carta con algo por corregir no crea el local', async () => {

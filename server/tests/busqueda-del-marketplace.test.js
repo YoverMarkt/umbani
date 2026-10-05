@@ -85,8 +85,13 @@ describe('el ámbito de la búsqueda', () => {
   it('en global busca locales y no productos sueltos', async () => {
     const rpc = vi.spyOn(cliente, 'rpc').mockResolvedValue({ data: [], error: null })
     await db.searchMarketplaceBusinesses('quiero ceviche')
+    // ⚠️ Sin ciudad viaja `null`, y la base no devuelve nada (falla cerrado).
     expect(rpc).toHaveBeenCalledWith('marketplace_buscar_negocios', {
-      p_query: 'quiero ceviche', p_limite: 8,
+      p_query: 'quiero ceviche', p_limite: 8, p_city_id: null,
+    })
+    await db.searchMarketplaceBusinesses('quiero ceviche', 8, 'ciudad-chone')
+    expect(rpc).toHaveBeenLastCalledWith('marketplace_buscar_negocios', {
+      p_query: 'quiero ceviche', p_limite: 8, p_city_id: 'ciudad-chone',
     })
   })
 
@@ -202,7 +207,7 @@ describe('la búsqueda respeta lo que puede atender', () => {
 // patrón; por eso estas pruebas ejercen la función REAL, no leen el archivo.
 // ═══════════════════════════════════════════════════════════════════════════
 
-const CATEGORIAS = [{ code: 'pizzerias', label: 'Pizzerías', emoji: '🍕', locales: 1 }]
+const CATEGORIAS = [{ city_id: 'ciudad-chone', city_name: 'Chone', code: 'pizzerias', label: 'Pizzerías', emoji: '🍕', locales: 1 }]
 const CEVICHERIA = { id: 'biz-9', slug: 'el-puerto', name: 'El Puerto', type: 'marisquería' }
 
 const armarEntrada = ({ hits = [], buscar, conocido = null } = {}) => {
@@ -280,7 +285,8 @@ describe('la búsqueda, conectada al flujo', () => {
     enviados.length = 0
     await escribir(deps, 'quiero ceviche')
 
-    expect(database.searchMarketplaceBusinesses).toHaveBeenCalledWith('quiero ceviche', 9)
+    // En la ciudad del cliente (2026-10-05).
+    expect(database.searchMarketplaceBusinesses).toHaveBeenCalledWith('quiero ceviche', 9, 'ciudad-chone')
     const texto = enviados.map(e => e.reply).join('\n')
     expect(texto).not.toContain('no te puedo ayudar por aquí')
     // El local va en las OPCIONES: en WhatsApp es una fila de la lista, no

@@ -74,8 +74,8 @@ describe('la regla, sin base de por medio', () => {
 // ── Con la función REAL del marketplace ────────────────────────────────────
 
 const CATEGORIAS = [
-  { code: 'hamburguesas', label: 'Hamburguesas', emoji: '🍔', locales: 1 },
-  { code: 'pizzerias', label: 'Pizzerías', emoji: '🍕', locales: 1 },
+  { city_id: 'ciudad-chone', city_name: 'Chone', code: 'hamburguesas', label: 'Hamburguesas', emoji: '🍔', locales: 1 },
+  { city_id: 'ciudad-chone', city_name: 'Chone', code: 'pizzerias', label: 'Pizzerías', emoji: '🍕', locales: 1 },
 ]
 const LOCALES = {
   hamburguesas: [{ id: 'biz-brava', slug: 'burger-brava', name: 'Burger Brava', type: 'hamburguesería', prep_min: 20 }],

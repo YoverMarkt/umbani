@@ -12,6 +12,7 @@ import { Skeleton } from '@botpanel/ui/components/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@botpanel/ui/components/table'
 import { api } from '../../api/client'
 import { getClients } from '../clients/api'
+import { getCiudades } from '../ciudades/api'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MOTORIZADOS — quién reparte, cuánto efectivo lleva y su liquidación
@@ -26,7 +27,7 @@ type Semana = { pedidos: number; carrerasCents: number; efectivoCobradoCents: nu
 type Motorizado = {
   id: string; phone: string; name: string; vehicle: string | null; fleet_business_id: string | null
   active: boolean; available: boolean; cash_limit_cents: number
-  businesses?: { name: string } | null; semana: Semana | null
+  businesses?: { name: string } | null; cities?: { name: string } | null; semana: Semana | null
 }
 type Liquidacion = {
   id: string; period_start: string; period_end: string; orders_count: number
@@ -50,7 +51,10 @@ export default function Motorizados() {
     queryFn: () => api<{ motorizados: Motorizado[]; liquidaciones: Liquidacion[] }>('/api/admin/motorizados'),
   })
   const locales = useQuery({ queryKey: ['adm-clients-min'], queryFn: getClients })
-  const [f, setF] = useState({ nombre: '', telefono: '', vehiculo: '', flota: UMBANI, tope: '150' })
+  // El de Umbani reparte en UNA ciudad (2026-10-05): solo ve los pedidos de ella.
+  const ciudades = useQuery({ queryKey: ['ciudades'], queryFn: getCiudades })
+  const [f, setF] = useState({ nombre: '', telefono: '', vehiculo: '', flota: UMBANI, tope: '150', ciudad: '' })
+  const ciudadElegida = f.ciudad || ciudades.data?.find(c => c.active)?.id || ''
   const [refs, setRefs] = useState<Record<string, string>>({})
   const refrescar = () => qc.invalidateQueries({ queryKey: ['adm-motorizados'] })
 
@@ -83,6 +87,7 @@ export default function Motorizados() {
     mutationFn: () => api('/api/admin/motorizados', { method: 'POST', body: JSON.stringify({
       nombre: f.nombre, telefono: f.telefono, vehiculo: f.vehiculo,
       flotaLocalId: f.flota === UMBANI ? null : f.flota, topeEfectivo: f.tope,
+      ciudadId: f.flota === UMBANI ? ciudadElegida : null,
     }) }),
     onSuccess: () => { toast.success('Motorizado registrado'); setF({ ...f, nombre: '', telefono: '', vehiculo: '' }); refrescar() },
     onError: (e: Error) => toast.error(e.message),
@@ -112,7 +117,7 @@ export default function Motorizados() {
 
       <Card className="p-4">
         <h2 className="mb-3 text-sm font-semibold text-foreground">Registrar un motorizado</h2>
-        <div className="grid gap-3 sm:grid-cols-5">
+        <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
           <div><Label htmlFor="moto-nombre">Nombre</Label><Input id="moto-nombre" value={f.nombre} onChange={e => setF({ ...f, nombre: e.target.value })} /></div>
           <div><Label htmlFor="moto-tel">Teléfono (WhatsApp)</Label><Input id="moto-tel" inputMode="tel" value={f.telefono} onChange={e => setF({ ...f, telefono: e.target.value })} placeholder="593991234567" /></div>
           <div><Label htmlFor="moto-veh">Vehículo</Label><Input id="moto-veh" value={f.vehiculo} onChange={e => setF({ ...f, vehiculo: e.target.value })} placeholder="Moto ABC-123" /></div>
@@ -126,9 +131,20 @@ export default function Motorizados() {
               </SelectContent>
             </Select>
           </div>
+          {f.flota === UMBANI && (
+            <div>
+              <Label htmlFor="moto-ciudad">Ciudad donde reparte</Label>
+              <Select value={ciudadElegida} onValueChange={v => setF({ ...f, ciudad: v })}>
+                <SelectTrigger id="moto-ciudad" className="w-full"><SelectValue placeholder="Elige la ciudad" /></SelectTrigger>
+                <SelectContent>
+                  {(ciudades.data || []).filter(c => c.active).map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div><Label htmlFor="moto-tope">Tope de efectivo (USD)</Label><Input id="moto-tope" inputMode="decimal" value={f.tope} onChange={e => setF({ ...f, tope: e.target.value })} /></div>
         </div>
-        <Button className="mt-3" disabled={crear.isPending || f.nombre.trim().length < 2 || f.telefono.trim().length < 8} onClick={() => crear.mutate()}>
+        <Button className="mt-3" disabled={crear.isPending || f.nombre.trim().length < 2 || f.telefono.trim().length < 8 || (f.flota === UMBANI && !ciudadElegida)} onClick={() => crear.mutate()}>
           Registrar
         </Button>
       </Card>
@@ -152,7 +168,7 @@ export default function Motorizados() {
                 {data.motorizados.map(m => (
                   <TableRow key={m.id}>
                     <TableCell><div className="font-medium">{m.name}</div><div className="text-xs text-muted-foreground">{m.phone}{m.vehicle ? ` · ${m.vehicle}` : ''}</div></TableCell>
-                    <TableCell>{m.fleet_business_id ? `De ${m.businesses?.name || 'un local'}` : 'Umbani'}</TableCell>
+                    <TableCell>{m.fleet_business_id ? `De ${m.businesses?.name || 'un local'}` : `Umbani · ${m.cities?.name || 'sin ciudad'}`}</TableCell>
                     <TableCell className="text-right tabular-nums">
                       {dinero(m.semana?.efectivoEncimaCents ?? 0)} <span className="text-xs text-muted-foreground">/ {dinero(m.cash_limit_cents)}</span>
                     </TableCell>

@@ -12,8 +12,8 @@ import { describe, expect, it, vi } from 'vitest'
 // responder exactamente igual. Por eso la última prueba es la que importa.
 
 const CATEGORIAS = [
-  { code: 'pizzerias', label: 'Pizzerías', emoji: '🍕', locales: 1 },
-  { code: 'almuerzos', label: 'Almuerzos', emoji: '🍽️', locales: 1 },
+  { city_id: 'ciudad-chone', city_name: 'Chone', code: 'pizzerias', label: 'Pizzerías', emoji: '🍕', locales: 1 },
+  { city_id: 'ciudad-chone', city_name: 'Chone', code: 'almuerzos', label: 'Almuerzos', emoji: '🍽️', locales: 1 },
 ]
 const LOCAL = {
   id: 'biz-1', slug: 'pizza-uno', name: 'Pizza Uno', type: 'pizzería',

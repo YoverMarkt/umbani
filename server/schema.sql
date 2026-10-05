@@ -12835,38 +12835,83 @@ grant execute on function public.set_business_marketplace_categories(uuid, text[
   to service_role;
 
 
--- ── Solo las categorías que tienen algo detrás ─────────────────────────────
+-- ── Las ciudades (2026-10-05) ──────────────────────────────────────────────
+--
+-- Ver `migration-2026-10-05-ciudades.sql`: el porqué está allí. Un local SIN
+-- ciudad no aparece a ningún cliente, y las funciones del menú sin ciudad no
+-- devuelven nada (falla cerrado). Va AQUÍ, antes del menú: una función
+-- `language sql` se valida al crearse y ya tiene que encontrar las columnas.
+create table if not exists public.cities (
+  id         uuid primary key default gen_random_uuid(),
+  name       text not null,
+  province   text,
+  active     boolean not null default true,
+  sort       integer not null default 0,
+  created_at timestamptz not null default now()
+);
+create unique index if not exists idx_cities_nombre on public.cities (lower(name));
+alter table public.cities enable row level security;
+revoke all on public.cities from anon, authenticated;
+comment on table public.cities is
+  'Ciudades donde atiende Umbani. Un local sin ciudad no aparece a los clientes.';
+
+insert into public.cities (name, province, sort)
+select v.name, v.province, v.sort
+from (values ('Chone', 'Manabí', 1), ('Portoviejo', 'Manabí', 2)) as v(name, province, sort)
+where not exists (select 1 from public.cities c where lower(c.name) = lower(v.name));
+
+alter table public.businesses
+  add column if not exists city_id uuid references public.cities(id) on delete set null;
+create index if not exists idx_businesses_ciudad on public.businesses (city_id);
+comment on column public.businesses.city_id is
+  'Ciudad del local. Sin ella no aparece a ningún cliente (menú, búsqueda ni app).';
+
+alter table public.customers
+  add column if not exists city_id uuid references public.cities(id) on delete set null;
+comment on column public.customers.city_id is
+  'La ciudad que eligió el cliente. Solo se guarda cuando él la elige.';
+
+
+-- ── Solo las categorías que tienen algo detrás, POR CIUDAD ─────────────────
 --
 -- Un local cuenta si puede recibir un pedido AHORA: activo, no suspendido, con
 -- pedidos y tienda encendidos. Los mismos requisitos que ya exige el modo mini
 -- app, porque el menú termina justo ahí — mandando el enlace de su tienda.
 --
+-- Una fila por ciudad y categoría: de la misma consulta salen las ciudades con
+-- locales (para preguntar «¿en qué ciudad estás?») y las categorías de cada
+-- una, sin una ida a la base de más.
+--
 -- ⚠️ `security invoker` (el defecto): quien la llama es `service_role`, que ya
 -- lee las tablas. No hace falta elevar nada.
 create or replace function public.marketplace_categories_disponibles()
 returns table (
-  code    text,
-  label   text,
-  emoji   text,
-  sort    integer,
-  locales bigint
+  city_id   uuid,
+  city_name text,
+  code      text,
+  label     text,
+  emoji     text,
+  sort      integer,
+  locales   bigint
 )
 language sql
 stable
 set search_path = public, pg_temp
 as $$
-  select c.code, c.label, c.emoji, c.sort, count(distinct b.id) as locales
+  select ci.id, ci.name, c.code, c.label, c.emoji, c.sort, count(distinct b.id) as locales
   from public.marketplace_categories c
   join public.marketplace_cajones_de_negocio v on v.category_id = c.id
   join public.businesses b on b.id = v.business_id
+  join public.cities ci on ci.id = b.city_id
   where c.active
+    and ci.active
     and b.active
     and b.suspended is not true
     and b.takes_orders
     and b.storefront_enabled
-  group by c.code, c.label, c.emoji, c.sort
+  group by ci.id, ci.name, ci.sort, c.code, c.label, c.emoji, c.sort
   having count(distinct b.id) > 0
-  order by c.sort, c.label;
+  order by ci.sort, ci.name, c.sort, c.label;
 $$;
 
 revoke all on function public.marketplace_categories_disponibles()
@@ -12902,8 +12947,8 @@ grant execute on function public.marketplace_cajones_del_negocio(uuid)
   to service_role;
 
 
--- ── Los locales de una categoría ───────────────────────────────────────────
-create or replace function public.marketplace_negocios_de_categoria(p_code text)
+-- ── Los locales de una categoría, EN UNA CIUDAD ────────────────────────────
+create or replace function public.marketplace_negocios_de_categoria(p_code text, p_city_id uuid)
 returns table (
   id          uuid,
   slug        text,
@@ -12943,6 +12988,8 @@ as $$
   join public.marketplace_categories c on c.id = v.category_id
   where c.code = p_code
     and c.active
+    -- ⚠️ Sin ciudad, nada: `NULL = x` nunca es cierto. Falla cerrado a propósito.
+    and b.city_id = p_city_id
     and b.active
     and b.suspended is not true
     and b.takes_orders
@@ -12950,9 +12997,9 @@ as $$
   order by b.name;
 $$;
 
-revoke all on function public.marketplace_negocios_de_categoria(text)
+revoke all on function public.marketplace_negocios_de_categoria(text, uuid)
   from public, anon, authenticated;
-grant execute on function public.marketplace_negocios_de_categoria(text)
+grant execute on function public.marketplace_negocios_de_categoria(text, uuid)
   to service_role;
 
 -- ══════════════════════════════════════════════════════════════════
@@ -13164,7 +13211,8 @@ $$;
 -- ya eligió.
 create or replace function public.marketplace_buscar_negocios(
   p_query text,
-  p_limite integer default 8
+  p_limite integer default 8,
+  p_city_id uuid default null
 )
 returns table (
   id     uuid,
@@ -13185,6 +13233,8 @@ as $$
     select b.* from public.businesses b
     where b.active and b.suspended is not true
       and b.takes_orders and b.storefront_enabled
+      -- ⚠️ Sin ciudad, nada (falla cerrado), igual que el menú (2026-10-05).
+      and b.city_id = p_city_id
   ),
   -- Capa 1: el alias manda, y por eso puntúa más alto que todo lo demás.
   por_alias as (
@@ -13281,9 +13331,9 @@ as $$
   limit greatest(coalesce(p_limite, 8), 1);
 $$;
 
-revoke all on function public.marketplace_buscar_negocios(text, integer)
+revoke all on function public.marketplace_buscar_negocios(text, integer, uuid)
   from public, anon, authenticated;
-grant execute on function public.marketplace_buscar_negocios(text, integer)
+grant execute on function public.marketplace_buscar_negocios(text, integer, uuid)
   to service_role;
 
 
@@ -20203,6 +20253,13 @@ alter table public.couriers enable row level security;
 revoke all on table public.couriers from anon, authenticated;
 create unique index if not exists couriers_phone_unico on public.couriers (phone);
 create index if not exists idx_couriers_flota on public.couriers (fleet_business_id);
+-- Su ciudad (2026-10-05): el de Umbani solo ve y toma pedidos de los locales
+-- de ella. El de la flota de un local no la necesita: lleva solo los suyos.
+alter table public.couriers
+  add column if not exists city_id uuid references public.cities(id) on delete set null;
+create index if not exists idx_couriers_ciudad on public.couriers (city_id);
+comment on column public.couriers.city_id is
+  'Ciudad del motorizado de Umbani: solo ve y toma pedidos de los locales de ella.';
 
 -- ── 3. El pedido sabe quién lo lleva ──────────────────────────────────────
 alter table public.orders
@@ -20277,17 +20334,19 @@ declare
   v_c public.couriers%rowtype;
   v_reparte text;
   v_flota boolean;
+  v_ciudad uuid;
 begin
   if new.courier_id is null or new.courier_id is not distinct from old.courier_id then
     return new;
   end if;
   select * into v_c from public.couriers where id = new.courier_id;
-  select delivery_by, own_fleet into v_reparte, v_flota from public.businesses where id = new.business_id;
+  select delivery_by, own_fleet, city_id into v_reparte, v_flota, v_ciudad
+    from public.businesses where id = new.business_id;
   -- ⚠️ `coalesce(…, false)`: con un repartidor de Umbani `fleet_business_id`
   -- es NULL, y `NULL = x` da NULL — `not (… or NULL)` también, y el `if` lo
   -- trataría como «no rechazar». Cazado por la prueba antes de salir.
   if v_c.id is null or not v_c.active
-     or not (coalesce(v_c.fleet_business_id is null and v_reparte = 'umbani', false)
+     or not (coalesce(v_c.fleet_business_id is null and v_reparte = 'umbani' and v_ciudad = v_c.city_id, false)
              or coalesce(v_c.fleet_business_id = new.business_id and v_flota and v_reparte = 'local', false)) then
     raise exception using errcode = '42501',
       message = 'Ese repartidor no puede llevar pedidos de este local.';
@@ -20410,6 +20469,7 @@ declare
   v_o public.orders%rowtype;
   v_reparte text;
   v_flota boolean;
+  v_ciudad uuid;
   v_centavos integer;
 begin
   select * into v_c from public.couriers where id = p_courier_id;
@@ -20422,12 +20482,13 @@ begin
   if v_o.courier_id is not null then
     return jsonb_build_object('result', case when v_o.courier_id = p_courier_id then 'ya_es_tuyo' else 'ya_tomado' end);
   end if;
-  select delivery_by, own_fleet into v_reparte, v_flota from public.businesses where id = v_o.business_id;
+  select delivery_by, own_fleet, city_id into v_reparte, v_flota, v_ciudad
+    from public.businesses where id = v_o.business_id;
   if coalesce(v_o.fulfillment, 'delivery') <> 'delivery'
      -- Solo lo que el local YA ACEPTÓ: como en las grandes, nadie sale a por
      -- un pedido que el local todavía puede rechazar.
      or v_o.status not in ('confirmado', 'aceptado', 'preparacion')
-     or not (coalesce(v_c.fleet_business_id is null and v_reparte = 'umbani', false)
+     or not (coalesce(v_c.fleet_business_id is null and v_reparte = 'umbani' and v_ciudad = v_c.city_id, false)
              or coalesce(v_c.fleet_business_id = v_o.business_id and v_flota and v_reparte = 'local', false)) then
     return jsonb_build_object('result', 'no_disponible');
   end if;
@@ -20653,7 +20714,7 @@ as $$
     where coalesce(o.fulfillment, 'delivery') = 'delivery'
       and (
         (o.courier_id is null and o.status in ('confirmado', 'aceptado', 'preparacion')
-          and (coalesce(yo.fleet_business_id is null and b.delivery_by = 'umbani', false)
+          and (coalesce(yo.fleet_business_id is null and b.delivery_by = 'umbani' and b.city_id = yo.city_id, false)
                or coalesce(yo.fleet_business_id = o.business_id and b.own_fleet and b.delivery_by = 'local', false))
           and not (o.payment_method = 'tarjeta' and o.payment_confirmed_at is null))
         or (o.courier_id = yo.id and o.status not in ('completado', 'cancelado', 'rechazado', 'expirado'))

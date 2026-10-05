@@ -67,6 +67,8 @@ interface CreatedBusiness extends BusinessRecord {
 
 const db: {
   getAdminStats(): Promise<unknown>
+  /** La ciudad existe (2026-10-05): la ficha del local solo acepta una de verdad. */
+  getCity(id: string): Promise<{ id: string } | null>
   getAllBusinesses(): Promise<unknown[]>
   getLastInboundByBusiness(businessIds: string[]): Promise<ChannelActivity[]>
   getPlatformLastInboundAt(): Promise<string | null>
@@ -246,6 +248,8 @@ function channelConfigurationError(body: Record<string, unknown>): string | null
   return null
 }
 
+const UUID_CIUDAD = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 const ALLOWED_BUSINESS_FIELDS = [
   'name', 'type', 'description', 'hours', 'address', 'phone', 'social',
   // El punto del local, el mismo que edita el dueño en su panel.
@@ -268,6 +272,9 @@ const ALLOWED_BUSINESS_FIELDS = [
   // Repartidores propios, local por local (2026-10-04). SOLO aquí: decide qué
   // repartidores pueden llevar sus pedidos, así que no se lo enciende el local.
   'own_fleet',
+  // Su ciudad (2026-10-05). SOLO aquí: sin ella el local no aparece a ningún
+  // cliente, y cambiarla lo mueve de menú.
+  'city_id',
 ] as const
 
 function assertDatabaseResult(result: DatabaseResult, operation: string): void {
@@ -375,6 +382,21 @@ const cargarCartaDelLocal = async (
     })
     return { aviso: 'El local se creó, pero la carta no se pudo guardar: sus productos habrá que cargarlos a mano.' }
   }
+}
+
+/**
+ * La ciudad del local al darlo de alta (2026-10-05).
+ *
+ * Después del alta y sin poder tumbarla, igual que los cajones: el negocio ya
+ * existe. Devuelve un AVISO si se queda sin ciudad, porque así no aparece a
+ * ningún cliente — se puede poner luego en su ficha, pero conviene saberlo.
+ */
+const guardarCiudadDelLocal = async (businessId: string, valor: unknown): Promise<string | null> => {
+  const ciudad = typeof valor === 'string' ? valor.trim() : ''
+  if (!ciudad) return 'Sin ciudad: el local no aparecerá a los clientes hasta que se la pongas en su ficha'
+  if (!UUID_CIUDAD.test(ciudad) || !(await db.getCity(ciudad))) return 'Ciudad no válida: ponla en su ficha'
+  const result = await db.updateBusiness(businessId, { city_id: ciudad })
+  return result.error ? `No se pudo guardar la ciudad: ${result.error.message || 'error'}` : null
 }
 
 /**
@@ -754,9 +776,12 @@ router.post('/api/admin/clients', auth.authAdmin, async (req, res) => {
     if (cajonesMal) {
       console.error('❌ cajones del menú al crear:', cajonesMal)
     }
+    const ciudadMal = await guardarCiudadDelLocal(business.id, body.city_id)
+    if (!ciudadMal) business.city_id = String(body.city_id)
     const avisos = [
       cargaDeCarta && 'aviso' in cargaDeCarta ? cargaDeCarta.aviso : null,
       cajonesMal,
+      ciudadMal,
     ].filter(Boolean)
     res.status(201).json({
       ...sanitizeBusinessForAdmin(business),
@@ -789,6 +814,14 @@ router.put('/api/admin/clients/:id', auth.authAdmin, async (req, res) => {
   // Un «true» en texto o un 1 no se adivinan: decide quién lleva la comida.
   if ('own_fleet' in body && typeof body.own_fleet !== 'boolean') {
     return res.status(400).json({ error: 'Repartidores propios: encendido o apagado' })
+  }
+  // La ciudad: una que exista, o ninguna (el local deja de aparecer).
+  if ('city_id' in body) {
+    const ciudad = body.city_id === '' || body.city_id == null ? null : String(body.city_id)
+    if (ciudad !== null && (!UUID_CIUDAD.test(ciudad) || !(await db.getCity(ciudad)))) {
+      return res.status(400).json({ error: 'Ciudad no válida' })
+    }
+    body.city_id = ciudad
   }
   // Apagado, pruebas o producción; nada más. El CHECK de la base lo repite.
   if ('card_mode' in body) {

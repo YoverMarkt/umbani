@@ -18,7 +18,7 @@ import { readFileSync } from 'node:fs'
 // captura; revocárselo le deja un pedido pagado sin forma de rematarlo.
 // ═══════════════════════════════════════════════════════════════════════════
 
-const CATEGORIAS = [{ code: 'pizzerias', label: 'Pizzerías', emoji: '🍕', locales: 1 }]
+const CATEGORIAS = [{ city_id: 'ciudad-chone', city_name: 'Chone', code: 'pizzerias', label: 'Pizzerías', emoji: '🍕', locales: 1 }]
 
 const armar = ({ estado = 'en_local', bloqueado = true } = {}) => {
   const enviados = []

@@ -46,6 +46,15 @@ export interface ConversationPatch {
   clearFlow?: boolean
 }
 
+/** El cliente del número de Umbani, con la ciudad que eligió (2026-10-05). */
+export interface ClienteDelMarketplace {
+  id: string
+  phone: string
+  name: string | null
+  /** Solo si él la eligió. Ver `services/marketplace-ciudad.ts`. */
+  city_id: string | null
+}
+
 /**
  * El cliente detrás de un teléfono, sin negocio de por medio.
  *
@@ -62,7 +71,7 @@ export interface ConversationPatch {
  */
 const resolveMarketplaceCustomer = async (
   phone: string,
-): Promise<{ id: string; phone: string; name: string | null }> => {
+): Promise<ClienteDelMarketplace> => {
   // Mismos dígitos que `resolveCustomer`: el mismo teléfono llega con `+` por
   // un canal y sin él por otro, y dos formas de escribirlo serían dos clientes.
   const digits = String(phone || '').replace(/\D/g, '')
@@ -70,21 +79,21 @@ const resolveMarketplaceCustomer = async (
 
   const existing = await db
     .from('customers')
-    .select('id,phone,name')
+    .select('id,phone,name,city_id')
     .eq('phone', digits)
     .maybeSingle()
   if (existing.error) throw new Error(existing.error.message)
   if (existing.data) {
-    return existing.data as { id: string; phone: string; name: string | null }
+    return existing.data as ClienteDelMarketplace
   }
 
   const created = await db
     .from('customers')
     .insert({ phone: digits, name: null })
-    .select('id,phone,name')
+    .select('id,phone,name,city_id')
     .single()
   if (created.error) throw new Error(created.error.message)
-  return created.data as { id: string; phone: string; name: string | null }
+  return created.data as ClienteDelMarketplace
 }
 
 const getConversation = async (
