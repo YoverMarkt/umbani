@@ -73,11 +73,6 @@ export const ALLOWED_KEYS = [
   // Lo que cobra PayPhone, en puntos básicos (575 = 5,75 %). Solo sirve
   // para enseñarle a Umbani lo que le queda; se negocia con PayPhone.
   'payphone_fee_bps',
-  // ── Los repartidores propios de los locales (2026-10-02) ────────────
-  // «1» enciende la pantalla «Repartidores» en el panel de cada local. Nace
-  // APAGADO: sin la app del motorizado, registrar repartidores no sirve de
-  // nada y confundiría al local. Lo enciende el dueño cuando la app exista.
-  'flota_del_local',
 ] as const
 
 type AllowedKey = typeof ALLOWED_KEYS[number]

@@ -265,6 +265,9 @@ const ALLOWED_BUSINESS_FIELDS = [
   'card_mode',
   // Quién lleva los pedidos: el local (como hoy) o los motorizados de Umbani.
   'delivery_by',
+  // Repartidores propios, local por local (2026-10-04). SOLO aquí: decide qué
+  // repartidores pueden llevar sus pedidos, así que no se lo enciende el local.
+  'own_fleet',
 ] as const
 
 function assertDatabaseResult(result: DatabaseResult, operation: string): void {
@@ -782,6 +785,10 @@ router.put('/api/admin/clients/:id', auth.authAdmin, async (req, res) => {
   }
   if ('delivery_by' in body && body.delivery_by !== 'local' && body.delivery_by !== 'umbani') {
     return res.status(400).json({ error: 'Quién reparte: el local o Umbani' })
+  }
+  // Un «true» en texto o un 1 no se adivinan: decide quién lleva la comida.
+  if ('own_fleet' in body && typeof body.own_fleet !== 'boolean') {
+    return res.status(400).json({ error: 'Repartidores propios: encendido o apagado' })
   }
   // Apagado, pruebas o producción; nada más. El CHECK de la base lo repite.
   if ('card_mode' in body) {

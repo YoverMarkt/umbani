@@ -1,5 +1,6 @@
 import type { RequestHandler } from 'express'
 import { createRouter } from '../middleware/async'
+import { tieneFlotaPropia } from '../lib/flota-propia'
 import { getClientBusinessId } from '../lib/request'
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -11,9 +12,11 @@ import { getClientBusinessId } from '../lib/request'
 // enseña cuánto efectivo trae cada uno». Hasta hoy solo el superadmin podía
 // registrarlos; aquí lo hace el propio local.
 //
-// ⚠️ APAGADO por defecto (`flota_del_local` en Ajustes del superadmin): sin
-// la app del motorizado, registrar repartidores no sirve de nada. Apagado, la
-// API responde 404 —no solo se esconde el menú—.
+// ⚠️ APAGADO por defecto, y se enciende LOCAL POR LOCAL (2026-10-04): el
+// superadmin lo activa en la ficha del local que le dice «tengo mi flota»
+// (`businesses.own_fleet`, y solo cuenta si reparte el propio local). Apagado,
+// la API responde 404 —no solo se esconde el menú—, y la base deja a sus
+// repartidores sin pedidos nuevos (ver `lib/flota-propia.ts`).
 //
 // ⚠️ SOLO EL DUEÑO, y el negocio sale del JWT, nunca de la petición. Un local
 // no ve ni toca a los repartidores de otro: cada consulta va filtrada por
@@ -23,15 +26,18 @@ import { getClientBusinessId } from '../lib/request'
 interface ModuloAuth { authClient: RequestHandler; requireOwner: RequestHandler }
 const auth: ModuloAuth = require('../middleware/auth') as typeof import('../middleware/auth')
 const db = require('../db') as typeof import('../db')
-const settings = require('../services/settings') as typeof import('../services/settings')
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const router = createRouter()
 
-/** Apagado = 404 para todo, como si no existiera. */
-const soloSiEstaEncendido: RequestHandler = async (_req, res, next) => {
-  if ((await settings.get('flota_del_local').catch(() => null)) === '1') return next()
-  return res.status(404).json({ error: 'Los repartidores propios todavía no están disponibles' })
+/**
+ * Apagado = 404 para todo, como si no existiera. Se mira el local del JWT —
+ * nunca uno de la petición— y si no se puede leer, también 404 (falla cerrado).
+ */
+const soloSiEstaEncendido: RequestHandler = async (req, res, next) => {
+  const local = await db.getBusinessById(getClientBusinessId(req)).catch(() => null)
+  if (tieneFlotaPropia(local)) return next()
+  return res.status(404).json({ error: 'Los repartidores propios no están activos para tu local' })
 }
 
 /** El inicio del día de HOY en Ecuador, en ISO (Ecuador no cambia de hora). */

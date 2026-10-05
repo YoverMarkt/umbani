@@ -172,6 +172,14 @@ describe('el superadmin', () => {
     expect(fuente).toMatch(/'delivery_by',/)
     expect(fuente).toMatch(/body\.delivery_by !== 'local' && body\.delivery_by !== 'umbani'/)
   })
+
+  // Local por local (2026-10-04). Un «true» en texto o un 1 no se adivinan:
+  // decide qué repartidores pueden llevar la comida de ese local.
+  it('«Repartidores propios» lo edita el superadmin, y solo con un sí o un no', () => {
+    const fuente = fs.readFileSync('src/routes/admin-clients.routes.ts', 'utf8')
+    expect(fuente).toMatch(/'own_fleet',/)
+    expect(fuente).toMatch(/typeof body\.own_fleet !== 'boolean'/)
+  })
 })
 
 describe('el repositorio, ejecutado', () => {

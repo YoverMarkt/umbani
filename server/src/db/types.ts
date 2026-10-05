@@ -25,6 +25,10 @@ export interface BusinessRecord {
   name: string
   /** Local de demostración: su dinero es de prueba (2026-09-30). */
   is_demo?: boolean | null
+  /** Quién lleva los pedidos: `local` o `umbani` (motorizados de la plataforma). */
+  delivery_by?: string | null
+  /** Repartidores propios encendidos por el superadmin (2026-10-04). Ver `lib/flota-propia.ts`. */
+  own_fleet?: boolean | null
   type?: string | null
   description?: string | null
   hours?: string | null

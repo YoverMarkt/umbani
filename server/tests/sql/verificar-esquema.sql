@@ -7227,6 +7227,72 @@ as $x$ select date '2026-09-28' $x$;
 
 select '✅ motorizados: solo toma lo que le toca, respeta el tope, el efectivo lo tiene él, la carrera se retiene y el local cobra entero' as resultado;
 
+-- ═══════════════════════════════════════════════════════════════════════════
+-- LOS REPARTIDORES PROPIOS, LOCAL POR LOCAL (2026-10-04)
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Las TRES puertas (ofrecer, tomar, asignar a mano) exigen que el local tenga
+-- su flota encendida y reparta él mismo. Antes era un interruptor global que
+-- solo miraba el panel: apagado, un repartidor ya registrado seguía viendo y
+-- tomando los pedidos de su local.
+do $flota$
+declare
+  v_local uuid; v_suyo uuid; v_ped uuid; v_ped2 uuid; v_falló boolean;
+begin
+  insert into businesses (slug, name, type, whatsapp_provider, whatsapp_number, ycloud_number, takes_orders, storefront_enabled)
+  values ('verif-flota', 'Flota', 'pizzería', 'ycloud', '+593900111003', '+593900111003', true, true) returning id into v_local;
+  if (select own_fleet from businesses where id = v_local) then
+    raise exception 'un local nuevo nace con los repartidores propios encendidos';
+  end if;
+  insert into couriers (phone, name, fleet_business_id) values ('593900111103', 'Carla', v_local) returning id into v_suyo;
+  insert into orders (business_id, contact_phone, source, status, fulfillment, subtotal, shipping, total, payment_method)
+  values (v_local, '593900111201', 'manual', 'preparacion', 'delivery', 10, 1.5, 11.5, 'efectivo') returning id into v_ped;
+
+  -- ── 1. Apagada: ni se le ofrece, ni lo toma, ni se le asigna a mano ──────
+  if jsonb_array_length(public.courier_orders(v_suyo)) <> 0 then
+    raise exception 'con la flota apagada, la app le ofrece pedidos de su local: %', public.courier_orders(v_suyo);
+  end if;
+  if public.courier_take_order(v_suyo, v_ped) ->> 'result' <> 'no_disponible' then
+    raise exception 'con la flota apagada, el repartidor tomó un pedido de su local';
+  end if;
+  v_falló := false;
+  begin update orders set courier_id = v_suyo where id = v_ped;
+  exception when insufficient_privilege then v_falló := true; end;
+  if not v_falló then raise exception 'con la flota apagada, se le asignó a mano un pedido'; end if;
+
+  -- ── 2. Encendida pero reparte Umbani: tampoco ─────────────────────────────
+  update businesses set own_fleet = true, delivery_by = 'umbani' where id = v_local;
+  if public.courier_take_order(v_suyo, v_ped) ->> 'result' <> 'no_disponible' then
+    raise exception 'con «Quién reparte: Umbani», la flota del local tomó un pedido';
+  end if;
+
+  -- ── 3. Encendida y reparte el local: se le ofrece y lo toma ──────────────
+  update businesses set delivery_by = 'local' where id = v_local;
+  if not exists (select 1 from jsonb_array_elements(public.courier_orders(v_suyo)) p where (p ->> 'id')::uuid = v_ped) then
+    raise exception 'con la flota encendida, la app no le ofrece el pedido de su local: %', public.courier_orders(v_suyo);
+  end if;
+  if public.courier_take_order(v_suyo, v_ped) ->> 'result' <> 'ok' then
+    raise exception 'con la flota encendida, no pudo tomar el pedido de su local';
+  end if;
+
+  -- ── 4. Se apaga a mitad de camino: lo que lleva lo termina; nada nuevo ───
+  insert into orders (business_id, contact_phone, source, status, fulfillment, subtotal, shipping, total, payment_method)
+  values (v_local, '593900111202', 'manual', 'preparacion', 'delivery', 10, 1.5, 11.5, 'efectivo') returning id into v_ped2;
+  update businesses set own_fleet = false where id = v_local;
+  if not exists (select 1 from jsonb_array_elements(public.courier_orders(v_suyo)) p
+                 where (p ->> 'id')::uuid = v_ped and (p ->> 'mio')::boolean) then
+    raise exception 'al apagar la flota, el repartidor perdió de vista el pedido que llevaba';
+  end if;
+  if exists (select 1 from jsonb_array_elements(public.courier_orders(v_suyo)) p where (p ->> 'id')::uuid = v_ped2) then
+    raise exception 'con la flota apagada, la app le ofrece un pedido nuevo';
+  end if;
+  if public.courier_advance_order(v_suyo, v_ped, 'en_camino') ->> 'result' <> 'updated' then
+    raise exception 'al apagar la flota, el repartidor no pudo seguir con el pedido que llevaba';
+  end if;
+end;
+$flota$;
+
+select '✅ repartidores propios: local por local; apagados no ven ni toman nada nuevo, y lo que llevan lo terminan' as resultado;
+
 -- ════════════════════════════════════════════════════════════════════════════
 -- EL REGISTRO DE QUIÉN MUEVE DINERO (2026-09-29)
 -- ════════════════════════════════════════════════════════════════════════════

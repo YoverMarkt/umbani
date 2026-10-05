@@ -16,7 +16,9 @@ import {
 //     carrera es suya, y si se le cae la comida se le RETIENE;
 //   · tiene un tope de efectivo: por encima no toma pedidos en efectivo;
 //   · el de la flota del LOCAL: la carrera es del local, y el local ve cuánto
-//     efectivo trae cada uno. Apagado de verdad hasta que se enciende.
+//     efectivo trae cada uno. Se enciende LOCAL POR LOCAL (2026-10-04), y
+//     apagado es apagado: ni el panel la enseña ni la base le da pedidos
+//     nuevos a sus repartidores.
 
 const SEMANA = '2026-09-07'
 let cliente
@@ -24,6 +26,7 @@ let local
 let carta
 let addressId
 let negocio
+let comoEstaba
 
 beforeAll(async () => {
   await recogerLaMesa()
@@ -32,13 +35,11 @@ beforeAll(async () => {
   local = await entrarComoLocal()
   carta = await cliente.catalogo()
   addressId = await cliente.direccion()
-  ;[{ id: negocio }] = await sql(`select id from businesses where slug = 'demo'`)
+  ;[{ id: negocio, ...comoEstaba }] = await sql(`select id, delivery_by, own_fleet from businesses where slug = 'demo'`)
 })
 afterAll(async () => {
-  // Deja el local como lo encontraron los demás recorridos: reparte él, y la
-  // flota propia apagada.
-  await admin.pedir('PUT', `/api/admin/clients/${negocio}`, { delivery_by: 'local' })
-  await admin.pedir('POST', '/api/admin/server-settings', { flota_del_local: '0' })
+  // Deja el local como lo encontró: quién reparte y su flota propia.
+  await admin.pedir('PUT', `/api/admin/clients/${negocio}`, comoEstaba)
   await cerrarSql()
 })
 
@@ -163,15 +164,14 @@ describe('la flota propia del LOCAL', () => {
   let repartidorId
 
   it('apagada de verdad: el local no la ve y la API responde 404', async () => {
-    await exigir(200, admin.pedir('PUT', `/api/admin/clients/${negocio}`, { delivery_by: 'local' }))
-    await exigir(200, admin.pedir('POST', '/api/admin/server-settings', { flota_del_local: '0' }))
+    await exigir(200, admin.pedir('PUT', `/api/admin/clients/${negocio}`, { delivery_by: 'local', own_fleet: false }))
     const ficha = await exigir(200, local.pedir('GET', '/api/client/business'))
     expect(ficha.flota_propia).toBe(false)
     expect((await local.pedir('GET', '/api/client/repartidores')).status).toBe(404)
   })
 
-  it('encendida por el superadmin, el local registra a SU repartidor', async () => {
-    await exigir(200, admin.pedir('POST', '/api/admin/server-settings', { flota_del_local: '1' }))
+  it('el superadmin la enciende en ESTE local, y el local registra a SU repartidor', async () => {
+    await exigir(200, admin.pedir('PUT', `/api/admin/clients/${negocio}`, { own_fleet: true }))
     expect((await exigir(200, local.pedir('GET', '/api/client/business'))).flota_propia).toBe(true)
     const creado = await exigir(201, local.pedir('POST', '/api/client/repartidores', { nombre: 'Repartidor del Local', telefono: TELEFONO }))
     repartidorId = creado.id
@@ -207,6 +207,21 @@ describe('la flota propia del LOCAL', () => {
     expect(alFinal.efectivoEnCursoCents).toBe(0)
     expect(alFinal.cobradoHoyCents).toBe(centavos(pedido.total))
     expect(alFinal.entregasHoy).toBe(1)
+  })
+
+  // 🔒 El hueco del interruptor global: apagado, un repartidor YA registrado
+  // seguía viendo y tomando los pedidos de su local, y el local —con la
+  // pestaña escondida— no podía desactivarlo.
+  it('el superadmin la apaga: su repartidor ya no ve ni toma pedidos nuevos', async () => {
+    await exigir(200, admin.pedir('PUT', `/api/admin/clients/${negocio}`, { own_fleet: false }))
+    const pedido = await pedirEnEfectivo()
+    await empacado(pedido.id)
+    const suyo = comoMotorizado(TELEFONO)
+    expect((await suyo.pedidos()).some(p => p.id === pedido.id)).toBe(false)
+    expect((await suyo.tomar(pedido.id)).status).toBe(409)
+    expect((await local.pedir('GET', '/api/client/repartidores')).status).toBe(404)
+    await exigir(200, local.cambiarEstado(pedido.id, 'cancelado'))
+    await exigir(200, admin.pedir('PUT', `/api/admin/clients/${negocio}`, { own_fleet: true }))
   })
 
   it('el local apaga a su repartidor y ya no entra a la app', async () => {

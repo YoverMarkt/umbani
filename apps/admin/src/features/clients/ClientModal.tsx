@@ -45,6 +45,7 @@ const EMPTY = {
   client_email: '', client_password: '', notes: '',
   card_mode: 'apagado' as 'apagado' | 'pruebas' | 'produccion',
   delivery_by: 'local' as 'local' | 'umbani',
+  own_fleet: false,
 }
 
 export default function ClientModal({ id, onClose, onSaved }: { id: string | null; onClose: () => void; onSaved: () => void }) {
@@ -87,6 +88,7 @@ export default function ClientModal({ id, onClose, onSaved }: { id: string | nul
         notes: c.notes ?? '',
         card_mode: c.card_mode ?? 'apagado',
         delivery_by: c.delivery_by ?? 'local',
+        own_fleet: c.own_fleet === true,
       })
       setCajones(c.marketplace_categories ?? [])
       setLoading(false)
@@ -212,6 +214,7 @@ export default function ClientModal({ id, onClose, onSaved }: { id: string | nul
     // La tarjeta solo se decide EDITANDO: un local nace sin cobro con tarjeta.
     if (id) payload.card_mode = f.card_mode === 'apagado' ? null : f.card_mode
     if (id) payload.delivery_by = f.delivery_by
+    if (id) payload.own_fleet = f.own_fleet
     // Solo si hay algo elegido: una lista vacía en el alta significaría
     // «ninguno», y lo que queremos es «los de su tipo».
     if (cajones.length) payload.marketplace_categories = cajones
@@ -448,6 +451,28 @@ export default function ClientModal({ id, onClose, onSaved }: { id: string | nul
                     <SelectItem value="umbani">Motorizados de Umbani</SelectItem>
                   </SelectContent>
                 </Select>
+
+                {/* Repartidores propios, local por local (2026-10-04): se
+                    enciende al local que dice «tengo mi flota». Solo tiene
+                    sentido si reparte él mismo; con «Umbani» la base no deja
+                    a su flota llevar nada, así que ni se ofrece. */}
+                {f.delivery_by === 'local' && (
+                  <div className="mt-3">
+                    <Label htmlFor="client-own-fleet">Repartidores propios en la app</Label>
+                    <Select value={f.own_fleet ? 'si' : 'no'} onValueChange={v => setF(prev => ({ ...prev, own_fleet: v === 'si' }))}>
+                      <SelectTrigger id="client-own-fleet" className="mt-1 w-full sm:max-w-md"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="no">Apagado: el local reparte sin la app</SelectItem>
+                        <SelectItem value="si">Encendido: el local registra a sus repartidores</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Encendido, el local ve «Repartidores» en su panel y los registra. Ellos entran a la
+                      app del motorizado con su WhatsApp y solo ven los pedidos de este local. Apagado, no
+                      reciben pedidos nuevos.
+                    </p>
+                  </div>
+                )}
               </div>
             )}
 

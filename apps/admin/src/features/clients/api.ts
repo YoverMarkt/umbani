@@ -184,6 +184,8 @@ export type BusinessDetail = BusinessRow & {
   card_mode?: 'pruebas' | 'produccion' | null
   /** Quién lleva los pedidos: el local o los motorizados de Umbani. */
   delivery_by?: 'local' | 'umbani'
+  /** Repartidores propios: solo cuenta con `delivery_by = 'local'`. Solo lo toca el superadmin. */
+  own_fleet?: boolean
   monthly_rate: number | null
   client_email: string
   credential_status: Record<'ycloud_api_key' | 'ycloud_webhook_secret' | 'meta_token' | 'telegram_bot_token', boolean>

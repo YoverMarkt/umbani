@@ -20,7 +20,8 @@ import { api } from '../../api/client'
 // aquí se ve cuánto efectivo lleva cada uno, que es lo que se le pide al
 // cerrar el turno.
 //
-// ⚠️ Solo aparece cuando el superadmin enciende «Repartidores propios» y solo
+// ⚠️ Solo aparece cuando el superadmin enciende «Repartidores propios» en la
+// ficha de ESTE local (cada local por separado, 2026-10-04), y solo
 // para el dueño. Aquí NO se calcula nada: el efectivo llega en centavos.
 
 type Repartidor = {

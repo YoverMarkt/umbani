@@ -1,4 +1,5 @@
 import type { RequestHandler } from 'express'
+import { tieneFlotaPropia } from '../lib/flota-propia'
 import { getClientBusinessId } from '../lib/request'
 import { leerUbicacion } from '../lib/ubicacion'
 import { createRouter } from '../middleware/async'
@@ -78,9 +79,6 @@ router.get('/api/client/stats', auth.authClient, async (req, res) => {
   res.json(await db.getClientStats(getClientBusinessId(req)))
 })
 
-const flotaDelLocalEncendida = async (): Promise<boolean> =>
-  (await (require('../services/settings') as typeof import('../services/settings')).get('flota_del_local').catch(() => null)) === '1'
-
 router.get('/api/client/business', auth.authClient, async (req, res) => {
   const business = await db.getBusinessById(getClientBusinessId(req))
   // Puede haberse eliminado entre la validación de la sesión y esta consulta.
@@ -119,8 +117,8 @@ router.get('/api/client/business', auth.authClient, async (req, res) => {
     suspended: business.suspended,
     bot_active: business.bot_active,
     // ¿Puede registrar a sus propios repartidores? Lo enciende el superadmin
-    // (`flota_del_local`); mientras tanto el menú no lo enseña.
-    flota_propia: await flotaDelLocalEncendida(),
+    // en la ficha de ESTE local; mientras tanto el menú no lo enseña.
+    flota_propia: tieneFlotaPropia(business),
   })
 })
 

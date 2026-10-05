@@ -4,7 +4,6 @@ import jwt from 'jsonwebtoken'
 
 const require = createRequire(import.meta.url)
 const db = require('../dist/db')
-const settings = require('../dist/services/settings')
 const router = require('../dist/routes/repartidores.routes')
 const adminMoto = require('../dist/routes/admin-motorizados.routes')
 
@@ -14,15 +13,17 @@ const adminMoto = require('../dist/routes/admin-motorizados.routes')
 //
 // Lo que defienden, por orden de lo que costaría fallar:
 //   1. Un local NO toca a los repartidores de otro: el negocio sale del JWT.
-//   2. APAGADO de verdad: sin el interruptor, la API no existe (404).
+//   2. APAGADO de verdad: sin la flota encendida EN SU LOCAL, la API no existe
+//      (404). Se enciende local por local desde el 2026-10-04.
 //   3. Solo el dueño.
 
 const SECRET = 'repartidores-test'
+const CON_FLOTA = { id: 'b1', own_fleet: true, delivery_by: 'local' }
 let anterior
 beforeEach(() => {
   anterior = process.env.JWT_SECRET
   process.env.JWT_SECRET = SECRET
-  vi.spyOn(settings, 'get').mockImplementation(async clave => (clave === 'flota_del_local' ? '1' : null))
+  vi.spyOn(db, 'getBusinessById').mockResolvedValue(CON_FLOTA)
 })
 afterEach(() => {
   vi.restoreAllMocks()
@@ -50,18 +51,32 @@ async function correr(r, method, path, { claims, body = {}, params = {}, query =
 }
 
 describe('apagado de verdad', () => {
-  it('con el interruptor apagado la API no existe, aunque seas el dueño', async () => {
-    settings.get.mockImplementation(async () => '0')
+  it('con la flota apagada en su local la API no existe, aunque seas el dueño', async () => {
+    db.getBusinessById.mockResolvedValue({ ...CON_FLOTA, own_fleet: false })
     const lista = await correr(router, 'get', '/api/client/repartidores', { claims: DUENO })
     const alta = await correr(router, 'post', '/api/client/repartidores', { claims: DUENO, body: { nombre: 'Ana', telefono: '593991111111' } })
     expect(lista.status).toBe(404)
     expect(alta.status).toBe(404)
   })
 
-  it('si no se puede leer el interruptor, también 404 (falla cerrado)', async () => {
-    settings.get.mockRejectedValue(new Error('base caída'))
+  it('encendida pero con «Quién reparte: Umbani», tampoco: reparten los de Umbani', async () => {
+    db.getBusinessById.mockResolvedValue({ ...CON_FLOTA, delivery_by: 'umbani' })
     const lista = await correr(router, 'get', '/api/client/repartidores', { claims: DUENO })
     expect(lista.status).toBe(404)
+  })
+
+  it('si no se puede leer el local, también 404 (falla cerrado)', async () => {
+    db.getBusinessById.mockRejectedValue(new Error('base caída'))
+    const lista = await correr(router, 'get', '/api/client/repartidores', { claims: DUENO })
+    expect(lista.status).toBe(404)
+  })
+
+  it('mira la flota del local del JWT, nunca la de uno que venga en la petición', async () => {
+    vi.spyOn(db, 'listFleetCouriers').mockResolvedValue([])
+    vi.spyOn(db, 'fleetCash').mockResolvedValue(new Map())
+    await correr(router, 'get', '/api/client/repartidores', { claims: DUENO, query: { businessId: 'OTRO' }, params: { businessId: 'OTRO' } })
+    expect(db.getBusinessById).toHaveBeenCalledWith('b1')
+    expect(db.getBusinessById).not.toHaveBeenCalledWith('OTRO')
   })
 })
 
