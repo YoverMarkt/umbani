@@ -581,6 +581,7 @@ export type Database = {
           card_mode: string | null
           chat_mode: string
           city_id: string | null
+          cooperative_id: string | null
           cover_url: string | null
           created_at: string | null
           delivery_by: string
@@ -639,6 +640,7 @@ export type Database = {
           card_mode?: string | null
           chat_mode?: string
           city_id?: string | null
+          cooperative_id?: string | null
           cover_url?: string | null
           created_at?: string | null
           delivery_by?: string
@@ -697,6 +699,7 @@ export type Database = {
           card_mode?: string | null
           chat_mode?: string
           city_id?: string | null
+          cooperative_id?: string | null
           cover_url?: string | null
           created_at?: string | null
           delivery_by?: string
@@ -750,6 +753,13 @@ export type Database = {
             columns: ["city_id"]
             isOneToOne: false
             referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "businesses_cooperative_id_fkey"
+            columns: ["cooperative_id"]
+            isOneToOne: false
+            referencedRelation: "cooperatives"
             referencedColumns: ["id"]
           },
         ]
@@ -945,6 +955,85 @@ export type Database = {
           },
         ]
       }
+      cooperative_users: {
+        Row: {
+          active: boolean
+          cooperative_id: string
+          created_at: string
+          email: string
+          id: string
+          name: string | null
+          password_hash: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          cooperative_id: string
+          created_at?: string
+          email: string
+          id?: string
+          name?: string | null
+          password_hash: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          cooperative_id?: string
+          created_at?: string
+          email?: string
+          id?: string
+          name?: string | null
+          password_hash?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cooperative_users_cooperative_id_fkey"
+            columns: ["cooperative_id"]
+            isOneToOne: false
+            referencedRelation: "cooperatives"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cooperatives: {
+        Row: {
+          active: boolean
+          city_id: string
+          contact_phone: string | null
+          created_at: string
+          id: string
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          city_id: string
+          contact_phone?: string | null
+          created_at?: string
+          id?: string
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          city_id?: string
+          contact_phone?: string | null
+          created_at?: string
+          id?: string
+          name?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cooperatives_city_id_fkey"
+            columns: ["city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       courier_settlements: {
         Row: {
           arrastre_cents: number
@@ -1010,11 +1099,15 @@ export type Database = {
           available: boolean
           cash_limit_cents: number
           city_id: string | null
+          cooperative_id: string | null
           created_at: string
           fleet_business_id: string | null
           id: string
+          id_number: string | null
+          license_number: string | null
           name: string
           phone: string
+          plate: string | null
           updated_at: string
           vehicle: string | null
         }
@@ -1023,11 +1116,15 @@ export type Database = {
           available?: boolean
           cash_limit_cents?: number
           city_id?: string | null
+          cooperative_id?: string | null
           created_at?: string
           fleet_business_id?: string | null
           id?: string
+          id_number?: string | null
+          license_number?: string | null
           name: string
           phone: string
+          plate?: string | null
           updated_at?: string
           vehicle?: string | null
         }
@@ -1036,11 +1133,15 @@ export type Database = {
           available?: boolean
           cash_limit_cents?: number
           city_id?: string | null
+          cooperative_id?: string | null
           created_at?: string
           fleet_business_id?: string | null
           id?: string
+          id_number?: string | null
+          license_number?: string | null
           name?: string
           phone?: string
+          plate?: string | null
           updated_at?: string
           vehicle?: string | null
         }
@@ -1050,6 +1151,13 @@ export type Database = {
             columns: ["city_id"]
             isOneToOne: false
             referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "couriers_cooperative_id_fkey"
+            columns: ["cooperative_id"]
+            isOneToOne: false
+            referencedRelation: "cooperatives"
             referencedColumns: ["id"]
           },
           {
@@ -4270,6 +4378,10 @@ export type Database = {
       reorder_options: {
         Args: { p_business_id: string; p_group_id: string; p_ids: string[] }
         Returns: number
+      }
+      repartidor_puede_llevar: {
+        Args: { p_business_id: string; p_courier_id: string }
+        Returns: boolean
       }
       request_new_payment_proof: {
         Args: { p_business_id: string; p_order_id: string }

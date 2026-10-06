@@ -20397,9 +20397,9 @@ alter table public.businesses
   add column if not exists delivery_by text not null default 'local';
 alter table public.businesses drop constraint if exists businesses_delivery_by_check;
 alter table public.businesses add constraint businesses_delivery_by_check
-  check (delivery_by in ('local', 'umbani'));
+  check (delivery_by in ('local', 'umbani', 'cooperativa'));
 comment on column public.businesses.delivery_by is
-  'Quién lleva los pedidos: local (su gente, como hoy) o umbani (motorizados de la plataforma).';
+  'Quién lleva los pedidos: local (su gente), umbani (motorizados de la plataforma) o cooperativa (los de cooperative_id).';
 
 -- Repartidores propios, local por local (2026-10-04, ver
 -- `migration-2026-10-04-flota-propia-por-local.sql`). Las tres puertas de
@@ -20441,6 +20441,185 @@ alter table public.couriers
 create index if not exists idx_couriers_ciudad on public.couriers (city_id);
 comment on column public.couriers.city_id is
   'Ciudad del motorizado de Umbani: solo ve y toma pedidos de los locales de ella.';
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- LAS COOPERATIVAS DE REPARTO — la tercera flota (2026-10-06)
+-- Ver `migration-2026-10-06-cooperativas.sql`: el porqué está allí. Va aquí,
+-- antes de las tres puertas del reparto, porque `repartidor_puede_llevar` las
+-- sirve a las tres y `courier_orders` (en SQL) la necesita ya creada.
+-- ════════════════════════════════════════════════════════════════════════════
+
+-- ── 1. La cooperativa ───────────────────────────────────────────────────────
+create table if not exists public.cooperatives (
+  id            uuid primary key default gen_random_uuid(),
+  name          text not null,
+  -- Reparte en UNA ciudad: sus motorizados son de ella.
+  city_id       uuid not null references public.cities(id) on delete restrict,
+  contact_phone text,
+  active        boolean not null default true,
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now(),
+
+  constraint cooperatives_name_check check (char_length(btrim(name)) between 2 and 80),
+  constraint cooperatives_contact_phone_check check (contact_phone is null or contact_phone ~ '^\+?[0-9]{8,15}$')
+);
+
+create unique index if not exists cooperatives_nombre_unico on public.cooperatives (lower(btrim(name)));
+create index if not exists idx_cooperatives_ciudad on public.cooperatives (city_id);
+alter table public.cooperatives enable row level security;
+revoke all on table public.cooperatives from anon, authenticated;
+comment on table public.cooperatives is
+  'Cooperativas de reparto: registran a sus motorizados y ven sus carreras. Umbani les paga la carrera a ellos.';
+
+
+-- ── 2. Quién entra a su panel (`/cooperativa`) ──────────────────────────────
+-- Como el dueño de un local: correo y contraseña con bcrypt, nunca en claro.
+create table if not exists public.cooperative_users (
+  id             uuid primary key default gen_random_uuid(),
+  cooperative_id uuid not null references public.cooperatives(id) on delete cascade,
+  email          text not null,
+  password_hash  text not null,
+  name           text,
+  active         boolean not null default true,
+  created_at     timestamptz not null default now(),
+  updated_at     timestamptz not null default now(),
+
+  constraint cooperative_users_email_check check (email = lower(btrim(email)) and email ~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$'),
+  constraint cooperative_users_name_check check (name is null or char_length(btrim(name)) between 2 and 80)
+);
+
+create unique index if not exists cooperative_users_email_unico on public.cooperative_users (email);
+create index if not exists idx_cooperative_users_cooperativa on public.cooperative_users (cooperative_id);
+alter table public.cooperative_users enable row level security;
+revoke all on table public.cooperative_users from anon, authenticated;
+
+
+-- ── 3. El motorizado: su flota y sus datos ──────────────────────────────────
+alter table public.couriers
+  add column if not exists cooperative_id uuid references public.cooperatives(id) on delete restrict,
+  -- Cédula o pasaporte: en Chone reparten también personas de otros países.
+  add column if not exists id_number text,
+  add column if not exists plate text,
+  add column if not exists license_number text;
+
+alter table public.couriers drop constraint if exists couriers_una_flota_check;
+alter table public.couriers add constraint couriers_una_flota_check
+  check (fleet_business_id is null or cooperative_id is null);
+alter table public.couriers drop constraint if exists couriers_documentos_check;
+alter table public.couriers add constraint couriers_documentos_check check (
+  (id_number is null or char_length(btrim(id_number)) between 5 and 20)
+  and (plate is null or char_length(btrim(plate)) between 3 and 12)
+  and (license_number is null or char_length(btrim(license_number)) between 3 and 30)
+);
+-- Lo que la cooperativa responde por cada uno (decidido 2026-10-05): nombre,
+-- WhatsApp, cédula, placa y vehículo. La licencia, opcional.
+alter table public.couriers drop constraint if exists couriers_de_cooperativa_check;
+alter table public.couriers add constraint couriers_de_cooperativa_check check (
+  cooperative_id is null
+  or (id_number is not null and plate is not null and char_length(btrim(coalesce(vehicle, ''))) >= 2)
+);
+
+create index if not exists idx_couriers_cooperativa on public.couriers (cooperative_id) where cooperative_id is not null;
+comment on column public.couriers.cooperative_id is
+  'Cooperativa del motorizado: lleva los locales de ella en su ciudad, y Umbani le paga la carrera como a uno suyo.';
+
+-- Su ciudad es la de su cooperativa, siempre: si pudiera ser otra, vería una
+-- lista vacía sin que nadie entendiera por qué.
+create or replace function public.couriers_ciudad_de_su_cooperativa()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  select c.city_id into new.city_id from public.cooperatives c where c.id = new.cooperative_id;
+  return new;
+end;
+$$;
+
+revoke all on function public.couriers_ciudad_de_su_cooperativa() from public, anon, authenticated;
+
+drop trigger if exists couriers_ciudad_de_su_cooperativa on public.couriers;
+create trigger couriers_ciudad_de_su_cooperativa
+  before insert or update of cooperative_id, city_id on public.couriers
+  for each row when (new.cooperative_id is not null)
+  execute function public.couriers_ciudad_de_su_cooperativa();
+
+
+-- ── 4. Quién reparte: el local, Umbani o UNA cooperativa ───────────────────
+alter table public.businesses
+  add column if not exists cooperative_id uuid references public.cooperatives(id) on delete restrict;
+-- «La cooperativa» siempre dice CUÁL, y solo entonces.
+alter table public.businesses drop constraint if exists businesses_cooperativa_check;
+alter table public.businesses add constraint businesses_cooperativa_check
+  check ((delivery_by = 'cooperativa') = (cooperative_id is not null));
+
+create index if not exists idx_businesses_cooperativa on public.businesses (cooperative_id) where cooperative_id is not null;
+
+-- Y de SU ciudad: con una de otra, sus motorizados nunca verían los pedidos y
+-- el local se quedaría sin reparto en silencio.
+create or replace function public.businesses_cooperativa_de_su_ciudad()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if not exists (
+    select 1 from public.cooperatives c
+     where c.id = new.cooperative_id and c.city_id = new.city_id
+  ) then
+    raise exception using errcode = '23514',
+      message = 'La cooperativa tiene que ser de la ciudad del local.';
+  end if;
+  return new;
+end;
+$$;
+
+revoke all on function public.businesses_cooperativa_de_su_ciudad() from public, anon, authenticated;
+
+drop trigger if exists businesses_cooperativa_de_su_ciudad on public.businesses;
+create trigger businesses_cooperativa_de_su_ciudad
+  before insert or update of delivery_by, cooperative_id, city_id on public.businesses
+  for each row when (new.delivery_by = 'cooperativa')
+  execute function public.businesses_cooperativa_de_su_ciudad();
+
+
+-- ── 5. La regla de quién lleva qué, en UN solo sitio ───────────────────────
+--
+-- ⚠️ `coalesce(…, false)` sobre todo: con NULL en una comparación (un local
+-- sin ciudad, un motorizado sin cooperativa) la rama da NULL, y un NULL que
+-- llega a un `if not (…)` se lee como «no rechazar». Falla CERRADO.
+create or replace function public.repartidor_puede_llevar(p_courier_id uuid, p_business_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select coalesce((
+    select c.active and (
+      -- De Umbani: ni de un local ni de una cooperativa, y en SU ciudad.
+      (c.fleet_business_id is null and c.cooperative_id is null
+        and b.delivery_by = 'umbani' and b.city_id = c.city_id)
+      -- De una cooperativa ACTIVA: los locales de ELLA, en su ciudad.
+      or (c.cooperative_id is not null and coop.active
+        and b.delivery_by = 'cooperativa' and b.cooperative_id = c.cooperative_id
+        and b.city_id = c.city_id)
+      -- De la flota de un local: solo ese local, con sus repartidores
+      -- encendidos y repartiendo él mismo.
+      or (c.fleet_business_id = b.id and b.own_fleet and b.delivery_by = 'local')
+    )
+    from public.couriers c
+    join public.businesses b on b.id = p_business_id
+    left join public.cooperatives coop on coop.id = c.cooperative_id
+    where c.id = p_courier_id
+  ), false)
+$$;
+
+revoke all on function public.repartidor_puede_llevar(uuid, uuid) from public, anon, authenticated;
+grant execute on function public.repartidor_puede_llevar(uuid, uuid) to service_role;
+
 
 -- ── 3. El pedido sabe quién lo lleva ──────────────────────────────────────
 alter table public.orders
@@ -20511,24 +20690,11 @@ language plpgsql
 security definer
 set search_path = public, pg_temp
 as $$
-declare
-  v_c public.couriers%rowtype;
-  v_reparte text;
-  v_flota boolean;
-  v_ciudad uuid;
 begin
   if new.courier_id is null or new.courier_id is not distinct from old.courier_id then
     return new;
   end if;
-  select * into v_c from public.couriers where id = new.courier_id;
-  select delivery_by, own_fleet, city_id into v_reparte, v_flota, v_ciudad
-    from public.businesses where id = new.business_id;
-  -- ⚠️ `coalesce(…, false)`: con un repartidor de Umbani `fleet_business_id`
-  -- es NULL, y `NULL = x` da NULL — `not (… or NULL)` también, y el `if` lo
-  -- trataría como «no rechazar». Cazado por la prueba antes de salir.
-  if v_c.id is null or not v_c.active
-     or not (coalesce(v_c.fleet_business_id is null and v_reparte = 'umbani' and v_ciudad = v_c.city_id, false)
-             or coalesce(v_c.fleet_business_id = new.business_id and v_flota and v_reparte = 'local', false)) then
+  if not public.repartidor_puede_llevar(new.courier_id, new.business_id) then
     raise exception using errcode = '42501',
       message = 'Ese repartidor no puede llevar pedidos de este local.';
   end if;
@@ -20648,9 +20814,6 @@ as $$
 declare
   v_c public.couriers%rowtype;
   v_o public.orders%rowtype;
-  v_reparte text;
-  v_flota boolean;
-  v_ciudad uuid;
   v_centavos integer;
 begin
   select * into v_c from public.couriers where id = p_courier_id;
@@ -20663,14 +20826,11 @@ begin
   if v_o.courier_id is not null then
     return jsonb_build_object('result', case when v_o.courier_id = p_courier_id then 'ya_es_tuyo' else 'ya_tomado' end);
   end if;
-  select delivery_by, own_fleet, city_id into v_reparte, v_flota, v_ciudad
-    from public.businesses where id = v_o.business_id;
   if coalesce(v_o.fulfillment, 'delivery') <> 'delivery'
      -- Solo lo que el local YA ACEPTÓ: como en las grandes, nadie sale a por
      -- un pedido que el local todavía puede rechazar.
      or v_o.status not in ('confirmado', 'aceptado', 'preparacion')
-     or not (coalesce(v_c.fleet_business_id is null and v_reparte = 'umbani' and v_ciudad = v_c.city_id, false)
-             or coalesce(v_c.fleet_business_id = v_o.business_id and v_flota and v_reparte = 'local', false)) then
+     or not public.repartidor_puede_llevar(p_courier_id, v_o.business_id) then
     return jsonb_build_object('result', 'no_disponible');
   end if;
   -- Con tarjeta ya pagado; sin pagar no sale (lo exige también la base).
@@ -20895,8 +21055,7 @@ as $$
     where coalesce(o.fulfillment, 'delivery') = 'delivery'
       and (
         (o.courier_id is null and o.status in ('confirmado', 'aceptado', 'preparacion')
-          and (coalesce(yo.fleet_business_id is null and b.delivery_by = 'umbani' and b.city_id = yo.city_id, false)
-               or coalesce(yo.fleet_business_id = o.business_id and b.own_fleet and b.delivery_by = 'local', false))
+          and public.repartidor_puede_llevar(yo.id, o.business_id)
           and not (o.payment_method = 'tarjeta' and o.payment_confirmed_at is null))
         or (o.courier_id = yo.id and o.status not in ('completado', 'cancelado', 'rechazado', 'expirado'))
       )

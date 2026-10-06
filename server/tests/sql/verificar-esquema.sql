@@ -8003,3 +8003,150 @@ end;
 $demo$;
 
 select '✅ locales de demostración: su liquidación no se paga, Umbani no cuenta su dinero, y cambiar la marca queda registrado' as resultado;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- LAS COOPERATIVAS: LA TERCERA FLOTA (2026-10-06)
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Un motorizado de cooperativa tampoco tiene local, así que la regla vieja de
+-- Umbani —«sin local»— le habría enseñado los pedidos de Umbani. Las tres
+-- puertas (ofrecer, tomar, asignar a mano) usan `repartidor_puede_llevar`, y
+-- aquí se fija:
+--   · cada flota lleva SOLO lo suyo, en su ciudad; la cooperativa apagada no
+--     lleva nada nuevo;
+--   · su ciudad es la de su cooperativa, y la cooperativa de un local es de la
+--     ciudad del local;
+--   · el DINERO: su carrera y su efectivo son suyos y liquida con Umbani, como
+--     uno de Umbani. Si alguien «arregla» el libro para que solo cuente a los
+--     de Umbani, esto se cae.
+create or replace function public.liquidacion_semanal_desde()
+returns date language sql stable set search_path = public, pg_temp
+as $x$ select date '2026-01-05' $x$;
+
+do $cooperativas$
+declare
+  v_porto uuid := (select id from cities where lower(name) = 'portoviejo');
+  v_coop uuid; v_otra uuid; v_lejos uuid;
+  v_local uuid; v_umbani uuid;
+  v_de_coop uuid; v_de_otra uuid; v_de_umbani uuid;
+  v_ped uuid; v_ped_umbani uuid;
+  v_falló boolean;
+begin
+  insert into cooperatives (name, city_id) values ('Coop. Verificación', pg_temp.chone()) returning id into v_coop;
+  insert into cooperatives (name, city_id) values ('Coop. Otra', pg_temp.chone()) returning id into v_otra;
+  insert into cooperatives (name, city_id) values ('Coop. Portoviejo', v_porto) returning id into v_lejos;
+
+  -- ── 1. Lo que la cooperativa responde por cada motorizado ────────────────
+  v_falló := false;
+  begin
+    insert into couriers (phone, name, cooperative_id) values ('593900555100', 'Sin papeles', v_coop);
+  exception when check_violation then v_falló := true; end;
+  if not v_falló then raise exception 'se registró un motorizado de cooperativa sin cédula, placa ni vehículo'; end if;
+
+  -- ── 2. Su ciudad es la de su cooperativa, aunque se pida otra ────────────
+  insert into couriers (phone, name, vehicle, id_number, plate, cooperative_id, city_id)
+  values ('593900555101', 'Andrés', 'Moto', '1312345678', 'MB123A', v_coop, v_porto) returning id into v_de_coop;
+  if (select city_id from couriers where id = v_de_coop) is distinct from pg_temp.chone() then
+    raise exception 'el motorizado de una cooperativa de Chone quedó en otra ciudad';
+  end if;
+  insert into couriers (phone, name, vehicle, id_number, plate, cooperative_id)
+  values ('593900555102', 'Bruno', 'Moto', '1312345679', 'MB124A', v_otra) returning id into v_de_otra;
+  insert into couriers (phone, name, city_id) values ('593900555103', 'Umberto', pg_temp.chone()) returning id into v_de_umbani;
+
+  -- ── 3. «Quién reparte: la cooperativa» dice CUÁL, y de SU ciudad ─────────
+  insert into businesses (slug, name, type, whatsapp_provider, whatsapp_number, ycloud_number, takes_orders, storefront_enabled)
+  values ('verif-coop', 'Pizzería de la cooperativa', 'pizzería', 'ycloud', '+593900555001', '+593900555001', true, true)
+  returning id into v_local;
+  update businesses set city_id = pg_temp.chone() where id = v_local;
+
+  -- Una flota, no dos.
+  v_falló := false;
+  begin update couriers set fleet_business_id = v_local where id = v_de_coop;
+  exception when check_violation then v_falló := true; end;
+  if not v_falló then raise exception 'un motorizado quedó en una cooperativa y en un local a la vez'; end if;
+
+  v_falló := false;
+  begin update businesses set delivery_by = 'cooperativa' where id = v_local;
+  exception when check_violation then v_falló := true; end;
+  if not v_falló then raise exception '«Quién reparte: la cooperativa» se guardó sin decir cuál'; end if;
+  v_falló := false;
+  begin update businesses set delivery_by = 'cooperativa', cooperative_id = v_lejos where id = v_local;
+  exception when check_violation then v_falló := true; end;
+  if not v_falló then raise exception 'un local de Chone quedó con una cooperativa de Portoviejo'; end if;
+  update businesses set delivery_by = 'cooperativa', cooperative_id = v_coop where id = v_local;
+
+  insert into businesses (slug, name, type, whatsapp_provider, whatsapp_number, ycloud_number, takes_orders, storefront_enabled)
+  values ('verif-coop-umbani', 'Pizzería de Umbani', 'pizzería', 'ycloud', '+593900555002', '+593900555002', true, true)
+  returning id into v_umbani;
+  update businesses set city_id = pg_temp.chone(), delivery_by = 'umbani' where id = v_umbani;
+
+  insert into orders (business_id, contact_phone, source, status, fulfillment, subtotal, shipping, total, payment_method)
+  values (v_local, '593900555200', 'manual', 'preparacion', 'delivery', 10, 1.5, 12.5, 'efectivo') returning id into v_ped;
+  update orders set platform_markup = 1 where id = v_ped;
+  insert into orders (business_id, contact_phone, source, status, fulfillment, subtotal, shipping, total, payment_method)
+  values (v_umbani, '593900555201', 'manual', 'preparacion', 'delivery', 10, 1.5, 12.5, 'efectivo') returning id into v_ped_umbani;
+
+  -- ── 4. La de OTRA cooperativa: ni lo ve, ni lo toma, ni se le asigna ─────
+  if exists (select 1 from jsonb_array_elements(public.courier_orders(v_de_otra)) p where (p ->> 'id')::uuid = v_ped) then
+    raise exception 'el motorizado de otra cooperativa ve el pedido';
+  end if;
+  if public.courier_take_order(v_de_otra, v_ped) ->> 'result' <> 'no_disponible' then
+    raise exception 'el motorizado de otra cooperativa tomó el pedido';
+  end if;
+  v_falló := false;
+  begin update orders set courier_id = v_de_otra where id = v_ped;
+  exception when insufficient_privilege then v_falló := true; end;
+  if not v_falló then raise exception 'se le asignó a mano un pedido a otra cooperativa'; end if;
+
+  -- ── 5. Umbani y la cooperativa no se cruzan (la trampa del «sin local») ──
+  if public.courier_take_order(v_de_umbani, v_ped) ->> 'result' <> 'no_disponible' then
+    raise exception 'un motorizado de Umbani tomó el pedido de un local de cooperativa';
+  end if;
+  if exists (select 1 from jsonb_array_elements(public.courier_orders(v_de_coop)) p where (p ->> 'id')::uuid = v_ped_umbani) then
+    raise exception 'un motorizado de cooperativa ve los pedidos de Umbani';
+  end if;
+  if public.courier_take_order(v_de_coop, v_ped_umbani) ->> 'result' <> 'no_disponible' then
+    raise exception 'un motorizado de cooperativa tomó un pedido de Umbani';
+  end if;
+  v_falló := false;
+  begin update orders set courier_id = v_de_coop where id = v_ped_umbani;
+  exception when insufficient_privilege then v_falló := true; end;
+  if not v_falló then raise exception 'se le asignó a mano un pedido de Umbani a uno de cooperativa'; end if;
+  -- El de Umbani sigue llevando lo de Umbani.
+  if public.courier_take_order(v_de_umbani, v_ped_umbani) ->> 'result' <> 'ok' then
+    raise exception 'el motorizado de Umbani dejó de poder tomar los pedidos de Umbani';
+  end if;
+
+  -- ── 6. La cooperativa apagada: nada nuevo ───────────────────────────────
+  update cooperatives set active = false where id = v_coop;
+  if exists (select 1 from jsonb_array_elements(public.courier_orders(v_de_coop)) p where (p ->> 'id')::uuid = v_ped) then
+    raise exception 'con su cooperativa apagada, la app le ofrece pedidos';
+  end if;
+  if public.courier_take_order(v_de_coop, v_ped) ->> 'result' <> 'no_disponible' then
+    raise exception 'con su cooperativa apagada, tomó un pedido';
+  end if;
+  update cooperatives set active = true where id = v_coop;
+
+  -- ── 7. Encendida y de SU cooperativa: se le ofrece y lo toma ────────────
+  if not exists (select 1 from jsonb_array_elements(public.courier_orders(v_de_coop)) p where (p ->> 'id')::uuid = v_ped) then
+    raise exception 'la app no le ofrece el pedido de su cooperativa: %', public.courier_orders(v_de_coop);
+  end if;
+  if public.courier_take_order(v_de_coop, v_ped) ->> 'result' <> 'ok' then
+    raise exception 'no pudo tomar el pedido de su cooperativa';
+  end if;
+
+  -- ── 8. El dinero, como uno de Umbani: la carrera y el efectivo, SUYOS ────
+  perform public.courier_advance_order(v_de_coop, v_ped, 'en_camino');
+  perform public.courier_advance_order(v_de_coop, v_ped, 'completado');
+  if (select reparto_para || '|' || en_mano || '|' || courier_id::text from order_ledger where order_id = v_ped)
+     is distinct from 'motorizado|motorizado|' || v_de_coop::text then
+    raise exception 'el libro no le dio al motorizado de la cooperativa su carrera y su efectivo: %',
+      (select row_to_json(l) from order_ledger l where order_id = v_ped);
+  end if;
+end;
+$cooperativas$;
+
+create or replace function public.liquidacion_semanal_desde()
+returns date language sql stable set search_path = public, pg_temp
+as $x$ select date '2026-09-28' $x$;
+
+select '✅ cooperativas: cada flota lleva solo lo suyo en su ciudad, la apagada no lleva nada nuevo, y su carrera y su efectivo son del motorizado' as resultado;
