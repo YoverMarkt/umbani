@@ -28,7 +28,7 @@ const armar = () => {
     getConversation: vi.fn(() => conversacion.promise),
     advanceConversation: vi.fn().mockResolvedValue({ conflicto: false }),
     getMarketplaceCategories: vi.fn().mockResolvedValue([
-      { code: 'pizzerias', label: 'Pizzerías', emoji: '🍕', locales: 1 },
+      { city_id: 'ciudad-chone', city_name: 'Chone', code: 'pizzerias', label: 'Pizzerías', emoji: '🍕', locales: 1 },
     ]),
     getMarketplaceBusinesses: vi.fn().mockResolvedValue([]),
     getBusinessById: vi.fn().mockResolvedValue({

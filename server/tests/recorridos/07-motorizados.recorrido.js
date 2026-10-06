@@ -67,8 +67,10 @@ describe('el motorizado de UMBANI', () => {
 
   it('el superadmin pone «Quién reparte: Umbani» en el local y registra al motorizado', async () => {
     await exigir(200, admin.pedir('PUT', `/api/admin/clients/${negocio}`, { delivery_by: 'umbani' }))
+    // En la ciudad del local de pruebas (2026-10-05): solo ve los pedidos de ella.
+    const [{ id: chone }] = await sql(`select id from cities where lower(name) = 'chone'`)
     const creado = await exigir(201, admin.pedir('POST', '/api/admin/motorizados', {
-      nombre: 'Motorizado de Umbani', telefono: TELEFONO, vehiculo: 'Moto', topeEfectivo: '150',
+      nombre: 'Motorizado de Umbani', telefono: TELEFONO, vehiculo: 'Moto', topeEfectivo: '150', ciudadId: chone,
     }))
     motorizadoId = creado.id
     moto = comoMotorizado(TELEFONO)

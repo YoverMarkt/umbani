@@ -27,6 +27,7 @@ import couriers = require('./repositories/couriers')
 import adminSeguridad = require('./repositories/admin-seguridad')
 import registroDeDinero = require('./repositories/registro-de-dinero')
 import entorno = require('./repositories/entorno')
+import cities = require('./repositories/cities')
 
 // SIN anotación a propósito: aquí TypeScript infiere el tipo REAL de los 20
 // repositorios juntos. Estuvo anotado como `Record<string, unknown>` y eso
@@ -63,6 +64,7 @@ const database = {
   ...adminSeguridad,
   ...registroDeDinero,
   ...entorno,
+  ...cities,
 }
 
 export = database

@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Skeleton } from '@botpanel/ui/components/skeleton'
 import { toast } from 'sonner'
 import CartaDelLocal from './CartaDelLocal'
+import { getCiudades, type Ciudad } from '../ciudades/api'
 import { contarProductos, paraEnviar, preciosQueFaltan, type CartaEnRevision } from './carta'
 import {
   BUSINESS_TYPE_OPTIONS,
@@ -46,6 +47,7 @@ const EMPTY = {
   card_mode: 'apagado' as 'apagado' | 'pruebas' | 'produccion',
   delivery_by: 'local' as 'local' | 'umbani',
   own_fleet: false,
+  city_id: '',
 }
 
 export default function ClientModal({ id, onClose, onSaved }: { id: string | null; onClose: () => void; onSaved: () => void }) {
@@ -89,6 +91,7 @@ export default function ClientModal({ id, onClose, onSaved }: { id: string | nul
         card_mode: c.card_mode ?? 'apagado',
         delivery_by: c.delivery_by ?? 'local',
         own_fleet: c.own_fleet === true,
+        city_id: c.city_id ?? '',
       })
       setCajones(c.marketplace_categories ?? [])
       setLoading(false)
@@ -115,6 +118,12 @@ export default function ClientModal({ id, onClose, onSaved }: { id: string | nul
   const [cajonesDelMenu, setCajonesDelMenu] = useState<adm.CajonDelMenu[]>([])
   useEffect(() => {
     adm.getMarketplaceCategories().then(setCajonesDelMenu).catch(() => setCajonesDelMenu([]))
+  }, [])
+  // Las ciudades donde atiende Umbani (2026-10-05): sin ciudad, el local no
+  // aparece a ningún cliente.
+  const [ciudades, setCiudades] = useState<Ciudad[]>([])
+  useEffect(() => {
+    getCiudades().then(setCiudades).catch(() => setCiudades([]))
   }, [])
 
   const alternarCajon = (code: string) => {
@@ -215,6 +224,8 @@ export default function ClientModal({ id, onClose, onSaved }: { id: string | nul
     if (id) payload.card_mode = f.card_mode === 'apagado' ? null : f.card_mode
     if (id) payload.delivery_by = f.delivery_by
     if (id) payload.own_fleet = f.own_fleet
+    // Al crear y al editar: sin ella no aparece a los clientes.
+    payload.city_id = f.city_id || null
     // Solo si hay algo elegido: una lista vacía en el alta significaría
     // «ninguno», y lo que queremos es «los de su tipo».
     if (cajones.length) payload.marketplace_categories = cajones
@@ -483,6 +494,27 @@ export default function ClientModal({ id, onClose, onSaved }: { id: string | nul
                 vivir en el que le tocaba por su tipo — a las 7 de la tarde el
                 cliente veía «Almuerzos» y se iba creyendo que no había nada
                 para él. */}
+            {/* ── En qué ciudad está (2026-10-05) ───────────────────────
+                El cliente solo ve los locales de SU ciudad, y el motorizado de
+                Umbani solo los pedidos de la suya. Sin ciudad, no aparece. */}
+            <div className="mb-4 rounded-lg border border-border/70 p-3">
+              <Label htmlFor="client-ciudad">Ciudad</Label>
+              <Select value={f.city_id || 'sin'} onValueChange={v => setF(prev => ({ ...prev, city_id: v === 'sin' ? '' : v }))}>
+                <SelectTrigger id="client-ciudad" className="mt-1 w-full sm:max-w-md"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="sin">Sin ciudad (no aparece a los clientes)</SelectItem>
+                  {ciudades.filter(c => c.active || c.id === f.city_id).map(c => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}{c.active ? '' : ' (apagada)'}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {!f.city_id && (
+                <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+                  Sin ciudad, este local no sale en el chat, ni en la búsqueda, ni en la app.
+                </p>
+              )}
+            </div>
+
             {cajonesDelMenu.length > 0 && (
               <div className="mb-4 rounded-lg border border-border/70 p-3">
                 {/* ⚠️ No es un `Label`: no hay un control al que apuntar, son

@@ -186,6 +186,8 @@ export type BusinessDetail = BusinessRow & {
   delivery_by?: 'local' | 'umbani'
   /** Repartidores propios: solo cuenta con `delivery_by = 'local'`. Solo lo toca el superadmin. */
   own_fleet?: boolean
+  /** Su ciudad (2026-10-05). Sin ella no aparece a ningún cliente. */
+  city_id?: string | null
   monthly_rate: number | null
   client_email: string
   credential_status: Record<'ycloud_api_key' | 'ycloud_webhook_secret' | 'meta_token' | 'telegram_bot_token', boolean>

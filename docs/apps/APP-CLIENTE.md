@@ -9,8 +9,15 @@ sesión, las cabeceras y los errores.
 - **Enseña:** «Inicia sesión con WhatsApp», el código grande y el botón «Abrir WhatsApp» (abre `enlace`). Mientras espera: «Esperando tu mensaje…». Si vence: «El código venció, pide otro».
 - **Guarda:** el `token` en almacenamiento seguro (Keychain / Keystore).
 
+## 1b. ¿En qué ciudad estás? (2026-10-05)
+Umbani atiende en varias ciudades (hoy Chone y Portoviejo) y **cada cliente ve solo los locales de la suya**, como en las grandes.
+- **Llama:** `GET /api/v1/yo` → si trae `ciudadId`, ya eligió: sáltate esta pantalla. Si no, `GET /api/v1/ciudades`.
+- **Con UNA sola ciudad** en la lista: elígela sin preguntar y **no la guardes** (el día que haya otra, se le pregunta).
+- **Con varias:** «📍 ¿En qué ciudad estás?» con una opción por ciudad. Al elegir, `PUT /api/v1/yo/ciudad` con `{ ciudadId }` — es la misma que usa el chat de WhatsApp.
+- **Siempre a mano:** un «📍 Chone ▾» arriba del inicio para cambiarla.
+
 ## 2. Inicio: el marketplace
-- **Llama:** `GET /api/v1/marketplace`.
+- **Llama:** `GET /api/v1/marketplace?ciudad={ciudadId}`. ⚠️ Sin `ciudad` responde `400`: un cliente de Chone no puede ver los locales de Portoviejo.
 - **Enseña:** las categorías (`nombre`, `emoji`) y sus locales. `abierto: false` → «Cerrado»; `conCarta: false` → «Sin carta a esta hora» (y `cartaDesde` si viene). `null` = no se sabe: píntalo abierto.
 
 ## 3. El local

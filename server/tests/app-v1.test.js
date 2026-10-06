@@ -123,11 +123,43 @@ describe('las rutas con sesión', () => {
     expect((await correr(router, 'post', ruta, { headers, params: { slug: 'x' } })).status).toBe(404)
   })
 
-  it('el marketplace sale con sus categorías y locales', async () => {
-    vi.spyOn(db, 'getMarketplaceCategories').mockResolvedValue([{ code: 'pizzas', label: 'Pizzerías', emoji: '🍕', locales: 1 }])
-    vi.spyOn(db, 'getMarketplaceBusinesses').mockResolvedValue([{ id: 'b', slug: 'burger-brava', name: 'Burger Brava', type: 'x', prep_min: 20 }])
-    const r = await correr(router, 'get', '/api/v1/marketplace')
+  // ── Las ciudades (2026-10-05) ──────────────────────────────────────────
+  const CHONE = '11111111-2222-4333-8444-555555555555'
+  const PORTOVIEJO = '22222222-3333-4444-8555-666666666666'
+  const FILAS = [
+    { city_id: CHONE, city_name: 'Chone', code: 'pizzas', label: 'Pizzerías', emoji: '🍕', locales: 1 },
+    { city_id: PORTOVIEJO, city_name: 'Portoviejo', code: 'almuerzos', label: 'Almuerzos', emoji: '🍱', locales: 1 },
+  ]
+
+  it('las ciudades: solo las que tienen locales, una vez cada una', async () => {
+    vi.spyOn(db, 'getMarketplaceCategories').mockResolvedValue([...FILAS, { ...FILAS[0], code: 'cafes' }])
+    const r = await correr(router, 'get', '/api/v1/ciudades')
+    expect(r.body.ciudades).toEqual([{ id: CHONE, nombre: 'Chone' }, { id: PORTOVIEJO, nombre: 'Portoviejo' }])
+  })
+
+  it('el marketplace es de UNA ciudad, y sin ella no se enseña nada', async () => {
+    vi.spyOn(db, 'getMarketplaceCategories').mockResolvedValue(FILAS)
+    const locales = vi.spyOn(db, 'getMarketplaceBusinesses').mockResolvedValue([{ id: 'b', slug: 'burger-brava', name: 'Burger Brava', type: 'x', prep_min: 20 }])
+    expect((await correr(router, 'get', '/api/v1/marketplace')).status).toBe(400)
+    const r = await correr(router, 'get', '/api/v1/marketplace', { query: { ciudad: CHONE } })
+    expect(r.body.categorias).toHaveLength(1)
     expect(r.body.categorias[0]).toMatchObject({ codigo: 'pizzas', locales: [{ slug: 'burger-brava', abierto: null }] })
+    expect(locales).toHaveBeenCalledWith('pizzas', CHONE)
+  })
+
+  it('la ciudad del cliente la guarda SU teléfono, y es la misma que usa el chat', async () => {
+    vi.spyOn(db, 'resolveMarketplaceCustomer').mockResolvedValue({ id: 'cli-1', phone: '593999111222', name: null, city_id: null })
+    const getCity = vi.spyOn(db, 'getCity').mockResolvedValue(null)
+    const guardar = vi.spyOn(db, 'setCustomerCity').mockResolvedValue()
+    const ruta = '/api/v1/yo/ciudad'
+    expect((await correr(router, 'put', ruta, { body: { ciudadId: CHONE } })).status).toBe(401)
+    expect((await correr(router, 'put', ruta, { headers: conSesion(), body: { ciudadId: 'x' } })).status).toBe(400)
+    expect((await correr(router, 'put', ruta, { headers: conSesion(), body: { ciudadId: CHONE } })).status).toBe(404)
+    getCity.mockResolvedValue({ id: CHONE, name: 'Chone', active: true })
+    const r = await correr(router, 'put', ruta, { headers: conSesion(), body: { ciudadId: CHONE } })
+    expect(r.body).toEqual({ ciudadId: CHONE, nombre: 'Chone' })
+    expect(guardar).toHaveBeenCalledWith('cli-1', CHONE)
+    expect(db.resolveMarketplaceCustomer).toHaveBeenCalledWith('593999111222')
   })
 })
 

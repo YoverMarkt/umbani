@@ -29,6 +29,8 @@ export interface BusinessRecord {
   delivery_by?: string | null
   /** Repartidores propios encendidos por el superadmin (2026-10-04). Ver `lib/flota-propia.ts`. */
   own_fleet?: boolean | null
+  /** Su ciudad (2026-10-05). Sin ella no aparece a ningún cliente. */
+  city_id?: string | null
   type?: string | null
   description?: string | null
   hours?: string | null

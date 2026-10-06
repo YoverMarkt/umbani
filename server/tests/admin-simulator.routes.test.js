@@ -83,7 +83,7 @@ describe('simulador del marketplace', () => {
     // prueba se cuelga cinco segundos.
     vi.spyOn(db, 'getSchedulesFor').mockResolvedValue(new Map())
     vi.spyOn(db, 'getMarketplaceCategories').mockResolvedValue([
-      { code: 'pizzerias', label: 'Pizzerías', emoji: '🍕', sort: 10, locales: 1 },
+      { city_id: 'ciudad-chone', city_name: 'Chone', code: 'pizzerias', label: 'Pizzerías', emoji: '🍕', sort: 10, locales: 1 },
     ])
   }
 
@@ -233,7 +233,7 @@ describe('simulador del marketplace', () => {
     // prueba se cuelga cinco segundos.
     vi.spyOn(db, 'getSchedulesFor').mockResolvedValue(new Map())
     vi.spyOn(db, 'getMarketplaceCategories').mockResolvedValue([
-      { code: 'pizzerias', label: 'Pizzerías', emoji: '🍕', sort: 10, locales: 1 },
+      { city_id: 'ciudad-chone', city_name: 'Chone', code: 'pizzerias', label: 'Pizzerías', emoji: '🍕', sort: 10, locales: 1 },
     ])
     vi.spyOn(db, 'getMarketplaceBusinesses').mockResolvedValue([
       { id: 'biz-1', slug: 'monster-pizza', name: 'Monster Pizza', type: 'pizzería', prep_min: 30 },

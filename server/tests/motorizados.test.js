@@ -140,11 +140,25 @@ describe('el superadmin', () => {
     expect((await correr(adminMoto, 'post', ruta, { headers: admin(), body: { telefono: '593991234567', nombre: 'L' } })).status).toBe(400)
     expect((await correr(adminMoto, 'post', ruta, { headers: admin(), body: { telefono: '593991234567', nombre: 'Luis', flotaLocalId: 'x' } })).status).toBe(400)
     expect((await correr(adminMoto, 'post', ruta, { headers: admin(), body: { telefono: '593991234567', nombre: 'Luis', topeEfectivo: '-5' } })).status).toBe(400)
+    // El de Umbani nace con su ciudad (2026-10-05): sin ella no vería ningún
+    // pedido. Una ciudad que no existe, o apagada, tampoco vale.
+    const CHONE = '11111111-2222-4333-8444-555555555555'
+    const ciudad = vi.spyOn(db, 'getCity').mockResolvedValue(null)
     const crear = vi.spyOn(db, 'createCourier').mockResolvedValue({ id: 'm1' })
-    expect((await correr(adminMoto, 'post', ruta, { headers: admin(), body: { telefono: '+593 99 123 4567', nombre: 'Luis', topeEfectivo: '150' } })).status).toBe(201)
-    expect(crear.mock.calls[0][0]).toMatchObject({ phone: '+593991234567', cashLimitCents: 15000, fleetBusinessId: null })
+    expect((await correr(adminMoto, 'post', ruta, { headers: admin(), body: { telefono: '593991234567', nombre: 'Luis' } })).status).toBe(400)
+    expect((await correr(adminMoto, 'post', ruta, { headers: admin(), body: { telefono: '593991234567', nombre: 'Luis', ciudadId: CHONE } })).status).toBe(400)
+    ciudad.mockResolvedValue({ id: CHONE, name: 'Chone', active: false })
+    expect((await correr(adminMoto, 'post', ruta, { headers: admin(), body: { telefono: '593991234567', nombre: 'Luis', ciudadId: CHONE } })).status).toBe(400)
+    expect(crear).not.toHaveBeenCalled()
+    ciudad.mockResolvedValue({ id: CHONE, name: 'Chone', active: true })
+    expect((await correr(adminMoto, 'post', ruta, { headers: admin(), body: { telefono: '+593 99 123 4567', nombre: 'Luis', topeEfectivo: '150', ciudadId: CHONE } })).status).toBe(201)
+    expect(crear.mock.calls[0][0]).toMatchObject({ phone: '+593991234567', cashLimitCents: 15000, fleetBusinessId: null, cityId: CHONE })
+    // El de la flota de un local no la necesita: lleva solo los de su local.
+    const local = '22222222-3333-4444-8555-666666666666'
+    expect((await correr(adminMoto, 'post', ruta, { headers: admin(), body: { telefono: '593991234568', nombre: 'Ana', flotaLocalId: local } })).status).toBe(201)
+    expect(crear.mock.calls[1][0]).toMatchObject({ fleetBusinessId: local, cityId: null })
     crear.mockRejectedValue(Object.assign(new Error('dup'), { code: '23505' }))
-    expect((await correr(adminMoto, 'post', ruta, { headers: admin(), body: { telefono: '593991234567', nombre: 'Luis' } })).status).toBe(409)
+    expect((await correr(adminMoto, 'post', ruta, { headers: admin(), body: { telefono: '593991234567', nombre: 'Luis', ciudadId: CHONE } })).status).toBe(409)
   })
 
   it('lista, activa, marca liquidaciones y retiene carreras con motivo', async () => {

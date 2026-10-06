@@ -289,9 +289,11 @@ export function crearCanario(deps: CanarioDeps) {
       // activo que NO aparezca en ninguna categoría es invisible para quien
       // compra, y eso es justo un fallo que hay que cazar, no un caso que
       // saltarse listándolo por otro camino.
+      // ⚠️ Una fila por CIUDAD y categoría (2026-10-05): cada local se revisa
+      // en su ciudad, como lo ve quien vive allí.
       const base = deps.database as {
-        getMarketplaceCategories(): Promise<Array<{ code?: string; label?: string }>>
-        getMarketplaceBusinesses(codigo: string): Promise<Array<Record<string, unknown>>>
+        getMarketplaceCategories(): Promise<Array<{ code?: string; label?: string; city_id?: string }>>
+        getMarketplaceBusinesses(codigo: string, ciudad?: string | null): Promise<Array<Record<string, unknown>>>
       }
       const categorias = await base.getMarketplaceCategories()
       let locales = 0
@@ -299,7 +301,7 @@ export function crearCanario(deps: CanarioDeps) {
 
       for (const categoria of categorias || []) {
         if (!categoria.code || !categoria.label) continue
-        const negocios = await base.getMarketplaceBusinesses(categoria.code).catch(() => [])
+        const negocios = await base.getMarketplaceBusinesses(categoria.code, categoria.city_id ?? null).catch(() => [])
         for (const negocio of negocios || []) {
           locales += 1
           const visita = await revisarLocal(

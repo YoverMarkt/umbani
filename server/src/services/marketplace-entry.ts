@@ -46,6 +46,11 @@ import {
   RESPUESTA_COMPROBANTE_CUADRA,
   respuestaComprobanteNoCuadra,
 } from './payment-proof-inbox'
+import {
+  categoriasDe, ciudadEfectiva, ciudadEscrita, ciudadesDe, conLaCiudad, esComandoCiudad,
+  preguntarCiudad,
+  type CategoriaEnCiudad, type CiudadConLocales,
+} from './marketplace-ciudad'
 
 /**
  * LA ENTRADA DEL MARKETPLACE
@@ -94,7 +99,14 @@ export interface MarketplaceEntryDatabase {
     consulta?: string | null
     resultados?: number | null
   }): Promise<void>
-  resolveMarketplaceCustomer(phone: string): Promise<{ id: string; name: string | null }>
+  /** Con la ciudad que eligió (2026-10-05), si eligió alguna. */
+  resolveMarketplaceCustomer(phone: string): Promise<{ id: string; name: string | null; city_id?: string | null }>
+  /**
+   * Anota la ciudad que eligió. ⚠️ ESCRIBE: el canario la sustituye. Opcional:
+   * sin ella se le enseña la ciudad elegida este turno y se le vuelve a
+   * preguntar en el siguiente, que es fallar hacia preguntar de más.
+   */
+  setCustomerCity?(customerId: string, cityId: string): Promise<void>
   getConversation(customerId: string): Promise<{
     current_state: string
     selected_business_id: string | null
@@ -123,12 +135,16 @@ export interface MarketplaceEntryDatabase {
     },
     expectedVersion?: number,
   ): Promise<{ conflicto: boolean }>
-  getMarketplaceCategories(): Promise<MarketplaceCategory[]>
-  getMarketplaceBusinesses(code: string): Promise<MarketplaceBusiness[]>
+  /** Una fila por ciudad y categoría (2026-10-05). Ver `marketplace-ciudad.ts`. */
+  getMarketplaceCategories(): Promise<CategoriaEnCiudad[]>
+  /** Sin ciudad, ninguno: la base falla cerrado. La ata `conLaCiudad`. */
+  getMarketplaceBusinesses(code: string, cityId?: string | null): Promise<MarketplaceBusiness[]>
   getBusinessById(id: string): Promise<{
     id: string
     name: string
     slug: string | null
+    /** La ciudad del local: la de quien está a mitad de un pedido en él. */
+    city_id?: string | null
     storefront_enabled?: boolean | null
     takes_orders?: boolean | null
     /** El tipo decide si se pide en el chat o por la mini app. */
@@ -162,6 +178,7 @@ export interface MarketplaceEntryDatabase {
   searchMarketplaceBusinesses?(
     query: string,
     limite?: number,
+    cityId?: string | null,
   ): Promise<{ id: string; slug: string; name: string; type: string }[]>
   /**
    * ¿Lo que escribió es comida CONOCIDA, aunque hoy no la venda nadie?
@@ -275,10 +292,46 @@ const ESTADOS_DEL_CHAT_RETIRADO = new Set([
 /** La vista guardada, o la portada si es el primer mensaje. */
 const vistaDe = (flowState: Record<string, unknown> | null): MarketplaceView => {
   const guardada = flowState?.vista as MarketplaceView | undefined
-  if (guardada && typeof guardada.vista === 'string' && typeof guardada.pagina === 'number') {
+  // La pregunta de ciudad la consume `atenderLaCiudad`; para todo lo demás, la
+  // pantalla en la que está es la portada.
+  if (guardada && typeof guardada.vista === 'string' && typeof guardada.pagina === 'number'
+    && guardada.vista !== 'ciudades') {
     return guardada
   }
   return { vista: 'categorias', pagina: 0 }
+}
+
+/**
+ * Lo que hace falta para contestar: la conversación, las categorías de todas
+ * las ciudades y el local elegido.
+ *
+ * ⚠️ A LA VEZ, no una tras otra (2026-09-25): son lecturas independientes, y
+ * cada ida a la base se paga entera. El local sí depende de la conversación,
+ * así que se encadena a ella sin esperar a las categorías. Las categorías
+ * vienen de TODAS las ciudades en la misma consulta (2026-10-05): de ahí
+ * salen también las ciudades con locales, sin una ida más.
+ *
+ * ⚠️ Pero DESPUÉS del bloqueo y del techo, nunca antes: a quien está
+ * silenciado no se le gasta ni una consulta más. Lo fija
+ * `techo-del-marketplace.test.js`, y es una de las capas anti-molestias.
+ *
+ * ⚠️ El local NO lleva `.catch` —a diferencia de `devolverElEnlace`— y la
+ * asimetría es deliberada. Si aquí se fallara «abierto», `negocioActual`
+ * quedaría en `null`, el paso 4 no entraría y quien tiene un pedido en curso
+ * podría abrir OTRO: el candado de «un pedido a la vez» se saltaría justo
+ * cuando la base no está para impedirlo. Propagando, el webhook reintenta
+ * cuando la base vuelve — no se pierde el mensaje y el candado aguanta.
+ */
+async function leerElTurno(database: MarketplaceEntryDatabase, customerId: string) {
+  const conversacionLeida = database.getConversation(customerId)
+  const [conversation, filas, negocioActual] = await Promise.all([
+    conversacionLeida,
+    database.getMarketplaceCategories(),
+    conversacionLeida.then(leida => (leida?.selected_business_id
+      ? database.getBusinessById(leida.selected_business_id)
+      : null)),
+  ])
+  return { conversation, filas, negocioActual }
 }
 
 /**
@@ -554,31 +607,14 @@ export async function handleMarketplaceMessage(
   // Lo de la app —su código, o CERRAR SESIÓN—: DESPUÉS de los tres frenos y ANTES del menú.
   if (await atenderLaApp(deps, text, from, customer.id)) return
 
-  // ⚠️ A LA VEZ, no una tras otra (2026-09-25): conversación, categorías y el
-  // local elegido son lecturas independientes, y cada ida a la base se paga
-  // entera. El local sí depende de la conversación, así que se encadena a ella
-  // sin esperar a las categorías.
-  //
-  // ⚠️ Pero DESPUÉS del bloqueo y del techo, nunca antes: a quien está
-  // silenciado no se le gasta ni una consulta más. Lo fija
-  // `techo-del-marketplace.test.js`, y es una de las capas anti-molestias.
-  //
-  // ⚠️ El local NO lleva `.catch` —a diferencia de `devolverElEnlace`— y la asimetría es
-  // deliberada. Si aquí se fallara «abierto», `negocioActual` quedaría en
-  // `null`, el paso 4 no entraría y quien tiene un pedido en curso podría abrir
-  // OTRO: el candado de «un pedido a la vez» se saltaría justo cuando la base
-  // no está para impedirlo. Propagando, el webhook reintenta cuando la base
-  // vuelve — no se pierde el mensaje y el candado aguanta. El «falla abierto»
-  // del bloqueo sí vale, porque equivocarse ahí solo atiende a alguien a quien
-  // se debía ignorar.
-  const conversacionLeida = database.getConversation(customer.id)
-  const [conversation, categorias, negocioActual] = await Promise.all([
-    conversacionLeida,
-    database.getMarketplaceCategories(),
-    conversacionLeida.then(leida => (leida?.selected_business_id
-      ? database.getBusinessById(leida.selected_business_id)
-      : null)),
-  ])
+  // Lo que hace falta para contestar, leído A LA VEZ y DESPUÉS de los frenos:
+  // `leerElTurno`. Y la ciudad del cliente (2026-10-05), que ata el catálogo
+  // para todo lo que viene después: `marketplace-ciudad.ts`.
+  const { conversation, filas, negocioActual } = await leerElTurno(database, customer.id)
+  const ciudades = ciudadesDe(filas)
+  const ciudad = ciudadEfectiva(ciudades, customer.city_id, negocioActual?.city_id)
+  const categorias = categoriasDe(filas, ciudad, ciudades.length > 1)
+  deps = conLaCiudad(deps, ciudad)
 
   // ── Solo vale el ÚLTIMO mensaje (2026-09-26) ───────────────────────
   //
@@ -611,9 +647,9 @@ export async function handleMarketplaceMessage(
   if (toque.vieja) deps = conLaAdvertenciaAnotada(deps, customer.id)
   const { send } = deps
 
-  // Un marketplace sin un solo local disponible no puede ofrecer nada, y una
-  // lista vacía es una calle sin salida que además cuesta un mensaje.
-  if (!categorias.length) {
+  // Un marketplace sin un solo local disponible —en NINGUNA ciudad— no puede
+  // ofrecer nada, y una lista vacía es una calle sin salida que cuesta un mensaje.
+  if (!ciudades.length) {
     await send(
       '🙏 Ahora mismo no hay locales disponibles. Vuelve a escribirnos en un rato.',
       [],
@@ -632,6 +668,12 @@ export async function handleMarketplaceMessage(
     esperandoComprobante: conversation?.current_state === 'esperando_comprobante',
   }
   const vista = vistaDe(conversation?.flow_state ?? null)
+
+  // ── 0d. La ciudad (2026-10-05): antes que MENÚ, que sin ella no tiene menú.
+  if (await atenderLaCiudad(deps, text, customer.id, {
+    filas, ciudades, ciudad, negocio: estado.negocio, comprobante: esMarcadorDeComprobante,
+    flowState: conversation?.flow_state, version: conversation?.version,
+  })) return
 
   // ── 1. MENÚ, antes que nada ────────────────────────────────────────
   //
@@ -1185,6 +1227,80 @@ async function atenderInsulto(
     [],
   )
   return true
+}
+
+/**
+ * La ciudad del cliente (2026-10-05). La regla de qué ciudad se le enseña vive
+ * en `marketplace-ciudad.ts`; aquí se le pregunta y se anota lo que elige.
+ *
+ * Contesta y devuelve `true` en tres casos:
+ *   · escribió CIUDAD («cambiar de ciudad»…): se le enseña la lista;
+ *   · eligió una —tocándola o escribiendo su nombre— cuando se le preguntó o
+ *     cuando no tenía ninguna: se anota y se le da la bienvenida con el menú
+ *     de ESA ciudad;
+ *   · no tiene ciudad y hay varias con locales: se le pregunta.
+ *
+ * ⚠️ Va ANTES que MENÚ porque MENÚ pinta el menú, y sin ciudad no hay nada
+ * que pintar. Y DESPUÉS de la pausa y del techo: a quien está silenciado no se
+ * le pregunta nada.
+ *
+ * ⚠️ Un COMPROBANTE nunca se intercepta: quien acaba de pagar no puede
+ * quedarse sin respuesta por una pregunta de ciudad. En la práctica no pasa
+ * —quien paga tiene un local elegido y su ciudad sale de él—, pero esta puerta
+ * no puede depender de eso.
+ *
+ * ⚠️ Con un local elegido, CIUDAD no le cambia el menú por debajo del pedido:
+ * se le dice cómo salir primero. Soltar el local aquí se saltaría lo que MENÚ
+ * cuida al salir (el pedido sin pagar, el comprobante pendiente).
+ */
+async function atenderLaCiudad(
+  deps: MarketplaceEntryDeps,
+  text: string,
+  customerId: string,
+  contexto: {
+    filas: CategoriaEnCiudad[]
+    ciudades: CiudadConLocales[]
+    ciudad: CiudadConLocales | null
+    negocio: { name: string } | null
+    comprobante: boolean
+    flowState: Record<string, unknown> | null | undefined
+    version: number | undefined
+  },
+): Promise<boolean> {
+  const { ciudades, ciudad, negocio } = contexto
+  // ⚠️ También el que NO cuadra: `esMarcadorDeComprobante` no lo incluye, y la
+  // prueba lo cazó preguntándole la ciudad a quien acababa de pagar.
+  if (contexto.comprobante || esComprobanteQueNoCuadra(text)) return false
+  const responder = async (respuesta: MarketplaceReply) => {
+    await guardar(deps, customerId, contexto.version, respuesta, { soltarLocal: false, conservarEstado: true })
+    await deps.send(respuesta.reply, respuesta.options)
+    return true
+  }
+
+  if (esComandoCiudad(text)) {
+    if (negocio) {
+      await deps.send(`Estás en el pedido de *${negocio.name}*. Para cambiar de ciudad, escribe *MENÚ* y después *CIUDAD*.`, [])
+      return true
+    }
+    return responder(preguntarCiudad(ciudades))
+  }
+
+  const enLaPregunta = (contexto.flowState?.vista as MarketplaceView | undefined)?.vista === 'ciudades'
+  const elegida = (enLaPregunta || !ciudad) && !negocio ? ciudadEscrita(text, ciudades) : null
+  if (elegida) {
+    // Falla ABIERTO: sin anotarla se le enseña igual, y el próximo mensaje se
+    // le vuelve a preguntar — mejor preguntar de más que dejarle sin menú.
+    await deps.database.setCustomerCity?.(customerId, elegida.id).catch(() => undefined)
+    deps.logger?.log(`📍 [marketplace] eligió ${elegida.nombre}`)
+    apuntarPaso(deps, { customerId, tipo: 'menu' })
+    return responder(verCategorias(categoriasDe(contexto.filas, elegida, ciudades.length > 1), 0, true))
+  }
+
+  // ⚠️ Con un local elegido NUNCA se pregunta, aunque no se sepa la ciudad
+  // (un local que se quedó sin ella): se le dejaría preguntando sin poder
+  // elegir, y ese pedido no necesita el menú. MENÚ lo saca de ahí.
+  if (!ciudad && !negocio) return responder(preguntarCiudad(ciudades))
+  return false
 }
 
 /**

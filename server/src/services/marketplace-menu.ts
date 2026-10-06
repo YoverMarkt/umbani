@@ -24,6 +24,13 @@ export interface MarketplaceCategory {
   label: string
   emoji: string | null
   locales: number
+  /**
+   * La ciudad de estas categorías y si hay otras (2026-10-05). Viaja en cada
+   * categoría para que TODO sitio que pinta el menú ponga el pie «📍 Estás en
+   * Chone» sin acordarse. Ver `services/marketplace-ciudad.ts`.
+   */
+  ciudad?: string
+  otrasCiudades?: boolean
 }
 
 export interface MarketplaceBusiness {
@@ -59,7 +66,7 @@ export interface MarketplaceBusiness {
 
 /** Dónde está el cliente dentro del menú. Se guarda en `flow_state`. */
 export interface MarketplaceView {
-  vista: 'categorias' | 'negocios' | 'busqueda' | 'confirmando_reinicio' | 'abiertos'
+  vista: 'categorias' | 'negocios' | 'busqueda' | 'confirmando_reinicio' | 'abiertos' | 'ciudades'
   categoria?: string
   /**
    * Las categorías que se le enseñaron al preguntar «¿hay locales abiertos?».
@@ -555,10 +562,21 @@ export function verCategorias(
   }
   const { hayMas, opciones } = paginar(categorias, pagina, etiquetaCategoria)
   return {
-    reply: `${cabecera(saludar)}${PREGUNTA}`,
+    reply: `${cabecera(saludar)}${PREGUNTA}${pieDeCiudad(categorias)}`,
     options: [...opciones, ...(hayMas ? [VER_MAS] : [])],
     vista: { vista: 'categorias', pagina },
   }
+}
+
+/**
+ * El pie del menú cuando hay más de una ciudad: dónde está y cómo cambiarla.
+ * Con una sola ciudad no se dice nada: no hay nada que cambiar.
+ */
+export function pieDeCiudad(categorias: MarketplaceCategory[]): string {
+  const primera = categorias[0]
+  return primera?.ciudad && primera.otrasCiudades
+    ? `\n\n📍 Estás en *${primera.ciudad}*. Para ver otra ciudad, escribe *CIUDAD*.`
+    : ''
 }
 
 /** Los locales de una categoría. */

@@ -580,6 +580,7 @@ export type Database = {
           calcom_link: string | null
           card_mode: string | null
           chat_mode: string
+          city_id: string | null
           cover_url: string | null
           created_at: string | null
           delivery_by: string
@@ -637,6 +638,7 @@ export type Database = {
           calcom_link?: string | null
           card_mode?: string | null
           chat_mode?: string
+          city_id?: string | null
           cover_url?: string | null
           created_at?: string | null
           delivery_by?: string
@@ -694,6 +696,7 @@ export type Database = {
           calcom_link?: string | null
           card_mode?: string | null
           chat_mode?: string
+          city_id?: string | null
           cover_url?: string | null
           created_at?: string | null
           delivery_by?: string
@@ -740,6 +743,41 @@ export type Database = {
           ycloud_number?: string | null
           ycloud_webhook_endpoint_id?: string | null
           ycloud_webhook_secret?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "businesses_city_id_fkey"
+            columns: ["city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cities: {
+        Row: {
+          active: boolean
+          created_at: string
+          id: string
+          name: string
+          province: string | null
+          sort: number
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          name: string
+          province?: string | null
+          sort?: number
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          name?: string
+          province?: string | null
+          sort?: number
         }
         Relationships: []
       }
@@ -962,6 +1000,7 @@ export type Database = {
           active: boolean
           available: boolean
           cash_limit_cents: number
+          city_id: string | null
           created_at: string
           fleet_business_id: string | null
           id: string
@@ -974,6 +1013,7 @@ export type Database = {
           active?: boolean
           available?: boolean
           cash_limit_cents?: number
+          city_id?: string | null
           created_at?: string
           fleet_business_id?: string | null
           id?: string
@@ -986,6 +1026,7 @@ export type Database = {
           active?: boolean
           available?: boolean
           cash_limit_cents?: number
+          city_id?: string | null
           created_at?: string
           fleet_business_id?: string | null
           id?: string
@@ -995,6 +1036,13 @@ export type Database = {
           vehicle?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "couriers_city_id_fkey"
+            columns: ["city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "couriers_fleet_business_id_fkey"
             columns: ["fleet_business_id"]
@@ -1080,6 +1128,7 @@ export type Database = {
           blocked_kind: string | null
           blocked_reason: string | null
           blocked_until: string | null
+          city_id: string | null
           created_at: string
           id: string
           insult_warned_at: string | null
@@ -1094,6 +1143,7 @@ export type Database = {
           blocked_kind?: string | null
           blocked_reason?: string | null
           blocked_until?: string | null
+          city_id?: string | null
           created_at?: string
           id?: string
           insult_warned_at?: string | null
@@ -1108,6 +1158,7 @@ export type Database = {
           blocked_kind?: string | null
           blocked_reason?: string | null
           blocked_until?: string | null
+          city_id?: string | null
           created_at?: string
           id?: string
           insult_warned_at?: string | null
@@ -1116,7 +1167,15 @@ export type Database = {
           unblock_notice_pending?: boolean
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "customers_city_id_fkey"
+            columns: ["city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       marketplace_categories: {
         Row: {
@@ -3910,7 +3969,7 @@ export type Database = {
         }[]
       }
       marketplace_buscar_negocios: {
-        Args: { p_limite?: number; p_query: string }
+        Args: { p_city_id?: string; p_limite?: number; p_query: string }
         Returns: {
           id: string
           motivo: string
@@ -3960,6 +4019,8 @@ export type Database = {
       marketplace_categories_disponibles: {
         Args: never
         Returns: {
+          city_id: string
+          city_name: string
           code: string
           emoji: string
           label: string
@@ -3976,7 +4037,7 @@ export type Database = {
         }[]
       }
       marketplace_negocios_de_categoria: {
-        Args: { p_code: string }
+        Args: { p_city_id: string; p_code: string }
         Returns: {
           carta_desde: string
           con_carta: boolean

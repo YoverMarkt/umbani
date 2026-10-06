@@ -194,6 +194,7 @@ Cada una existe porque algo falló. Lo que parece complejidad de más suele ser 
 - **La tarifa de servicio (dentro de la parte de Umbani, la lee la base, congelada)** → [DECISIONES.md](DECISIONES.md#la-tarifa-de-servicio)
 - **Las apps Flutter: usan la API de la tienda, login con WhatsApp, el contrato vigilado** → [docs/apps/](docs/apps/README.md) y [DECISIONES.md](DECISIONES.md#la-api-de-las-apps-flutter)
 - **Los motorizados (tope de efectivo, carrera retenida, su liquidación, apagado por defecto)** → [DECISIONES.md](DECISIONES.md#los-motorizados)
+- **Las ciudades (Chone y Portoviejo): sin ciudad un local no aparece, falla cerrado, el motorizado reparte en la suya** → [DECISIONES.md](DECISIONES.md#las-ciudades)
 - **Cuánto tarda el negocio (prep_time)** → [DECISIONES.md](DECISIONES.md#cuánto-tarda-el-negocio)
 - **Pedidos programados (retirados)** → [DECISIONES.md](DECISIONES.md#pedidos-programados-retirados-el-2026-08-07)
 - **Cómo se suma el margen al precio** → [DECISIONES.md](DECISIONES.md#el-margen-se-suma-al-precio-no-se-le-quita-al-dueño)

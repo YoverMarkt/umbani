@@ -147,7 +147,7 @@ const armar = (conversacion = {}, { falla = false } = {}) => {
       flow_state: { vista: { vista: 'categorias', pagina: 0 } }, version: 1, ...conversacion,
     })),
     advanceConversation: vi.fn(async () => ({ conflicto: false })),
-    getMarketplaceCategories: vi.fn(async () => [{ code: 'pizzerias', label: 'Pizzerías', emoji: '🍕', locales: 1 }]),
+    getMarketplaceCategories: vi.fn(async () => [{ city_id: 'ciudad-chone', city_name: 'Chone', code: 'pizzerias', label: 'Pizzerías', emoji: '🍕', locales: 1 }]),
     getMarketplaceBusinesses: vi.fn(async () => []),
     verifyAppLoginCode: vi.fn(async () => true),
     cerrarSesionesDeLaApp: vi.fn(async () => { if (falla) throw new Error('base caída') }),

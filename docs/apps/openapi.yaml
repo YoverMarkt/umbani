@@ -155,15 +155,58 @@ paths:
         '410': { description: El código venció o ya se usó }
   /api/v1/yo:
     get:
-      summary: El teléfono de la sesión
+      summary: El teléfono de la sesión y la ciudad que eligió (si eligió alguna)
       security: [{ sesionApp: [] }]
       responses:
-        '200': { description: '{ telefono }' }
+        '200': { description: '{ telefono, ciudadId } — ciudadId null si nunca eligió' }
+        '401': { description: Sesión vencida }
+  /api/v1/ciudades:
+    get:
+      summary: Las ciudades con al menos un local (la app pregunta «¿En qué ciudad estás?»)
+      description: Con UNA sola, la app la elige sin preguntar. Con varias, pregunta y guarda la elegida con PUT /api/v1/yo/ciudad.
+      responses:
+        '200':
+          description: '{ ciudades: [{ id, nombre }] }'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ciudades:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        nombre: { type: string }
+  /api/v1/yo/ciudad:
+    put:
+      summary: Guarda la ciudad del cliente (la misma que usa el chat de WhatsApp)
+      security: [{ sesionApp: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ciudadId]
+              properties:
+                ciudadId: { type: string, format: uuid }
+      responses:
+        '200': { description: '{ ciudadId, nombre }' }
+        '400': { description: Ciudad no válida }
+        '404': { description: No atendemos en esa ciudad }
         '401': { description: Sesión vencida }
   /api/v1/marketplace:
     get:
-      summary: Categorías y sus locales
+      summary: Categorías y sus locales de UNA ciudad
+      parameters:
+        - name: ciudad
+          in: query
+          required: true
+          description: El id de /api/v1/ciudades. Sin él responde 400 (un cliente de Chone no puede ver los locales de Portoviejo).
+          schema: { type: string, format: uuid }
       responses:
+        '400': { description: Falta la ciudad }
         '200':
           description: Lista para la pantalla de inicio
           content:

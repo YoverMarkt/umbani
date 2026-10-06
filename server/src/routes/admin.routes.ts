@@ -10,6 +10,7 @@ import pricingRouter = require('./admin-pricing.routes')
 import cartaRouter = require('./admin-carta.routes')
 import pagosRouter = require('./admin-pagos.routes')
 import motorizadosRouter = require('./admin-motorizados.routes')
+import ciudadesRouter = require('./admin-ciudades.routes')
 
 const router = createRouter()
 
@@ -24,5 +25,6 @@ router.use(pricingRouter)
 router.use(cartaRouter)
 router.use(pagosRouter)
 router.use(motorizadosRouter)
+router.use(ciudadesRouter)
 
 export = router

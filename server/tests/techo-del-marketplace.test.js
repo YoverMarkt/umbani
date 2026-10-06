@@ -13,7 +13,7 @@ import { describe, expect, it, vi } from 'vitest'
 // Estas pruebas ejercen la función REAL (`handleMarketplaceMessage`), no leen
 // el archivo: lo que importa es qué pasa cuando llega el mensaje.
 
-const CATEGORIAS = [{ code: 'pizzerias', label: 'Pizzerías', emoji: '🍕', locales: 1 }]
+const CATEGORIAS = [{ city_id: 'ciudad-chone', city_name: 'Chone', code: 'pizzerias', label: 'Pizzerías', emoji: '🍕', locales: 1 }]
 const LOCAL = { id: 'biz-1', slug: 'monster-pizza', name: 'Monster Pizza', type: 'pizzería', prep_min: 30 }
 
 const armar = ({ permitido = true, bloqueado = false, avisaDelBloqueo = false } = {}) => {

@@ -32,10 +32,17 @@ router.post('/api/admin/motorizados', auth.authAdmin, async (req, res) => {
   if (name.length < 2 || name.length > 80) return res.status(400).json({ error: 'Escribe el nombre' })
   if (flota && !UUID.test(flota)) return res.status(400).json({ error: 'Local no válido' })
   if (tope != null && (!Number.isInteger(tope) || tope < 0 || tope > 100000)) return res.status(400).json({ error: 'Tope de efectivo no válido' })
+  // El de Umbani nace con su ciudad (2026-10-05): sin ella no vería ningún
+  // pedido. El de la flota de un local no la necesita: lleva solo los suyos.
+  const ciudadId = flota ? null : String(body.ciudadId || '').trim()
+  if (ciudadId !== null) {
+    const ciudad = UUID.test(ciudadId) ? await db.getCity(ciudadId) : null
+    if (!ciudad || !ciudad.active) return res.status(400).json({ error: 'Elige la ciudad donde reparte' })
+  }
   try {
     const creado = await db.createCourier({
       phone, name, vehicle: String(body.vehiculo || '').trim() || null,
-      fleetBusinessId: flota || null, cashLimitCents: tope ?? undefined,
+      fleetBusinessId: flota || null, cityId: ciudadId, cashLimitCents: tope ?? undefined,
     })
     return res.status(201).json(creado)
   } catch (error) {

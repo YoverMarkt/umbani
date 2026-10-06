@@ -27,7 +27,7 @@ function armar({ respuestas, escrituras = [], productos = [{ id: 'p1', name: 'Al
     // ve y, dentro de cada una, los locales que la base dice que tiene. No
     // parte de `getAllBusinesses` a propósito — un local que no aparezca en
     // ninguna categoría es invisible para quien compra, y eso es un fallo.
-    getMarketplaceCategories: async () => ([{ code: 'almuerzos', label: 'Almuerzos' }]),
+    getMarketplaceCategories: async () => ([{ city_id: 'ciudad-chone', city_name: 'Chone', code: 'almuerzos', label: 'Almuerzos' }]),
     getMarketplaceBusinesses: async () => ([NEGOCIO]),
     // Desde el 2026-09-15 todo local pide por su mini app, así que lo que se
     // vigila es el CATÁLOGO que lee la tienda.
