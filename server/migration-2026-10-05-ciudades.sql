@@ -60,11 +60,13 @@ create index if not exists idx_couriers_ciudad on public.couriers (city_id);
 comment on column public.couriers.city_id is
   'Ciudad del motorizado de Umbani: solo ve y toma pedidos de los locales de ella.';
 
--- Los locales reales de hoy, por su dirección. La Abuelita: «Av. del Ejército,
--- frente a Portocentro, Portoviejo», con su punto en el mapa en Portoviejo.
+-- Los dos locales de hoy fuera de los de muestra. Decisión del dueño
+-- (2026-10-05): «Monster Pizza y La Abuelita también eran negocios de pruebas,
+-- colócalos en Chone», la ciudad del lanzamiento. Los 15 de muestra se quedan
+-- SIN ciudad: no aparecen a nadie.
 update public.businesses
-   set city_id = (select id from public.cities where lower(name) = 'portoviejo')
- where slug = 'la-abuelita' and city_id is null;
+   set city_id = (select id from public.cities where lower(name) = 'chone')
+ where slug in ('monster-pizza', 'la-abuelita') and city_id is null;
 
 
 -- ── 1. Las categorías que tienen algo detrás, POR CIUDAD ─────────────────────
