@@ -182,8 +182,10 @@ export type BusinessDetail = BusinessRow & {
   storefront_enabled: boolean | null
   /** Cobro con tarjeta (PayPhone). NULL = apagado. Solo lo toca el superadmin. */
   card_mode?: 'pruebas' | 'produccion' | null
-  /** Quién lleva los pedidos: el local o los motorizados de Umbani. */
-  delivery_by?: 'local' | 'umbani'
+  /** Quién lleva los pedidos: el local, los motorizados de Umbani o los de UNA cooperativa. */
+  delivery_by?: 'local' | 'umbani' | 'cooperativa'
+  /** La cooperativa que reparte, si `delivery_by` es «cooperativa» (2026-10-06). */
+  cooperative_id?: string | null
   /** Repartidores propios: solo cuenta con `delivery_by = 'local'`. Solo lo toca el superadmin. */
   own_fleet?: boolean
   /** Su ciudad (2026-10-05). Sin ella no aparece a ningún cliente. */
