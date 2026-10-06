@@ -190,10 +190,43 @@ function humo() {
   })
 }
 
-const comandos = { preparar, subir, humo }
+/**
+ * Aplica UNA migración al staging en internet SIN vaciarlo (2026-10-05).
+ *
+ * `preparar` lo vacía y lo vuelve a sembrar, y eso se lleva por delante lo que
+ * el dueño dejó configurado para revisar —el segundo paso de su superadmin de
+ * pruebas, sus datos de revisión—. Esto aplica solo la migración, en UNA
+ * transacción, con las mismas guardas que `preparar`: no es local, no es la
+ * de producción, y la base lleva la marca de staging.
+ *
+ * ⚠️ Nació de perderlo: hasta hoy vivía en un guion de la carpeta temporal de
+ * una sesión, que se borró, y el staging se quedó con el código nuevo y sin su
+ * migración (500 en todo lo nuevo).
+ *
+ *   npm run staging:remoto -w @botpanel/server -- migrar migration-AAAA-MM-DD-tema.sql
+ */
+async function migrar() {
+  const archivo = path.basename(String(process.argv[3] || ''))
+  if (!/^migration-[\w-]+\.sql$/.test(archivo) || !existsSync(path.join(servidor, archivo))) {
+    console.error('\n❌ Usa: migrar migration-AAAA-MM-DD-tema.sql (un archivo de server/)\n')
+    process.exit(1)
+  }
+  const url = exigir('STAGING_REMOTO_DB_URL')
+  guardia(url)
+  const ejecutar = crearEjecutor(url)
+  const marca = ejecutar(['-tAc', `select coalesce((select value from server_settings where key = 'entorno'), '')`]).trim()
+  if (marca !== 'staging') {
+    console.error(`\n❌ Esa base no lleva la marca de staging (${marca || 'vacía'}). No se toca.\n`)
+    process.exit(1)
+  }
+  ejecutar(['-1', '-q'], readFileSync(path.join(servidor, archivo), 'utf8'))
+  console.log(`\n✅ ${archivo} aplicada al staging en internet (sin vaciarlo)\n`)
+}
+
+const comandos = { preparar, subir, humo, migrar }
 const comando = process.argv[2]
 if (!comandos[comando]) {
-  console.error('\n❌ Usa: preparar | subir | humo\n')
+  console.error('\n❌ Usa: preparar | subir | humo | migrar <archivo>\n')
   process.exit(1)
 }
 await comandos[comando]()
