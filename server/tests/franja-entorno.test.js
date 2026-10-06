@@ -116,13 +116,13 @@ describe('guardián: la franja está ENCHUFADA al HTML que se sirve', () => {
 describe('guardián: las RAÍCES de los paneles también pasan por la función', () => {
   const arranque = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8')
 
-  it('/app y /app-admin se declaran antes que su express.static', () => {
+  it('/app, /app-admin y /cooperativa se declaran antes que su express.static', () => {
     // `express.static` sirve él mismo el index.html de la carpeta, sin pasar
     // por `enviarHtmlDeSpa`. El comodín `/app/*` NO casa con `/app`, así que
     // sin la ruta explícita —y antes del static— la portada de los dos paneles
     // se queda fuera. Se descubrió porque la franja salía en la tienda (donde
     // `/t/<slug>` nunca casa con un archivo) y no en los paneles.
-    for (const base of ['/app', '/app-admin']) {
+    for (const base of ['/app', '/app-admin', '/cooperativa']) {
       const raiz = arranque.indexOf(`app.get('${base}', (_req, res) => enviarHtmlDeSpa`)
       const estatico = arranque.indexOf(`app.use('${base}', express.static`)
       expect(raiz, `falta la ruta explícita de ${base}`).toBeGreaterThan(-1)

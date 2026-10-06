@@ -236,6 +236,8 @@ app.use(express.json({
 
 const clientDist = path.join(projectRoot, 'apps/client/dist')
 const adminDist = path.join(projectRoot, 'apps/admin/dist')
+// El panel de las cooperativas de reparto (2026-10-06).
+const cooperativaDist = path.join(projectRoot, 'apps/cooperativa/dist')
 // ⚠️ LA RAÍZ VA ANTES DEL `static`, y no es un adorno: `express.static` sirve
 // el `index.html` él mismo cuando la ruta es la carpeta (`/app`), sin pasar por
 // `enviarHtmlDeSpa`. El comodín de abajo solo atiende lo que NO casa con un
@@ -250,6 +252,9 @@ app.get('/app/*', (_req, res) => enviarHtmlDeSpa(res, path.join(clientDist, 'ind
 app.get('/app-admin', (_req, res) => enviarHtmlDeSpa(res, path.join(adminDist, 'index.html')))
 app.use('/app-admin', express.static(adminDist, { setHeaders: cachearEstaticos }))
 app.get('/app-admin/*', (_req, res) => enviarHtmlDeSpa(res, path.join(adminDist, 'index.html')))
+app.get('/cooperativa', (_req, res) => enviarHtmlDeSpa(res, path.join(cooperativaDist, 'index.html')))
+app.use('/cooperativa', express.static(cooperativaDist, { setHeaders: cachearEstaticos }))
+app.get('/cooperativa/*', (_req, res) => enviarHtmlDeSpa(res, path.join(cooperativaDist, 'index.html')))
 // Mini app del negocio: /t/<slug>. La ruta es corta a propósito, porque el
 // enlace viaja dentro de un mensaje de WhatsApp.
 const storeDist = path.join(projectRoot, 'apps/store/dist')

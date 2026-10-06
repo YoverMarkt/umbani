@@ -200,6 +200,15 @@ jobs:
       - name: Type-check + build (tsc + vite)
         run: npm run build -w @botpanel/admin
 
+      # El panel de las cooperativas (2026-10-06) va en ESTE trabajo y no en
+      # uno propio: `main` exige siete revisiones por su nombre, y un octavo
+      # trabajo no lo exigiría nadie. Aquí, si falla, falla esta revisión.
+      - name: Panel de la cooperativa — lint, tests y build
+        run: |
+          npm run lint -w @botpanel/cooperativa
+          npm test -w @botpanel/cooperativa
+          npm run build -w @botpanel/cooperativa
+
   mini-app:
     name: Mini app de la tienda (React + TS)
     runs-on: ubuntu-latest

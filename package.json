@@ -7,13 +7,14 @@
     "apps/client",
     "apps/admin",
     "apps/store",
+    "apps/cooperativa",
     "packages/ui"
   ],
   "scripts": {
     "start": "npm start -w @botpanel/server",
     "dev": "npm run dev -w @botpanel/server",
-    "build": "npm run build -w @botpanel/server && npm run build -w @botpanel/client && npm run build -w @botpanel/admin && npm run build -w @botpanel/store",
-    "check": "npm run check -w @botpanel/server && npm run lint -w @botpanel/ui && npm run lint -w @botpanel/client && npm run lint -w @botpanel/admin && npm run lint -w @botpanel/store && npm test -w @botpanel/store && npm test -w @botpanel/client && npm test -w @botpanel/admin && npx knip --no-progress",
+    "build": "npm run build -w @botpanel/server && npm run build -w @botpanel/client && npm run build -w @botpanel/admin && npm run build -w @botpanel/store && npm run build -w @botpanel/cooperativa",
+    "check": "npm run check -w @botpanel/server && npm run lint -w @botpanel/ui && npm run lint -w @botpanel/client && npm run lint -w @botpanel/admin && npm run lint -w @botpanel/store && npm run lint -w @botpanel/cooperativa && npm test -w @botpanel/store && npm test -w @botpanel/client && npm test -w @botpanel/admin && npm test -w @botpanel/cooperativa && npx knip --no-progress",
     "test": "npm test -w @botpanel/server && npm test -w @botpanel/store",
     "test:e2e": "playwright test",
     "test:e2e:install": "playwright install chromium",
