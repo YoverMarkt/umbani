@@ -44,10 +44,14 @@ const base = '/api/v1/motorizado'
 
 router.get(`${base}/yo`, limiter, authApp, soloMotorizado, async (req, res) => {
   const m = yo(req)
+  // La de una cooperativa (2026-10-06) cobra y liquida como la de Umbani; la
+  // app solo necesita saber de cuál es para decírselo.
+  const cooperativa = m.cooperative_id ? await db.getCooperative(m.cooperative_id).catch(() => null) : null
   return res.json({
     nombre: m.name,
     vehiculo: m.vehicle,
-    flota: m.fleet_business_id ? 'local' : 'umbani',
+    flota: m.fleet_business_id ? 'local' : m.cooperative_id ? 'cooperativa' : 'umbani',
+    cooperativa: cooperativa?.name ?? null,
     disponible: m.available,
     topeEfectivoCents: m.cash_limit_cents,
     semana: await db.getCourierBalance(m.id),

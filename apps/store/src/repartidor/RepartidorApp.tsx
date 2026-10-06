@@ -164,7 +164,8 @@ function Inicio({ perfil, onPerfil, onSemana, onSalir, alFallar }: {
     }
   }
 
-  const deUmbani = perfil.flota === 'umbani'
+  // La de una cooperativa cobra y liquida como la de Umbani (2026-10-06).
+  const liquidaConUmbani = perfil.flota !== 'local'
   const encima = perfil.semana?.efectivoEncimaCents ?? 0
   const tope = perfil.topeEfectivoCents
   const lleno = tope > 0 && encima >= tope
@@ -176,7 +177,7 @@ function Inicio({ perfil, onPerfil, onSemana, onSalir, alFallar }: {
           {/* El primer nombre, como las grandes: «Carlos (Umbani)» se cortaba en «Carlos (Um…». */}
           <h1 className="truncate text-[24px] font-extrabold tracking-tight">Hola, {perfil.nombre.trim().split(/\s+/)[0]}</h1>
           <p className="texto-cuerpo text-[14px]">
-            {deUmbani ? 'Repartes con Umbani' : 'Repartes para tu local'}{perfil.vehiculo ? ` · ${perfil.vehiculo}` : ''}
+            {perfil.flota === 'local' ? 'Repartes para tu local' : `Repartes con ${perfil.cooperativa || 'Umbani'}`}{perfil.vehiculo ? ` · ${perfil.vehiculo}` : ''}
           </p>
         </div>
         <button type="button" onClick={onSemana} className="superficie flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2.5 text-[15px] font-bold shadow-tarjeta">
@@ -208,8 +209,8 @@ function Inicio({ perfil, onPerfil, onSemana, onSalir, alFallar }: {
         </div>
         <p className="texto-cuerpo mt-2 text-[13px]">
           {lleno
-            ? (deUmbani ? 'Llegaste al tope: liquida con Umbani antes de tomar otro pedido en efectivo.' : 'Llegaste al tope: entrega algún pedido antes de tomar otro en efectivo.')
-            : (deUmbani ? 'Lo liquidas el lunes con Umbani.' : 'Es de tu local: entrégaselo al volver.')}
+            ? (liquidaConUmbani ? 'Llegaste al tope: liquida con Umbani antes de tomar otro pedido en efectivo.' : 'Llegaste al tope: entrega algún pedido antes de tomar otro en efectivo.')
+            : (liquidaConUmbani ? 'Lo liquidas el lunes con Umbani.' : 'Es de tu local: entrégaselo al volver.')}
         </p>
       </section>
 
@@ -236,7 +237,7 @@ function Inicio({ perfil, onPerfil, onSemana, onSalir, alFallar }: {
               )
               : (
                 <div className="space-y-3">
-                  {libres.map(p => <PedidoLibre key={p.id} pedido={p} deUmbani={deUmbani} onTomado={despues} alFallar={alFallar} />)}
+                  {libres.map(p => <PedidoLibre key={p.id} pedido={p} liquidaConUmbani={liquidaConUmbani} onTomado={despues} alFallar={alFallar} />)}
                 </div>
               )}
       </section>
@@ -268,9 +269,9 @@ function Cobro({ pedido }: { pedido: PedidoDelRepartidor }) {
     : <Lugar icono={<RiCheckLine size={18} />} texto="Ya está pagado: no cobres nada" />
 }
 
-function PedidoLibre({ pedido, deUmbani, onTomado, alFallar }: {
+function PedidoLibre({ pedido, liquidaConUmbani, onTomado, alFallar }: {
   pedido: PedidoDelRepartidor
-  deUmbani: boolean
+  liquidaConUmbani: boolean
   onTomado: () => Promise<void>
   alFallar: (e: unknown) => string | null
 }) {
@@ -296,7 +297,7 @@ function PedidoLibre({ pedido, deUmbani, onTomado, alFallar }: {
       <div className="flex items-baseline justify-between gap-3">
         <p className="min-w-0 truncate text-[16px] font-extrabold">{pedido.recoger.local || 'Local'}</p>
         {/* La carrera del repartidor del local es del local: no se le enseña como suya. */}
-        {deUmbani && <p className="shrink-0 text-[15px] font-extrabold">Carrera {dolares(pedido.carreraCents)}</p>}
+        {liquidaConUmbani && <p className="shrink-0 text-[15px] font-extrabold">Carrera {dolares(pedido.carreraCents)}</p>}
       </div>
       <Lugar icono={<RiStore2Line size={18} />} texto={pedido.recoger.direccion} />
       <Lugar icono={<RiMapPin2Line size={18} />} texto={pedido.entregar.direccion} />
@@ -421,15 +422,15 @@ function Semana({ perfil, onVolver, alFallar }: {
   onVolver: () => void
   alFallar: (e: unknown) => string | null
 }) {
-  const deUmbani = perfil.flota === 'umbani'
+  const liquidaConUmbani = perfil.flota !== 'local'
   const [lista, setLista] = useState<Liquidacion[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const s = perfil.semana
 
   useEffect(() => {
-    if (!deUmbani) return
+    if (!liquidaConUmbani) return
     leerLiquidaciones().then(setLista).catch(e => setError(alFallar(e)))
-  }, [deUmbani, alFallar])
+  }, [liquidaConUmbani, alFallar])
 
   const deAntes = s?.deAntesCents ?? 0
 
@@ -439,22 +440,22 @@ function Semana({ perfil, onVolver, alFallar }: {
       <p className={ROTULO}>Desde el último cierre</p>
       <ul className={`${LISTA} mb-2`}>
         <Fila nombre="Pedidos entregados" valor={String(s?.pedidos ?? 0)} />
-        {deUmbani && <Fila nombre="Tus carreras" valor={dolares(s?.carrerasCents)} />}
-        {deUmbani && (s?.retenidasCents ?? 0) > 0 && (
+        {liquidaConUmbani && <Fila nombre="Tus carreras" valor={dolares(s?.carrerasCents)} />}
+        {liquidaConUmbani && (s?.retenidasCents ?? 0) > 0 && (
           <Fila nombre="Carreras retenidas" valor={dolares(s?.retenidasCents)} detalle="De pedidos en los que se cayó la comida." />
         )}
-        {deUmbani && <Fila nombre="Efectivo que cobraste" valor={dolares(s?.efectivoCobradoCents)} />}
-        {deUmbani && deAntes !== 0 && (
+        {liquidaConUmbani && <Fila nombre="Efectivo que cobraste" valor={dolares(s?.efectivoCobradoCents)} />}
+        {liquidaConUmbani && deAntes !== 0 && (
           <Fila nombre={deAntes < 0 ? 'Debes de semanas anteriores' : 'Te debemos de semanas anteriores'} valor={dolares(Math.abs(deAntes))} />
         )}
       </ul>
       <p className="texto-cuerpo mb-6 px-1 text-[13px]">
-        {deUmbani
+        {liquidaConUmbani
           ? 'Cada lunes se cierra la semana: tus carreras menos el efectivo que tienes.'
           : 'Las carreras y el efectivo son de tu local: cuadras con ellos.'}
       </p>
 
-      {deUmbani && (
+      {liquidaConUmbani && (
         <>
           <p className={ROTULO}>Mis liquidaciones</p>
           {error && <div className="mb-3"><Aviso tono="alerta" titulo="No pudimos traerlas">{error}</Aviso></div>}

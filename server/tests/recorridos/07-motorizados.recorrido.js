@@ -181,6 +181,19 @@ describe('la flota propia del LOCAL', () => {
     expect(flota).toBe(negocio)
   })
 
+  // 🔒 El fallo que el simulador escondía (2026-10-06): el repartidor se
+  // registra como se escribe un celular en Ecuador («099…»), y WhatsApp —por
+  // YCloud— dice que escribe desde «+593 99…». Comparando el texto tal cual,
+  // NINGÚN repartidor real habría podido entrar a su app.
+  it('registrado como «099…», entra con el número tal como lo manda WhatsApp («+593…»)', async () => {
+    const creado = await exigir(201, local.pedir('POST', '/api/client/repartidores', { nombre: 'Repartidora Local', telefono: '099 000 0999' }))
+    const [{ phone }] = await sql('select phone from couriers where id = $1', [creado.id])
+    expect(phone).toBe('593990000999')
+    const yo = await exigir(200, comoMotorizado('+593990000999').pedir('GET', '/yo'))
+    expect(yo.nombre).toBe('Repartidora Local')
+    await exigir(200, local.pedir('PUT', `/api/client/repartidores/${creado.id}/activo`, { activo: false }))
+  })
+
   it('el de Umbani ya no ve los pedidos de un local que reparte él mismo', async () => {
     const pedido = await pedirEnEfectivo()
     await empacado(pedido.id)

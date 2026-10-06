@@ -56,6 +56,7 @@ import misPagosRouter = require('./routes/mis-pagos.routes')
 import repartidoresRouter = require('./routes/repartidores.routes')
 import appV1Router = require('./routes/app-v1.routes')
 import appMotorizadoRouter = require('./routes/app-motorizado.routes')
+import cooperativaRouter = require('./routes/cooperativa.routes')
 import healthRouter = require('./routes/health.routes')
 import { cachearEstaticos, enviarHtmlDeSpa } from './lib/cache-estaticos'
 import { alEntrarUnMensaje } from './lib/despertador-de-la-cola'
@@ -293,6 +294,8 @@ app.use(pagosRouter)
 app.use(appV1Router)
 // La API de la app del motorizado. Ver docs/apps/APP-MOTORIZADO.md.
 app.use(appMotorizadoRouter)
+// El panel de las cooperativas de reparto: su propio login y su sesión.
+app.use(cooperativaRouter)
 app.use(ordersRouter)
 app.use(webhooksRouter)
 // ⚠️ EL FRENO VA ANTES QUE EL ROUTER, y no es cuestión de estilo: Express

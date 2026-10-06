@@ -1,5 +1,6 @@
 import type { RequestHandler } from 'express'
 import { createRouter } from '../middleware/async'
+import { telefonoDelRepartidor } from '../lib/telefono-del-repartidor'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MOTORIZADOS (SUPERADMIN): registrarlos, su semana y su liquidación
@@ -24,11 +25,11 @@ router.get('/api/admin/motorizados', auth.authAdmin, async (_req, res) => {
 
 router.post('/api/admin/motorizados', auth.authAdmin, async (req, res) => {
   const body = (req.body || {}) as Record<string, unknown>
-  const phone = String(body.telefono || '').replace(/[^\d+]/g, '')
+  const phone = telefonoDelRepartidor(body.telefono)
   const name = String(body.nombre || '').trim()
   const flota = String(body.flotaLocalId || '').trim()
   const tope = body.topeEfectivo == null || body.topeEfectivo === '' ? null : Math.round(Number(body.topeEfectivo) * 100)
-  if (!/^\+?\d{8,15}$/.test(phone)) return res.status(400).json({ error: 'Teléfono no válido' })
+  if (!phone) return res.status(400).json({ error: 'Teléfono no válido' })
   if (name.length < 2 || name.length > 80) return res.status(400).json({ error: 'Escribe el nombre' })
   if (flota && !UUID.test(flota)) return res.status(400).json({ error: 'Local no válido' })
   if (tope != null && (!Number.isInteger(tope) || tope < 0 || tope > 100000)) return res.status(400).json({ error: 'Tope de efectivo no válido' })

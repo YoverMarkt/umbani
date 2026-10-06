@@ -28,7 +28,10 @@ export interface SemanaDelRepartidor {
 export interface Yo {
   nombre: string
   vehiculo: string | null
-  flota: 'umbani' | 'local'
+  /** La de cooperativa (2026-10-06) cobra y liquida como la de Umbani. */
+  flota: 'umbani' | 'cooperativa' | 'local'
+  /** El nombre de su cooperativa, o null. */
+  cooperativa: string | null
   disponible: boolean
   topeEfectivoCents: number
   semana: SemanaDelRepartidor | null

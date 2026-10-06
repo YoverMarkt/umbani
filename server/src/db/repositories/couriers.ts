@@ -24,6 +24,8 @@ export interface Courier {
   name: string
   vehicle: string | null
   fleet_business_id: string | null
+  /** Su cooperativa (2026-10-06): lleva los locales de ella y cobra como uno de Umbani. */
+  cooperative_id: string | null
   /** Su ciudad (2026-10-05): el de Umbani solo ve pedidos de ella. */
   city_id: string | null
   active: boolean
@@ -31,11 +33,18 @@ export interface Courier {
   cash_limit_cents: number
 }
 
-const COLUMNAS = 'id, phone, name, vehicle, fleet_business_id, city_id, active, available, cash_limit_cents'
+const COLUMNAS = 'id, phone, name, vehicle, fleet_business_id, cooperative_id, city_id, active, available, cash_limit_cents'
 
-/** El motorizado ACTIVO de ese teléfono (el de su sesión de la app), o null. */
+/**
+ * El motorizado ACTIVO de ese teléfono (el de su sesión de la app), o null.
+ * ⚠️ Con y sin «+», como «Mis pedidos»: YCloud manda el remitente con «+» y
+ * los repartidores se guardan en dígitos (`lib/telefono-del-repartidor.ts`).
+ */
 const getActiveCourierByPhone = async (phone: string): Promise<Courier | null> => {
-  const { data, error } = await db.from('couriers').select(COLUMNAS).eq('phone', phone).eq('active', true).maybeSingle()
+  const digitos = String(phone || '').replace(/\D/g, '')
+  if (!digitos) return null
+  const { data, error } = await db.from('couriers').select(COLUMNAS)
+    .in('phone', [digitos, `+${digitos}`]).eq('active', true).maybeSingle()
   if (error) throw new Error(error.message)
   return data || null
 }
@@ -84,7 +93,7 @@ const listCourierSettlements = async (courierId?: string | null, limite = 100) =
 }
 
 const listCouriers = async () => {
-  const { data, error } = await db.from('couriers').select(`${COLUMNAS}, created_at, businesses(name), cities(name)`).order('created_at', { ascending: false })
+  const { data, error } = await db.from('couriers').select(`${COLUMNAS}, created_at, businesses(name), cities(name), cooperatives(name)`).order('created_at', { ascending: false })
   if (error) throw new Error(error.message)
   return data || []
 }
