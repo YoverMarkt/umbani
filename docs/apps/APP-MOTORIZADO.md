@@ -13,12 +13,18 @@ teléfono sea de un **motorizado activo**. Si no lo es → `403`.
 > **aparte** de la de cliente, como irán las dos apps Flutter: entrar como
 > repartidor no cierra la sesión de quien pide en el mismo teléfono.
 
-Hay dos clases, y la app es la misma para las dos (`flota` en `/yo`):
+Hay tres clases, y la app es la misma para las tres (`flota` en `/yo`):
 
 | | Lo registra | Lleva pedidos de | La carrera es de | El efectivo |
 |---|---|---|---|---|
 | **De Umbani** (`flota: "umbani"`) | el superadmin, con su **ciudad** | los locales de SU ciudad con «Quién reparte: Umbani» | él | lo guarda él y liquida el lunes |
+| **De una cooperativa** (`flota: "cooperativa"`, y `cooperativa` dice cuál) | su cooperativa, en su panel `/cooperativa` | los locales de SU ciudad con «Quién reparte: esa cooperativa» | él (su comisión queda entre él y su cooperativa) | lo guarda él y liquida el lunes con Umbani |
 | **Del local** (`flota: "local"`) | el dueño del local, en su panel → Repartidores | solo ese local | el local | se lo entrega al local |
+
+Para la app, **la de cooperativa es igual que la de Umbani**: enseña sus
+carreras y sus liquidaciones. Solo cambia el nombre que se le dice («Repartes
+con la Cooperativa X»). Si su cooperativa se apaga, deja de recibir pedidos
+nuevos; lo que ya lleva lo termina.
 
 Los **del local** solo reciben pedidos mientras ese local tenga los
 **repartidores propios encendidos** (lo enciende el superadmin en la ficha de

@@ -69,6 +69,7 @@ const db: {
   getAdminStats(): Promise<unknown>
   /** La ciudad existe (2026-10-05): la ficha del local solo acepta una de verdad. */
   getCity(id: string): Promise<{ id: string } | null>
+  getCooperative(id: string): Promise<{ id: string; city_id: string; active: boolean } | null>
   getAllBusinesses(): Promise<unknown[]>
   getLastInboundByBusiness(businessIds: string[]): Promise<ChannelActivity[]>
   getPlatformLastInboundAt(): Promise<string | null>
@@ -267,8 +268,10 @@ const ALLOWED_BUSINESS_FIELDS = [
   // Cobro con tarjeta (PayPhone). SOLO aquí: el dinero entra en la cuenta de
   // Umbani, así que no lo enciende el dueño desde su panel.
   'card_mode',
-  // Quién lleva los pedidos: el local (como hoy) o los motorizados de Umbani.
+  // Quién lleva los pedidos: el local (como hoy), los motorizados de Umbani o
+  // los de UNA cooperativa (2026-10-06), que va en `cooperative_id`.
   'delivery_by',
+  'cooperative_id',
   // Repartidores propios, local por local (2026-10-04). SOLO aquí: decide qué
   // repartidores pueden llevar sus pedidos, así que no se lo enciende el local.
   'own_fleet',
@@ -276,6 +279,40 @@ const ALLOWED_BUSINESS_FIELDS = [
   // cliente, y cambiarla lo mueve de menú.
   'city_id',
 ] as const
+
+const QUIEN_REPARTE = ['local', 'umbani', 'cooperativa']
+
+/**
+ * «Quién reparte: la cooperativa» dice CUÁL, y es de la ciudad del local
+ * (2026-10-06). La base lo exige igual —CHECK y disparador—; aquí se dice con
+ * palabras, antes de que la base lo rechace con un «no se pudo». Con «el
+ * local» o «Umbani», la cooperativa se suelta. Deja `body.cooperative_id`
+ * listo para guardar, o devuelve el motivo del rechazo.
+ */
+async function revisarLaCooperativa(
+  body: Record<string, unknown>,
+  actual: { delivery_by?: string | null; cooperative_id?: string | null; city_id?: string | null },
+): Promise<string | null> {
+  if (!('delivery_by' in body) && !('cooperative_id' in body) && !('city_id' in body)) return null
+  const reparte = 'delivery_by' in body ? String(body.delivery_by) : String(actual.delivery_by || 'local')
+  if (reparte !== 'cooperativa') {
+    if ('cooperative_id' in body && body.cooperative_id) {
+      return 'Para elegir una cooperativa, «Quién reparte» tiene que ser «Una cooperativa»'
+    }
+    // Solo si cambia quién reparte: si no, el local sigue como estaba.
+    if ('delivery_by' in body) body.cooperative_id = null
+    return null
+  }
+  const id = 'cooperative_id' in body ? String(body.cooperative_id ?? '').trim() : String(actual.cooperative_id || '')
+  if (!UUID_CIUDAD.test(id)) return 'Elige la cooperativa que reparte'
+  const cooperativa = await db.getCooperative(id)
+  if (!cooperativa) return 'Elige la cooperativa que reparte'
+  if (!cooperativa.active) return 'Esa cooperativa está apagada'
+  const ciudad = 'city_id' in body ? body.city_id : actual.city_id
+  if (!ciudad || cooperativa.city_id !== ciudad) return 'La cooperativa tiene que ser de la ciudad del local'
+  body.cooperative_id = id
+  return null
+}
 
 function assertDatabaseResult(result: DatabaseResult, operation: string): void {
   if (result.error) {
@@ -808,8 +845,8 @@ router.put('/api/admin/clients/:id', auth.authAdmin, async (req, res) => {
   if ('plan' in body && !normalizePlanId(body.plan)) {
     return res.status(400).json({ error: 'Selecciona uno de los seis planes disponibles' })
   }
-  if ('delivery_by' in body && body.delivery_by !== 'local' && body.delivery_by !== 'umbani') {
-    return res.status(400).json({ error: 'Quién reparte: el local o Umbani' })
+  if ('delivery_by' in body && !QUIEN_REPARTE.includes(String(body.delivery_by))) {
+    return res.status(400).json({ error: 'Quién reparte: el local, Umbani o una cooperativa' })
   }
   // Un «true» en texto o un 1 no se adivinan: decide quién lleva la comida.
   if ('own_fleet' in body && typeof body.own_fleet !== 'boolean') {
@@ -862,6 +899,12 @@ router.put('/api/admin/clients/:id', auth.authAdmin, async (req, res) => {
   try {
     const existingBusiness = await db.getBusinessById(req.params.id)
     if (!existingBusiness) return res.status(404).json({ error: 'No encontrado' })
+    const cooperativaMal = await revisarLaCooperativa(body, existingBusiness)
+    if (cooperativaMal) return res.status(400).json({ error: cooperativaMal })
+    // ⚠️ Lo que se guarda ya estaba armado: la cooperativa revisada (o soltada,
+    // al volver a «el local» o «Umbani») tiene que llegar también ahí. Sin
+    // esto, volver a Umbani chocaba con el CHECK de la base. Lo cazó su prueba.
+    if ('cooperative_id' in body) businessData.cooperative_id = body.cooperative_id
 
     const currentPlanId = normalizePlanId(existingBusiness.plan)
     const nextPlan = 'plan' in body

@@ -2,6 +2,7 @@ import type { RequestHandler } from 'express'
 import { createRouter } from '../middleware/async'
 import { tieneFlotaPropia } from '../lib/flota-propia'
 import { getClientBusinessId } from '../lib/request'
+import { telefonoDelRepartidor } from '../lib/telefono-del-repartidor'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // LOS REPARTIDORES DEL LOCAL (PANEL DEL DUEÑO, 2026-10-02)
@@ -70,9 +71,9 @@ router.get('/api/client/repartidores', ...puerta, async (req, res) => {
 
 router.post('/api/client/repartidores', ...puerta, async (req, res) => {
   const body = (req.body || {}) as Record<string, unknown>
-  const phone = String(body.telefono || '').replace(/[^\d+]/g, '')
+  const phone = telefonoDelRepartidor(body.telefono)
   const name = String(body.nombre || '').trim()
-  if (!/^\+?\d{8,15}$/.test(phone)) return res.status(400).json({ error: 'Teléfono no válido' })
+  if (!phone) return res.status(400).json({ error: 'Teléfono no válido' })
   if (name.length < 2 || name.length > 80) return res.status(400).json({ error: 'Escribe el nombre' })
   try {
     const creado = await db.createCourier({

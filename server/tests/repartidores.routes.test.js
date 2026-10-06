@@ -110,6 +110,15 @@ describe('solo el dueño, y solo su negocio', () => {
     expect(crear).toHaveBeenCalledWith(expect.objectContaining({ fleetBusinessId: 'b1', phone: '593992222222' }))
   })
 
+  // Como lo verá WhatsApp (2026-10-06): con «0991234567» guardado tal cual, el
+  // repartidor nunca habría podido entrar a su app.
+  it('un celular escrito a la manera de Ecuador se guarda con el código del país', async () => {
+    const crear = vi.spyOn(db, 'createCourier').mockResolvedValue({ id: 'r3', name: 'Rosa', phone: '593993333333', vehicle: null, active: true })
+    const r = await correr(router, 'post', '/api/client/repartidores', { claims: DUENO, body: { nombre: 'Rosa', telefono: '099 333 3333' } })
+    expect(r.status).toBe(201)
+    expect(crear).toHaveBeenCalledWith(expect.objectContaining({ phone: '593993333333' }))
+  })
+
   it('un teléfono ya registrado (aquí o en otro local) responde lo mismo, sin decir de quién', async () => {
     vi.spyOn(db, 'createCourier').mockRejectedValue(Object.assign(new Error('dup'), { code: '23505' }))
     const r = await correr(router, 'post', '/api/client/repartidores', { claims: DUENO, body: { nombre: 'Luis', telefono: '593992222222' } })

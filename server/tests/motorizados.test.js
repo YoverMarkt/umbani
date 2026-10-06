@@ -152,11 +152,16 @@ describe('el superadmin', () => {
     expect(crear).not.toHaveBeenCalled()
     ciudad.mockResolvedValue({ id: CHONE, name: 'Chone', active: true })
     expect((await correr(adminMoto, 'post', ruta, { headers: admin(), body: { telefono: '+593 99 123 4567', nombre: 'Luis', topeEfectivo: '150', ciudadId: CHONE } })).status).toBe(201)
-    expect(crear.mock.calls[0][0]).toMatchObject({ phone: '+593991234567', cashLimitCents: 15000, fleetBusinessId: null, cityId: CHONE })
+    // En dígitos y con el código del país, como lo verá WhatsApp (2026-10-06):
+    // con el «+» guardado, el repartidor no podía entrar a su app.
+    expect(crear.mock.calls[0][0]).toMatchObject({ phone: '593991234567', cashLimitCents: 15000, fleetBusinessId: null, cityId: CHONE })
     // El de la flota de un local no la necesita: lleva solo los de su local.
     const local = '22222222-3333-4444-8555-666666666666'
     expect((await correr(adminMoto, 'post', ruta, { headers: admin(), body: { telefono: '593991234568', nombre: 'Ana', flotaLocalId: local } })).status).toBe(201)
     expect(crear.mock.calls[1][0]).toMatchObject({ fleetBusinessId: local, cityId: null })
+    // Como se escribe un celular en Ecuador.
+    expect((await correr(adminMoto, 'post', ruta, { headers: admin(), body: { telefono: '0991234569', nombre: 'Eva', ciudadId: CHONE } })).status).toBe(201)
+    expect(crear.mock.calls[2][0]).toMatchObject({ phone: '593991234569' })
     crear.mockRejectedValue(Object.assign(new Error('dup'), { code: '23505' }))
     expect((await correr(adminMoto, 'post', ruta, { headers: admin(), body: { telefono: '593991234567', nombre: 'Luis', ciudadId: CHONE } })).status).toBe(409)
   })
@@ -181,10 +186,12 @@ describe('el superadmin', () => {
     expect((await correr(adminMoto, 'post', '/api/admin/motorizados/retener', { headers: admin(), body: { pedidoId: id, motivo: 'Se cayó la pizza' } })).status).toBe(409)
   })
 
-  it('«Quién reparte» solo acepta local o umbani', () => {
+  // La tercera, UNA cooperativa (2026-10-06): su prueba de verdad, con la
+  // ficha guardándose, está en `cooperativas.test.js`.
+  it('«Quién reparte»: el local, Umbani o una cooperativa, y nada más', () => {
     const fuente = fs.readFileSync('src/routes/admin-clients.routes.ts', 'utf8')
     expect(fuente).toMatch(/'delivery_by',/)
-    expect(fuente).toMatch(/body\.delivery_by !== 'local' && body\.delivery_by !== 'umbani'/)
+    expect(fuente).toMatch(/const QUIEN_REPARTE = \['local', 'umbani', 'cooperativa'\]/)
   })
 
   // Local por local (2026-10-04). Un «true» en texto o un 1 no se adivinan:
@@ -199,7 +206,7 @@ describe('el superadmin', () => {
 describe('el repositorio, ejecutado', () => {
   const consulta = (resultado) => {
     const q = {}
-    for (const m of ['select', 'insert', 'update', 'eq', 'order', 'limit', 'single']) q[m] = vi.fn(() => q)
+    for (const m of ['select', 'insert', 'update', 'eq', 'in', 'order', 'limit', 'single']) q[m] = vi.fn(() => q)
     q.maybeSingle = vi.fn(async () => resultado)
     q.single = vi.fn(async () => resultado)
     q.then = (ok, mal) => Promise.resolve(resultado).then(ok, mal)
@@ -222,8 +229,12 @@ describe('el repositorio, ejecutado', () => {
   })
 
   it('las lecturas y escrituras de la tabla', async () => {
-    const from = vi.spyOn(client, 'from').mockReturnValue(consulta({ data: moto, error: null }))
-    expect(await db.getActiveCourierByPhone('593900')).toEqual(moto)
+    const q = consulta({ data: moto, error: null })
+    const from = vi.spyOn(client, 'from').mockReturnValue(q)
+    // YCloud manda el remitente CON «+»: se busca con y sin él (2026-10-06).
+    expect(await db.getActiveCourierByPhone('+593900')).toEqual(moto)
+    expect(q.in).toHaveBeenCalledWith('phone', ['593900', '+593900'])
+    expect(await db.getActiveCourierByPhone('')).toBeNull()
     await db.setCourierAvailable('m1', true)
     await db.setCourierActive('m1', false)
     expect(await db.createCourier({ phone: '593900', name: 'Luis' })).toEqual(moto)

@@ -287,7 +287,7 @@ paths:
       summary: El motorizado de la sesión y su semana en curso
       security: [{ sesionApp: [] }]
       responses:
-        '200': { description: '{ nombre, vehiculo, flota, disponible, topeEfectivoCents, semana{ pedidos, carrerasCents, retenidasCents, efectivoCobradoCents, deAntesCents, efectivoEncimaCents } }' }
+        '200': { description: '{ nombre, vehiculo, flota (umbani | cooperativa | local), cooperativa (su nombre, o null), disponible, topeEfectivoCents, semana{ pedidos, carrerasCents, retenidasCents, efectivoCobradoCents, deAntesCents, efectivoEncimaCents } }. La de cooperativa cobra y liquida con Umbani como la de Umbani.' }
         '403': { description: El teléfono no es de un motorizado activo }
   /api/v1/motorizado/disponible:
     put:
