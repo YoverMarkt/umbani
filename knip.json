@@ -29,6 +29,8 @@
     "apps/store": {
       "entry": [
         "index.html",
+        "u.html",
+        "src/umbani/main.tsx",
         "tests/*.test.ts"
       ]
     },

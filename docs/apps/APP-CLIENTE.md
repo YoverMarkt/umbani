@@ -4,6 +4,14 @@ Cada pantalla dice qué llama y qué enseña. Los textos de cara al cliente, en
 español neutro (Ecuador/Colombia). Ver [API-UMBANI.md](API-UMBANI.md) para la
 sesión, las cabeceras y los errores.
 
+> 🌐 **La app web de clientes es la referencia viva** (2026-10-05): abre
+> `https://umbani-pruebas.up.railway.app/u` en el móvil mientras construyes. Hace
+> exactamente este recorrido —ubicación, inicio de la ciudad, entrar con
+> WhatsApp, el local, «Mis pedidos»— con la MISMA API, y su código está en
+> `apps/store/src/umbani/` (`api.ts` es cada llamada, con sus cabeceras). Si
+> algo de aquí no te cuadra, mira cómo lo hace ella. Una prueba vigila que
+> todas sus rutas estén en `openapi.yaml`.
+
 ## 1. Bienvenida e inicio de sesión
 - **Llama:** `POST /api/v1/auth/whatsapp`, luego `POST /api/v1/auth/whatsapp/verificar` cada 2–3 s.
 - **Enseña:** «Inicia sesión con WhatsApp», el código grande y el botón «Abrir WhatsApp» (abre `enlace`). Mientras espera: «Esperando tu mensaje…». Si vence: «El código venció, pide otro».

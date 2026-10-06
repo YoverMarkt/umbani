@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="robots" content="noindex, nofollow" />
+    <!-- La APP WEB DE CLIENTES (`/u`, 2026-10-05): la misma cabecera que la tienda. -->
+    <!-- Un solo tema: la tienda es clara siempre (ver index.css). -->
+    <meta name="theme-color" content="#0B0B0C" />
+    <!-- La fuente propia, pedida YA. Sin esto el navegador no se entera de que
+         existe hasta que termina de leer el CSS, y el cambio de la fuente del
+         sistema a la propia se ve a mitad de lectura. `crossorigin` es
+         obligatorio en un preload de fuente aunque el archivo sea nuestro: sin
+         él el navegador la descarga DOS veces. -->
+    <link
+      rel="preload"
+      href="/t/fuentes/plus-jakarta-sans-latin.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <!-- ⚠️ AQUÍ NO SE ADELANTA LA PRIMERA PETICIÓN, y se probó (2026-09-06).
+         La idea era lanzar `fetch('/api/store/<slug>')` desde el HTML para no
+         esperar a que baje React. Se escribió, y se retiró antes de subirla:
+
+         La portada decide si esta persona está BLOQUEADA, y lo decide leyendo
+         las cabeceras `x-storefront-token` y `x-storefront-device` que pone
+         `request()` en `lib/api.ts`. Un fetch suelto aquí no las lleva, así
+         que habría respondido `blocked: null` a un cliente bloqueado — y la
+         app le habría montado la tienda entera. Es EXACTAMENTE el incidente
+         del pedido #74 (2026-08-29), que costó la pantalla `Bloqueado`.
+
+         Replicar aquí la lectura del token sería tener la sesión escrita en
+         dos sitios, y el día que una cambie la otra falla EN SILENCIO y hacia
+         el lado inseguro. Se gana medio segundo y se arriesga la defensa que
+         más caro costó: no compensa.
+
+         Lo que sí se hizo por rendimiento está en `server/src/index.ts`
+         (`cachearEstaticos`), que ataca el problema de verdad: ~1 s por visita
+         revalidando archivos inmutables. -->
+    <title>Umbani</title>
+    <style>
+      /* ── LA BIENVENIDA DE UMBANI ──────────────────────────────────────────
+         Lo PRIMERO que se ve al abrir el enlace, antes de que baje una sola
+         línea de JavaScript. Se abre con datos móviles, así que la pantalla no
+         puede quedarse en blanco.
+
+         ⚠️ Sustituye al esqueleto de tarjetas que había aquí (2026-08-29), y
+         no es un cambio de gusto: aquel esqueleto DIBUJABA LA TIENDA —hero,
+         pestañas, filas de producto— antes de saber quién estaba entrando. A
+         un cliente bloqueado le enseñaba la forma de la carta y le decía «esto
+         se está cargando», que es justo la señal de «sigue intentando». El
+         dueño lo vivió: bloqueado, abrió un enlace viejo, recorrió la carta y
+         creó un pedido que nadie podía pagar.
+
+         Esta pantalla no promete nada del local: dice de dónde viene el enlace
+         y espera. Después, React decide — la tienda, o el aviso de bloqueo. */
+      :root { --f:#fafafa; --t:#0B0B0C; --m:#6b6b70; }
+      html, body { margin:0; background:var(--f); }
+      .vz-boot {
+        min-height:100svh; display:flex; flex-direction:column;
+        align-items:center; justify-content:center; gap:14px;
+        padding:24px; padding-top:calc(env(safe-area-inset-top) + 24px);
+        font-family:'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+        color:var(--t); text-align:center;
+      }
+      /* ⚠️ GRANDE, pero sin frenar nada (decisión del dueño, 2026-09-06).
+         Se agranda el logo (64→96) y el título (19→27) para que la marca se
+         vea de verdad al abrir. Lo que NO se hace es garantizarle un tiempo
+         mínimo en pantalla: se va en cuanto la tienda está lista. Añadir una
+         espera artificial para lucir la marca sería empeorar a propósito justo
+         lo que se estaba arreglando en la misma sesión. */
+      /* Icono, no emoji: ver `Bienvenida` en components/ui.tsx. */
+      .vz-logo {
+        width:96px; height:96px; border-radius:28px; display:flex;
+        align-items:center; justify-content:center; color:var(--t);
+        background:#F7FDD9; box-shadow:0 12px 34px rgba(11,11,12,.12);
+        animation:vz-late .9s ease-in-out infinite alternate;
+      }
+      .vz-t { font-size:27px; font-weight:800; letter-spacing:-.03em; margin:0; line-height:1.15; }
+      .vz-s { font-size:15px; font-weight:600; color:var(--m); margin:0; }
+      /* Late, no gira: un spinner dice «esto va lento». Esto dice «ya casi». */
+      @keyframes vz-late { from{transform:scale(1)} to{transform:scale(1.06)} }
+      /* Quien pide menos movimiento no recibe ninguno. */
+      @media (prefers-reduced-motion: reduce) { .vz-logo { animation:none } }
+    </style>
+  </head>
+  <body>
+    <div id="root"><div class="vz-boot">
+      <div class="vz-logo"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" width="44" height="44" fill="currentColor" aria-hidden="true"><path d="M6.5 2H17.5C17.8 2 18.1 2.1 18.3 2.4L21 6V21C21 21.5 20.5 22 20 22H4C3.4 22 3 21.5 3 21V6L5.7 2.4C5.8 2.1 6.1 2 6.5 2ZM19 8H5V20H19V8ZM18.5 6L17 4H7L5.5 6H18.5ZM9 10V12C9 13.6 10.3 15 12 15C13.6 15 15 13.6 15 12V10H17V12C17 14.7 14.7 17 12 17C9.2 17 7 14.7 7 12V10H9Z"></path></svg></div>
+      <p class="vz-t">Bienvenido a Umbani</p>
+      <p class="vz-s">Abriendo Umbani…</p>
+    </div></div>
+    <script type="module" src="/src/umbani/main.tsx"></script>
+  </body>
+</html>

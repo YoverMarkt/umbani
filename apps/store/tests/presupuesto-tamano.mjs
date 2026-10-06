@@ -16,7 +16,7 @@
 // Si un cambio lo necesita de verdad, se sube el número a propósito y queda
 // escrito en el historial quién decidió que valía la pena.
 import { gzipSync } from 'node:zlib'
-import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -167,7 +167,30 @@ const DIST = path.join(RAIZ, 'dist')
 //     arreglos de lo que el cliente ve roto: no se recortan para ahorrar
 //     bytes. La palanca grande sigue siendo la de arriba (diferir la ficha y
 //     el carrito), y la pantalla de Buscar nace diferida para no sumar aquí.
-const PRESUPUESTO_KB = 97
+// 97 → 99 el 2026-10-05, y queda escrito por qué. Medido: 96,8 kB la tienda
+// sola → 98,0 kB con la APP WEB DE CLIENTES (`/u`) compilada al lado.
+//
+// No entró ninguna librería ni una línea en la tienda. Entró una SEGUNDA
+// página (`u.html`, la app de clientes tras el pivote a «solo la app» del
+// dueño) y Rollup sacó lo común —React, `components/ui`, la sesión— a un
+// archivo compartido. El mismo código, comprimido en dos archivos en vez de
+// uno, pesa ~0,8 kB más: gzip no reutiliza su diccionario entre archivos.
+//
+// Se eligió a propósito frente a compilar la app aparte: quien abre la app y
+// entra a un local descarga el código común UNA vez y la tienda lo reutiliza
+// de la caché. Con dos compilaciones, React bajaría dos veces — justo a los
+// clientes que ahora son el público de Umbani.
+//
+// ⚠️ Antes de subir el número se quitaron 0,3 kB de verdad: las etiquetas de
+// «Mis pedidos» (`COMO_VA`) habían caído en `lib/estado.ts`, que se carga de
+// entrada; viven en `lib/como-va.ts` y solo las baja quien abre sus pedidos.
+// El margen sigue muy por debajo de los ~10 kB de react-router.
+const PRESUPUESTO_KB = 99
+
+// La app web de clientes (`/u`), con su propio tope. Medido el 2026-10-05:
+// 82,6 kB, casi todo el código común con la tienda. Se calibra igual que el de
+// la tienda: por debajo de una librería que querríamos cazar.
+const PRESUPUESTO_APP_KB = 86
 
 const recorrer = dir => readdirSync(dir).flatMap(entrada => {
   const completa = path.join(dir, entrada)
@@ -216,7 +239,10 @@ const enLaPrimeraCarga = archivo => (
 )
 
 const inicial = archivos.filter(enLaPrimeraCarga)
-const diferidos = archivos.filter(archivo => !enLaPrimeraCarga(archivo))
+// La app de clientes (`/u`) es OTRA página: sus archivos no son pantallas
+// diferidas de la tienda, y se miden aparte al final.
+const esDeLaApp = archivo => archivo.nombre === 'u.html' || archivo.nombre.startsWith('assets/umbani-')
+const diferidos = archivos.filter(archivo => !enLaPrimeraCarga(archivo) && !esDeLaApp(archivo))
 
 const total = inicial.reduce((suma, a) => suma + a.gzip, 0)
 const kb = n => (n / 1024).toFixed(1)
@@ -250,3 +276,29 @@ if (total > PRESUPUESTO_KB * 1024) {
 
 const margen = PRESUPUESTO_KB - total / 1024
 console.log(`✅ Dentro del presupuesto (quedan ${margen.toFixed(1)} kB de margen).\n`)
+
+// ── La app web de clientes (`/u`, 2026-10-05) ─────────────────────────────
+// Su primera carga: la página y lo que ella pide. Comparte casi todo con la
+// tienda, así que si esto engorda, casi siempre engorda también la tienda.
+const paginaDeLaApp = path.join(DIST, 'u.html')
+if (!existsSync(paginaDeLaApp)) {
+  console.error('❌ Falta dist/u.html: la app de clientes no se compiló (vite.config.ts → build.rollupOptions.input).')
+  process.exit(1)
+}
+const refsDeLaApp = new Set(
+  [...readFileSync(paginaDeLaApp, 'utf8').matchAll(/(?:src|href)="\/?t?\/?([^"]+\.(?:js|css))"/g)]
+    .map(coincidencia => coincidencia[1].replace(/^\/+/, '')),
+)
+const deLaApp = archivos.filter(archivo => (
+  archivo.nombre === 'u.html' || refsDeLaApp.has(archivo.nombre) || [...refsDeLaApp].some(ref => ref.endsWith(archivo.nombre))
+))
+const totalApp = deLaApp.reduce((suma, a) => suma + a.gzip, 0)
+console.log('📱 La app web de clientes (/u), primera carga\n')
+for (const a of deLaApp) console.log(`   ${kb(a.gzip).padStart(7)} kB  ${a.nombre}`)
+console.log(`   ${kb(totalApp).padStart(7)} kB  TOTAL   (presupuesto: ${PRESUPUESTO_APP_KB} kB)\n`)
+if (totalApp > PRESUPUESTO_APP_KB * 1024) {
+  console.error(`❌ La app de clientes pesa ${kb(totalApp)} kB y el presupuesto son ${PRESUPUESTO_APP_KB} kB.`)
+  console.error('   Mira qué entró antes de subir PRESUPUESTO_APP_KB, y explica en el commit por qué.')
+  process.exit(1)
+}
+console.log(`✅ Dentro del presupuesto (quedan ${(PRESUPUESTO_APP_KB - totalApp / 1024).toFixed(1)} kB de margen).\n`)
