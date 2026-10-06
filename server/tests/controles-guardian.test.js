@@ -25,7 +25,7 @@ import { fuentes, lineasDeComentario, raiz } from './pantallas.mjs'
 // con el tiempo». `packages/ui` también: ahí viven las primitivas, y son lo
 // único que SÍ puede tocar la etiqueta nativa.
 
-const CARPETAS = ['apps/client/src', 'apps/admin/src']
+const CARPETAS = ['apps/client/src', 'apps/admin/src', 'apps/cooperativa/src']
 
 /** La etiqueta nativa que abre la línea, si la hay (`<Button` no cuenta). */
 const CONTROL = /<(button|input|select|textarea)(?=[\s>/]|$)/

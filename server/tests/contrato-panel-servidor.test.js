@@ -104,7 +104,7 @@ function rutaDelPanel(crudo) {
 }
 
 /** Cada `api<Tipo>('/ruta', { method: 'PUT' })` de los paneles. */
-const LLAMADAS = ['apps/client/src', 'apps/admin/src'].flatMap((relativo) => {
+const LLAMADAS = ['apps/client/src', 'apps/admin/src', 'apps/cooperativa/src'].flatMap((relativo) => {
   const base = path.join(raiz, relativo)
   return archivos(base).flatMap((archivo) => {
     const contenido = readFileSync(archivo, 'utf8')

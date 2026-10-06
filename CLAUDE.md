@@ -65,7 +65,9 @@ entera de verdad, que era el problema cuando todo estaba junto:
 > · Backend: `server/src/` (`db/` repositorios · `services/` lógica ·
 >   `routes/` endpoints · `integrations/` proveedores externos).
 > · Paneles: `apps/admin` (superadmin) · `apps/client` (dueño) ·
->   `apps/store` (mini app) · `packages/ui` (shadcn compartido).
+>   `apps/store` (mini app, más las apps web `/u` y `/r`) ·
+>   `apps/cooperativa` (cooperativas de reparto, en `/cooperativa`) ·
+>   `packages/ui` (shadcn compartido).
 > · Apps móviles (Flutter, 2026-10-01): `mobile/cliente` y `mobile/motorizado`.
 >   Solo consumen la API (`docs/apps/`); sus reglas, en `mobile/CLAUDE.md`.
 > · Migraciones: `server/migration-*.sql`, en orden por fecha. `schema.sql`
@@ -112,7 +114,7 @@ Los scripts están en `package.json` (raíz y cada workspace); `npm run check`
 es el que corre todo. Lo que el manifiesto NO dice:
 
 - Los workspaces son `@botpanel/server`, `@botpanel/client`, `@botpanel/admin`,
-  `@botpanel/store` y `@botpanel/ui`. **Un solo lockfile y un solo `npm install`**
+  `@botpanel/store`, `@botpanel/cooperativa` y `@botpanel/ui`. **Un solo lockfile y un solo `npm install`**
   para todo el monorepo.
 - El servidor en local levanta un **túnel Cloudflare automático**; en producción
   la URL pública sale de `BASE_URL`.

@@ -26,6 +26,11 @@
         "index.html"
       ]
     },
+    "apps/cooperativa": {
+      "entry": [
+        "index.html"
+      ]
+    },
     "apps/store": {
       "entry": [
         "index.html",

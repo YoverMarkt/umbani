@@ -129,6 +129,8 @@ for (const [ruta, nombre, debeDecir = '<html'] of [
   // título: una ruta mal enlazada serviría OTRA página con un 200 igual.
   ['/u', 'app web de clientes', '<title>Umbani</title>'],
   ['/r', 'app web de repartidores', '<title>Umbani Repartidores</title>'],
+  // El panel de las cooperativas de reparto (2026-10-06).
+  ['/cooperativa/', 'panel de las cooperativas', '<title>Cooperativa — Umbani</title>'],
 ]) {
   const r = await pedir(ruta)
   revisar(nombre, r.status === 200 && r.texto.includes(debeDecir), `status ${r.status}`)

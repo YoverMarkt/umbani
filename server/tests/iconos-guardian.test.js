@@ -30,7 +30,7 @@ import { fuentes, lineasDeComentario, raiz } from './pantallas.mjs'
 /** El visto, la cruz y sus parientes, cuando van dibujados en el texto. */
 const SIMBOLOS = /[✓✔✗✘☑☒]/
 
-const CARPETAS = ['apps/store/src', 'apps/client/src', 'apps/admin/src', 'packages/ui/src']
+const CARPETAS = ['apps/store/src', 'apps/client/src', 'apps/admin/src', 'apps/cooperativa/src', 'packages/ui/src']
 
 // `lineasDeComentario` y `fuentes` viven en `pantallas.mjs`: las comparte
 // con el guardián de controles a pelo.

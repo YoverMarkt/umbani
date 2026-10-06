@@ -31,5 +31,12 @@ export default defineConfig({
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
     },
+    // El panel de las cooperativas de reparto (2026-10-06).
+    {
+      command: 'npm run dev -w @botpanel/cooperativa -- --host 127.0.0.1 --port 4175',
+      url: 'http://127.0.0.1:4175/cooperativa/',
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+    },
   ],
 })
