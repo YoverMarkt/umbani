@@ -9,12 +9,15 @@ sesión, las cabeceras y los errores.
 - **Enseña:** «Inicia sesión con WhatsApp», el código grande y el botón «Abrir WhatsApp» (abre `enlace`). Mientras espera: «Esperando tu mensaje…». Si vence: «El código venció, pide otro».
 - **Guarda:** el `token` en almacenamiento seguro (Keychain / Keystore).
 
-## 1b. ¿En qué ciudad estás? (2026-10-05)
-Umbani atiende en varias ciudades (hoy Chone y Portoviejo) y **cada cliente ve solo los locales de la suya**, como en las grandes.
-- **Llama:** `GET /api/v1/yo` → si trae `ciudadId`, ya eligió: sáltate esta pantalla. Si no, `GET /api/v1/ciudades`.
-- **Con UNA sola ciudad** en la lista: elígela sin preguntar y **no la guardes** (el día que haya otra, se le pregunta).
-- **Con varias:** «📍 ¿En qué ciudad estás?» con una opción por ciudad. Al elegir, `PUT /api/v1/yo/ciudad` con `{ ciudadId }` — es la misma que usa el chat de WhatsApp.
-- **Siempre a mano:** un «📍 Chone ▾» arriba del inicio para cambiarla.
+## 1b. La ciudad, por la ubicación (2026-10-05)
+Umbani atiende ciudad por ciudad (hoy Chone) y **cada cliente ve solo los locales de la suya**, como en las grandes: no se le pregunta, se le enseña lo de donde está.
+1. **Pide permiso de ubicación** y llama a `GET /api/v1/ciudades/aqui?lat={lat}&lng={lng}` (manda también la cabecera `x-umbani-dispositivo` con el id de instalación).
+   - `{ ciudad: { id, nombre }, conLocales: true }` → sigue al inicio con esa ciudad.
+   - `{ ciudad: {…}, conLocales: false }` → «Pronto llegamos a {nombre} 🛵».
+   - `{ ciudad: null, cercana: { nombre, km } }` → «Todavía no llegamos a tu zona» (y si quieres, «la más cercana es {nombre}, a {km} km»). Queda anotado en Umbani para decidir la próxima ciudad.
+2. **Sin permiso de ubicación:** `GET /api/v1/ciudades` y que elija de la lista.
+3. **Guárdala** con `PUT /api/v1/yo/ciudad` (`{ ciudadId }`) y ponla arriba del inicio («📍 Chone ▾») para cambiarla.
+4. ⚠️ **Al pedir, la dirección de entrega tiene que caer dentro de la ciudad del local.** Si no, el pedido responde con el motivo («Esa dirección está fuera de la zona de reparto de Chone…»): enséñalo tal cual.
 
 ## 2. Inicio: el marketplace
 - **Llama:** `GET /api/v1/marketplace?ciudad={ciudadId}`. ⚠️ Sin `ciudad` responde `400`: un cliente de Chone no puede ver los locales de Portoviejo.

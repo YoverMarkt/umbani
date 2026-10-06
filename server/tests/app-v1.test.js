@@ -147,6 +147,39 @@ describe('las rutas con sesión', () => {
     expect(locales).toHaveBeenCalledWith('pizzas', CHONE)
   })
 
+  // ── La ciudad por el GPS (2026-10-05) ──────────────────────────────────
+  it('¿en qué ciudad estoy?: dentro, la ciudad y si ya tiene locales', async () => {
+    vi.spyOn(db, 'cityAt').mockResolvedValue({ id: CHONE, name: 'Chone', km: 0.2, dentro: true })
+    vi.spyOn(db, 'getMarketplaceCategories').mockResolvedValue(FILAS)
+    const anotar = vi.spyOn(db, 'recordCoverageRequest').mockResolvedValue()
+    const r = await correr(router, 'get', '/api/v1/ciudades/aqui', { query: { lat: '-0.6995', lng: '-80.093' } })
+    expect(r.body).toEqual({ ciudad: { id: CHONE, nombre: 'Chone' }, conLocales: true })
+    expect(db.cityAt).toHaveBeenCalledWith(-0.6995, -80.093)
+    expect(anotar).not.toHaveBeenCalled()
+  })
+
+  it('fuera de toda ciudad: la más cercana, y queda anotado con el dispositivo RESUMIDO', async () => {
+    vi.spyOn(db, 'cityAt').mockResolvedValue({ id: CHONE, name: 'Chone', km: 172.4, dentro: false })
+    const anotar = vi.spyOn(db, 'recordCoverageRequest').mockResolvedValue()
+    const r = await correr(router, 'get', '/api/v1/ciudades/aqui', {
+      query: { lat: '-0.1807', lng: '-78.4678' }, headers: { 'x-umbani-dispositivo': 'mi-telefono-123' },
+    })
+    expect(r.body).toEqual({ ciudad: null, cercana: { nombre: 'Chone', km: 172.4 } })
+    const [lat, lng, huella] = anotar.mock.calls[0]
+    expect([lat, lng]).toEqual([-0.1807, -78.4678])
+    // Nunca el identificador tal cual: una huella corta.
+    expect(huella).toMatch(/^[0-9a-f]{16}$/)
+    expect(huella).not.toContain('mi-telefono')
+  })
+
+  it('una ubicación que no lo es no llega a la base', async () => {
+    const buscar = vi.spyOn(db, 'cityAt')
+    for (const query of [{}, { lat: 'x', lng: '1' }, { lat: '91', lng: '0' }, { lat: '0', lng: '181' }, { lat: '-0.69' }]) {
+      expect((await correr(router, 'get', '/api/v1/ciudades/aqui', { query })).status).toBe(400)
+    }
+    expect(buscar).not.toHaveBeenCalled()
+  })
+
   it('la ciudad del cliente la guarda SU teléfono, y es la misma que usa el chat', async () => {
     vi.spyOn(db, 'resolveMarketplaceCustomer').mockResolvedValue({ id: 'cli-1', phone: '593999111222', name: null, city_id: null })
     const getCity = vi.spyOn(db, 'getCity').mockResolvedValue(null)

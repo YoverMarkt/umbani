@@ -125,7 +125,9 @@ function clienteDeTienda(token, cabeceras, telefono) {
     async direccion() {
       const creada = await exigir(201, pedir('POST', '/api/store/:slug/addresses', {
         label: 'Casa', address: 'Av. de las Pruebas 123', reference: 'Portón verde',
-        latitude: -2.9, longitude: -79.0,
+        // En CHONE (2026-10-05): la entrega tiene que caer dentro de la ciudad
+        // del local, y el local de pruebas está allí (a ~200 m del centro).
+        latitude: -0.6995, longitude: -80.0930,
       }))
       return creada.id || creada.address?.id
     },

@@ -1,4 +1,6 @@
 import rateLimit from 'express-rate-limit'
+import { createHash } from 'node:crypto'
+import { enSegundoPlano } from '../lib/segundo-plano'
 import { createRouter } from '../middleware/async'
 import { getPlatformPhone } from '../services/platform-channel'
 import { deviceFingerprint } from '../services/storefront-session'
@@ -78,6 +80,36 @@ router.get('/api/v1/yo', appLimiter, authApp, async (req, res) => {
 router.get('/api/v1/ciudades', appLimiter, async (_req, res) => {
   const filas = await db.getMarketplaceCategories()
   return res.json({ ciudades: ciudadesDe(filas).map(c => ({ id: c.id, nombre: c.nombre })) })
+})
+
+/**
+ * ¿En qué ciudad estoy? (2026-10-05) La app manda el GPS y el servidor dice la
+ * ciudad, como las grandes: el cliente no elige, se le enseña lo de donde está.
+ *
+ *   · Dentro de una ciudad → `{ ciudad, conLocales }`. Sin locales todavía, la
+ *     app dice «pronto llegamos a {ciudad}».
+ *   · Fuera de todas → `{ ciudad: null, cercana }` y queda ANOTADO (redondeado
+ *     a ~1 km, una vez por día y dispositivo): de ahí sale dónde abrir la
+ *     siguiente. Anotarlo falla abierto: la respuesta no espera a la base.
+ *
+ * Sin GPS (permiso negado), la app usa la lista de `/api/v1/ciudades`.
+ */
+router.get('/api/v1/ciudades/aqui', appLimiter, async (req, res) => {
+  const lat = Number(req.query.lat)
+  const lng = Number(req.query.lng)
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180
+    || req.query.lat === undefined || req.query.lng === undefined) {
+    return res.status(400).json({ error: 'Ubicación no válida (?lat=&lng=)' })
+  }
+  const punto = await db.cityAt(lat, lng)
+  if (punto?.dentro) {
+    const conLocales = (await db.getMarketplaceCategories()).some(c => c.city_id === punto.id)
+    return res.json({ ciudad: { id: punto.id, nombre: punto.name }, conLocales })
+  }
+  const dispositivo = String(req.headers['x-umbani-dispositivo'] || req.headers['x-storefront-device'] || '').trim()
+  const huella = dispositivo ? createHash('sha256').update(dispositivo).digest('hex').slice(0, 16) : ''
+  void enSegundoPlano(db.recordCoverageRequest(lat, lng, huella).catch(() => { /* anotar no puede tumbar la respuesta */ }))
+  return res.json({ ciudad: null, cercana: punto ? { nombre: punto.name, km: punto.km } : null })
 })
 
 /**

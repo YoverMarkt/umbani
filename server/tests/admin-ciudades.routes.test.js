@@ -84,3 +84,34 @@ describe('crear y apagar', () => {
     expect(activar).toHaveBeenLastCalledWith(id, false)
   })
 })
+
+describe('la cobertura de una ciudad (2026-10-05)', () => {
+  const id = '11111111-2222-4333-8444-555555555555'
+  const ruta = '/api/admin/ciudades/:id'
+
+  it('centro y radio válidos se guardan; lo demás no llega a la base', async () => {
+    const guardar = vi.spyOn(db, 'updateCityArea').mockResolvedValue(true)
+    const malos = [
+      { latitud: '', longitud: '-80.09', radioKm: 6 },
+      { latitud: '-0.69', longitud: '200', radioKm: 6 },
+      { latitud: '-0.69', longitud: '-80.09', radioKm: 0.1 },
+      { latitud: '-0.69', longitud: '-80.09', radioKm: 80 },
+    ]
+    for (const body of malos) {
+      expect((await correr('put', ruta, { claims: ADMIN, params: { id }, body })).status).toBe(400)
+    }
+    expect(guardar).not.toHaveBeenCalled()
+    const r = await correr('put', ruta, { claims: ADMIN, params: { id }, body: { latitud: '-0.69819', longitud: '-80.09361', radioKm: '6' } })
+    expect(r.status).toBe(200)
+    expect(guardar).toHaveBeenCalledWith(id, { latitude: -0.69819, longitude: -80.09361, radius_km: 6 })
+    guardar.mockResolvedValue(false)
+    expect((await correr('put', ruta, { claims: ADMIN, params: { id }, body: { latitud: '-0.69', longitud: '-80.09', radioKm: 6 } })).status).toBe(404)
+    expect((await correr('put', ruta, { claims: DUENO, params: { id }, body: { latitud: '-0.69', longitud: '-80.09', radioKm: 6 } })).status).toBe(403)
+  })
+
+  it('quién pide desde fuera: los días se acotan', async () => {
+    const consulta = vi.spyOn(db, 'coverageRequests').mockResolvedValue([])
+    await correr('get', '/api/admin/ciudades/sin-cobertura', { claims: ADMIN })
+    expect(consulta).toHaveBeenLastCalledWith(30)
+  })
+})
