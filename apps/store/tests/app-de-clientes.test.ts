@@ -11,7 +11,7 @@ import { createElement } from 'react'
 //   1. Entrar a un local pide su sesión con el token de la app y el MISMO
 //      dispositivo que usa la tienda (la sesión queda atada a él).
 //   2. Una sesión vencida se olvida; un código vencido se dice.
-//   3. Cada ruta que usa está documentada (`app-de-clientes-contrato.test.mjs`).
+//   3. Cada ruta que usa está documentada (`apps-web-contrato.test.mjs`).
 
 const almacen = (): Storage => {
   const datos = new Map<string, string>()

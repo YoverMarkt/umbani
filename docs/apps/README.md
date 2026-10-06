@@ -43,6 +43,10 @@ Producción tiene clientes reales y **nunca** se usa para probar.
   (`/app-admin` → Simulador → `Mi código de Umbani: XXXXXX`). Ver API-UMBANI.md §1a.
 - **El repartidor de prueba** tiene el mismo teléfono que el simulador
   (`000000000000`): el mismo código abre la app del motorizado.
+- **Las apps web de referencia** hacen cada recorrido con esta misma API, en
+  el servidor de pruebas: **`/u`** (clientes) y **`/r`** (repartidores). Si
+  dudas de cómo se usa una ruta, mira cómo lo hacen ellas
+  (`apps/store/src/umbani/` y `apps/store/src/repartidor/`).
 - **Tarjeta.** En pruebas no hay cobros reales; la tarjeta aparece cuando el dueño registre
   el dominio de pruebas en PayPhone.
 

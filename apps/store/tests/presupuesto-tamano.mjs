@@ -187,10 +187,16 @@ const DIST = path.join(RAIZ, 'dist')
 // El margen sigue muy por debajo de los ~10 kB de react-router.
 const PRESUPUESTO_KB = 99
 
-// La app web de clientes (`/u`), con su propio tope. Medido el 2026-10-05:
-// 82,6 kB, casi todo el código común con la tienda. Se calibra igual que el de
-// la tienda: por debajo de una librería que querríamos cazar.
-const PRESUPUESTO_APP_KB = 86
+// Las apps web, cada una con su propio tope. Se calibran igual que el de la
+// tienda: por debajo de una librería que querríamos cazar.
+//   · Clientes (`/u`): medido el 2026-10-05, 82,6 kB, casi todo el código
+//     común con la tienda.
+//   · Repartidores (`/r`): medido el 2026-10-05, 84,4 kB — lo común, su
+//     pantalla (4,2 kB) y el login que comparte con `/u` (2,1 kB).
+const APPS = [
+  { pagina: 'u.html', nombre: 'La app web de clientes (/u)', presupuestoKb: 86 },
+  { pagina: 'r.html', nombre: 'La app web de repartidores (/r)', presupuestoKb: 88 },
+]
 
 const recorrer = dir => readdirSync(dir).flatMap(entrada => {
   const completa = path.join(dir, entrada)
@@ -227,11 +233,12 @@ if (!archivos.length) {
 // `modulepreload` que Vite añade para los imports estáticos—. Lo demás son
 // trozos que llegan cuando se necesitan, y se enseñan aparte para que se vean
 // pero no cuenten.
-const html = readFileSync(path.join(DIST, 'index.html'), 'utf8')
-const referidos = new Set(
-  [...html.matchAll(/(?:src|href)="\/?t?\/?([^"]+\.(?:js|css))"/g)]
+/** Lo que una página pide para pintar: sus `src` y `href` (y los `modulepreload`). */
+const pideLaPagina = pagina => new Set(
+  [...readFileSync(path.join(DIST, pagina), 'utf8').matchAll(/(?:src|href)="\/?t?\/?([^"]+\.(?:js|css))"/g)]
     .map(coincidencia => coincidencia[1].replace(/^\/+/, '')),
 )
+const referidos = pideLaPagina('index.html')
 const enLaPrimeraCarga = archivo => (
   archivo.nombre === 'index.html'
   || referidos.has(archivo.nombre)
@@ -239,9 +246,17 @@ const enLaPrimeraCarga = archivo => (
 )
 
 const inicial = archivos.filter(enLaPrimeraCarga)
-// La app de clientes (`/u`) es OTRA página: sus archivos no son pantallas
+// Las apps web (`/u`, `/r`) son OTRAS páginas: sus archivos no son pantallas
 // diferidas de la tienda, y se miden aparte al final.
-const esDeLaApp = archivo => archivo.nombre === 'u.html' || archivo.nombre.startsWith('assets/umbani-')
+for (const app of APPS) {
+  if (!existsSync(path.join(DIST, app.pagina))) {
+    console.error(`❌ Falta dist/${app.pagina}: ${app.nombre} no se compiló (vite.config.ts → build.rollupOptions.input).`)
+    process.exit(1)
+  }
+  app.pide = pideLaPagina(app.pagina)
+}
+const laPidePagina = (pide, archivo) => pide.has(archivo.nombre) || [...pide].some(ref => ref.endsWith(archivo.nombre))
+const esDeLaApp = archivo => APPS.some(app => archivo.nombre === app.pagina || laPidePagina(app.pide, archivo))
 const diferidos = archivos.filter(archivo => !enLaPrimeraCarga(archivo) && !esDeLaApp(archivo))
 
 const total = inicial.reduce((suma, a) => suma + a.gzip, 0)
@@ -277,28 +292,19 @@ if (total > PRESUPUESTO_KB * 1024) {
 const margen = PRESUPUESTO_KB - total / 1024
 console.log(`✅ Dentro del presupuesto (quedan ${margen.toFixed(1)} kB de margen).\n`)
 
-// ── La app web de clientes (`/u`, 2026-10-05) ─────────────────────────────
-// Su primera carga: la página y lo que ella pide. Comparte casi todo con la
-// tienda, así que si esto engorda, casi siempre engorda también la tienda.
-const paginaDeLaApp = path.join(DIST, 'u.html')
-if (!existsSync(paginaDeLaApp)) {
-  console.error('❌ Falta dist/u.html: la app de clientes no se compiló (vite.config.ts → build.rollupOptions.input).')
-  process.exit(1)
+// ── Las apps web (`/u` y `/r`, 2026-10-05) ────────────────────────────────
+// La primera carga de cada una: su página y lo que ella pide. Comparten casi
+// todo con la tienda, así que si una engorda, casi siempre engorda la tienda.
+for (const app of APPS) {
+  const suyos = archivos.filter(archivo => archivo.nombre === app.pagina || laPidePagina(app.pide, archivo))
+  const totalApp = suyos.reduce((suma, a) => suma + a.gzip, 0)
+  console.log(`📱 ${app.nombre}, primera carga\n`)
+  for (const a of suyos) console.log(`   ${kb(a.gzip).padStart(7)} kB  ${a.nombre}`)
+  console.log(`   ${kb(totalApp).padStart(7)} kB  TOTAL   (presupuesto: ${app.presupuestoKb} kB)\n`)
+  if (totalApp > app.presupuestoKb * 1024) {
+    console.error(`❌ ${app.nombre} pesa ${kb(totalApp)} kB y el presupuesto son ${app.presupuestoKb} kB.`)
+    console.error('   Mira qué entró antes de subir su presupuesto (APPS), y explica en el commit por qué.')
+    process.exit(1)
+  }
+  console.log(`✅ Dentro del presupuesto (quedan ${(app.presupuestoKb - totalApp / 1024).toFixed(1)} kB de margen).\n`)
 }
-const refsDeLaApp = new Set(
-  [...readFileSync(paginaDeLaApp, 'utf8').matchAll(/(?:src|href)="\/?t?\/?([^"]+\.(?:js|css))"/g)]
-    .map(coincidencia => coincidencia[1].replace(/^\/+/, '')),
-)
-const deLaApp = archivos.filter(archivo => (
-  archivo.nombre === 'u.html' || refsDeLaApp.has(archivo.nombre) || [...refsDeLaApp].some(ref => ref.endsWith(archivo.nombre))
-))
-const totalApp = deLaApp.reduce((suma, a) => suma + a.gzip, 0)
-console.log('📱 La app web de clientes (/u), primera carga\n')
-for (const a of deLaApp) console.log(`   ${kb(a.gzip).padStart(7)} kB  ${a.nombre}`)
-console.log(`   ${kb(totalApp).padStart(7)} kB  TOTAL   (presupuesto: ${PRESUPUESTO_APP_KB} kB)\n`)
-if (totalApp > PRESUPUESTO_APP_KB * 1024) {
-  console.error(`❌ La app de clientes pesa ${kb(totalApp)} kB y el presupuesto son ${PRESUPUESTO_APP_KB} kB.`)
-  console.error('   Mira qué entró antes de subir PRESUPUESTO_APP_KB, y explica en el commit por qué.')
-  process.exit(1)
-}
-console.log(`✅ Dentro del presupuesto (quedan ${(PRESUPUESTO_APP_KB - totalApp / 1024).toFixed(1)} kB de margen).\n`)

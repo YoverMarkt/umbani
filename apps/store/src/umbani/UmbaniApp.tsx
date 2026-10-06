@@ -1,13 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
-  RiArrowDownSLine, RiArrowLeftSLine, RiHistoryLine, RiMapPin2Line, RiStore2Line, RiWhatsappLine,
+  RiArrowDownSLine, RiHistoryLine, RiMapPin2Line, RiStore2Line,
 } from '@remixicon/react'
 import { Aviso, Boton, EstadoVacio, LISTA, ROTULO } from '../components/ui'
+import { Entrar, Marco, Cabecera } from './Entrar'
 import { COMO_VA } from '../lib/como-va'
 import { money, rangoDeEspera } from '../lib/format'
 import {
-  abrirLocal, ciudadAqui, ciudadGuardada, ciudades as listaDeCiudades, ErrorDeLaApp, guardarCiudad, guardarToken,
-  menuDeLaCiudad, misPedidos, pedirCodigo, salir, tokenDeLaApp, verificarCodigo,
+  abrirLocal, ciudadAqui, ciudadGuardada, ciudades as listaDeCiudades, ErrorDeLaApp, guardarCiudad,
+  mensaje, menuDeLaCiudad, misPedidos, salir, tokenDeLaApp,
   type CategoriaDelMenu, type Ciudad, type LocalDelMenu, type PedidoDeLaApp,
 } from './api'
 
@@ -26,7 +27,6 @@ import {
 
 type Pantalla = 'ubicacion' | 'inicio' | 'entrar' | 'pedidos'
 
-const mensaje = (error: unknown) => (error instanceof Error ? error.message : 'Algo salió mal. Inténtalo de nuevo.')
 
 export default function UmbaniApp() {
   const [ciudad, setCiudad] = useState<Ciudad | null>(() => ciudadGuardada())
@@ -81,7 +81,7 @@ export default function UmbaniApp() {
   if (pantalla === 'entrar') {
     return (
       <Entrar
-        local={pendiente}
+        explicacion={pendiente ? <>Para pedir en <b>{pendiente.nombre}</b> necesitamos saber quién eres. Es un mensaje y listo.</> : null}
         onVolver={() => { setPendiente(null); setPantalla('inicio') }}
         onDentro={() => {
           void guardarCiudad(ciudad)
@@ -114,27 +114,6 @@ export default function UmbaniApp() {
   )
 }
 
-/** El marco de todas las pantallas: el fondo y el ancho de un teléfono. */
-function Marco({ children }: { children: React.ReactNode }) {
-  return (
-    <main className="mx-auto min-h-svh max-w-md px-4 pt-[calc(env(safe-area-inset-top)+16px)] pb-[calc(env(safe-area-inset-bottom)+24px)]">
-      {children}
-    </main>
-  )
-}
-
-function Cabecera({ titulo, onVolver }: { titulo: string; onVolver?: () => void }) {
-  return (
-    <header className="mb-5 flex items-center gap-2">
-      {onVolver && (
-        <button type="button" onClick={onVolver} aria-label="Volver" className="superficie -ml-1 flex size-11 items-center justify-center rounded-full shadow-tarjeta">
-          <RiArrowLeftSLine size={24} />
-        </button>
-      )}
-      <h1 className="text-[24px] font-extrabold tracking-tight">{titulo}</h1>
-    </header>
-  )
-}
 
 // ── 1. ¿Dónde estás? ─────────────────────────────────────────────────────────
 // Primero el GPS, como las grandes: no se pregunta, se enseña lo de donde
@@ -312,79 +291,6 @@ function Inicio({ ciudad, error, onCambiarCiudad, onPedidos, onLocal }: {
           </section>
         ))}
       </div>
-    </Marco>
-  )
-}
-
-// ── 3. Entrar con WhatsApp ───────────────────────────────────────────────────
-// El cliente MANDA el código a Umbani: recibir no le cuesta a Umbani, y el
-// teléfono queda probado por WhatsApp. Mientras tanto se pregunta cada 2,5 s.
-
-function Entrar({ local, onVolver, onDentro }: {
-  local: LocalDelMenu | null
-  onVolver: () => void
-  onDentro: () => void
-}) {
-  const [codigo, setCodigo] = useState<{ codigo: string; enlace: string } | null>(null)
-  const [estado, setEstado] = useState<'inicio' | 'pidiendo' | 'esperando' | 'vencido'>('inicio')
-  const [error, setError] = useState<string | null>(null)
-  const reloj = useRef<number | null>(null)
-
-  const parar = () => { if (reloj.current) window.clearInterval(reloj.current); reloj.current = null }
-  useEffect(() => parar, [])
-
-  const pedir = async () => {
-    setError(null)
-    setEstado('pidiendo')
-    try {
-      const nuevo = await pedirCodigo()
-      setCodigo(nuevo)
-      setEstado('esperando')
-      parar()
-      reloj.current = window.setInterval(async () => {
-        try {
-          const r = await verificarCodigo(nuevo.codigo)
-          if (r.token) { parar(); guardarToken(r.token); onDentro() }
-        } catch (e) {
-          parar()
-          if (e instanceof ErrorDeLaApp && e.status === 410) setEstado('vencido')
-          else { setError(mensaje(e)); setEstado('inicio') }
-        }
-      }, 2500)
-    } catch (e) {
-      setError(mensaje(e))
-      setEstado('inicio')
-    }
-  }
-
-  return (
-    <Marco>
-      <Cabecera titulo="Entra con WhatsApp" onVolver={() => { parar(); onVolver() }} />
-      {error && <div className="mb-4"><Aviso tono="alerta" titulo="No pudimos seguir">{error}</Aviso></div>}
-      {local && <p className="texto-cuerpo mb-4 text-[15px]">Para pedir en <b>{local.nombre}</b> necesitamos saber quién eres. Es un mensaje y listo.</p>}
-
-      {estado === 'esperando' && codigo
-        ? (
-          <div className="space-y-4">
-            <div className="superficie rounded-(--radius-tarjeta) px-4 py-6 text-center shadow-tarjeta">
-              <p className="texto-cuerpo text-[13px] font-bold tracking-[0.08em] uppercase">Tu código</p>
-              <p className="mt-1 text-[40px] font-extrabold tracking-[0.12em]">{codigo.codigo}</p>
-            </div>
-            <a href={codigo.enlace} className="tinta flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-4 text-[15px] font-bold shadow-alzada">
-              <RiWhatsappLine size={20} /> Abrir WhatsApp y enviarlo
-            </a>
-            <p className="texto-cuerpo text-center text-[14px]">Esperando tu mensaje… Vuelve aquí después de enviarlo.</p>
-          </div>
-        )
-        : (
-          <div className="space-y-3">
-            {estado === 'vencido' && <Aviso tono="alerta" titulo="El código venció">Pide otro: solo dura unos minutos.</Aviso>}
-            <p className="texto-cuerpo text-[15px]">Te damos un código, lo envías a Umbani por WhatsApp y entras. Sin contraseñas.</p>
-            <Boton onClick={() => void pedir()} disabled={estado === 'pidiendo'}>
-              {estado === 'pidiendo' ? 'Preparando tu código…' : estado === 'vencido' ? 'Pedir otro código' : 'Pedir mi código'}
-            </Boton>
-          </div>
-        )}
     </Marco>
   )
 }

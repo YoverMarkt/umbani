@@ -30,7 +30,9 @@
       "entry": [
         "index.html",
         "u.html",
+        "r.html",
         "src/umbani/main.tsx",
+        "src/repartidor/main.tsx",
         "tests/*.test.ts"
       ]
     },

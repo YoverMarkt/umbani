@@ -14,16 +14,18 @@ export default defineConfig({
   resolve: { alias: { '@': path.resolve(__dirname, './src') } },
   plugins: [react(), tailwindcss()],
   base: '/t/',
-  // Dos páginas (2026-10-05): la tienda de siempre (`index.html`, la que abre
-  // WhatsApp) y la app web de clientes (`u.html`, servida en `/u`). El
-  // manifiesto le dice al presupuesto qué descarga CADA una: quien abre una
-  // tienda no carga la app, y no puede pagar su peso.
+  // Tres páginas (2026-10-05): la tienda de siempre (`index.html`, la que abre
+  // WhatsApp), la app web de clientes (`u.html`, servida en `/u`) y la de
+  // repartidores (`r.html`, en `/r`). El manifiesto le dice al presupuesto qué
+  // descarga CADA una: quien abre una tienda no carga las apps, y no puede
+  // pagar su peso.
   build: {
     manifest: true,
     rollupOptions: {
       input: {
         main: path.resolve(__dirname, 'index.html'),
         umbani: path.resolve(__dirname, 'u.html'),
+        repartidor: path.resolve(__dirname, 'r.html'),
       },
     },
   },

@@ -4,6 +4,15 @@ Misma sesión que la app del cliente (ver [API-UMBANI.md](API-UMBANI.md) §1a:
 iniciar sesión con WhatsApp). La diferencia: estas rutas exigen que ese
 teléfono sea de un **motorizado activo**. Si no lo es → `403`.
 
+> 🌐 **La app web de repartidores es la referencia viva** (2026-10-05): abre
+> `https://umbani-pruebas.up.railway.app/r` en el móvil mientras construyes.
+> Hace este recorrido entero —entrar, disponible, tomar, recoger, entregar con
+> el efectivo confirmado, «Mi semana» y las liquidaciones— con la MISMA API, y
+> su código está en `apps/store/src/repartidor/` (`api.ts` es cada llamada).
+> Una prueba vigila que sus siete rutas estén en `openapi.yaml`. Su sesión va
+> **aparte** de la de cliente, como irán las dos apps Flutter: entrar como
+> repartidor no cierra la sesión de quien pide en el mismo teléfono.
+
 Hay dos clases, y la app es la misma para las dos (`flota` en `/yo`):
 
 | | Lo registra | Lleva pedidos de | La carrera es de | El efectivo |

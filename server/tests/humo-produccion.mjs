@@ -117,17 +117,21 @@ if (canal) {
   }
 }
 
-// ── 2. ¿Se sirven las tres aplicaciones? ────────────────────────────────────
+// ── 2. ¿Se sirven las aplicaciones? ─────────────────────────────────────────
 console.log('\n2. Aplicaciones servidas')
 // Con la barra final: sin ella Express responde 301 hacia la versión correcta,
 // que es lo esperado y no un fallo.
-for (const [ruta, nombre] of [
+for (const [ruta, nombre, debeDecir = '<html'] of [
   ['/app/', 'panel del cliente'],
   ['/app-admin/', 'panel del superadmin'],
   ['/t/_', 'mini app de la tienda'],
+  // Las apps web (2026-10-05), referencia de las apps Flutter. Se mira el
+  // título: una ruta mal enlazada serviría OTRA página con un 200 igual.
+  ['/u', 'app web de clientes', '<title>Umbani</title>'],
+  ['/r', 'app web de repartidores', '<title>Umbani Repartidores</title>'],
 ]) {
   const r = await pedir(ruta)
-  revisar(nombre, r.status === 200 && r.texto.includes('<html'), `status ${r.status}`)
+  revisar(nombre, r.status === 200 && r.texto.includes(debeDecir), `status ${r.status}`)
 }
 
 // ── 3. La puerta de la tienda ───────────────────────────────────────────────
