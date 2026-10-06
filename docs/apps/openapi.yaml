@@ -179,6 +179,17 @@ paths:
                       properties:
                         id: { type: string, format: uuid }
                         nombre: { type: string }
+  /api/v1/ciudades/aqui:
+    get:
+      summary: La ciudad de una ubicación (el GPS del cliente)
+      description: Dentro de una ciudad devuelve la ciudad y si ya tiene locales. Fuera de todas devuelve la más cercana y queda anotado (redondeado a ~1 km) para decidir la próxima ciudad.
+      parameters:
+        - { name: lat, in: query, required: true, schema: { type: number } }
+        - { name: lng, in: query, required: true, schema: { type: number } }
+        - { name: x-umbani-dispositivo, in: header, required: false, description: Id de instalación (se guarda resumido), schema: { type: string } }
+      responses:
+        '200': { description: '{ ciudad: { id, nombre }, conLocales } o { ciudad: null, cercana: { nombre, km } | null }' }
+        '400': { description: Ubicación no válida }
   /api/v1/yo/ciudad:
     put:
       summary: Guarda la ciudad del cliente (la misma que usa el chat de WhatsApp)

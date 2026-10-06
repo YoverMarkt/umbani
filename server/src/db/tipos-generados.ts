@@ -759,24 +759,33 @@ export type Database = {
           active: boolean
           created_at: string
           id: string
+          latitude: number | null
+          longitude: number | null
           name: string
           province: string | null
+          radius_km: number
           sort: number
         }
         Insert: {
           active?: boolean
           created_at?: string
           id?: string
+          latitude?: number | null
+          longitude?: number | null
           name: string
           province?: string | null
+          radius_km?: number
           sort?: number
         }
         Update: {
           active?: boolean
           created_at?: string
           id?: string
+          latitude?: number | null
+          longitude?: number | null
           name?: string
           province?: string | null
+          radius_km?: number
           sort?: number
         }
         Relationships: []
@@ -1048,6 +1057,47 @@ export type Database = {
             columns: ["fleet_business_id"]
             isOneToOne: false
             referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      coverage_requests: {
+        Row: {
+          created_at: string
+          day: string
+          device_hash: string
+          id: number
+          km: number | null
+          lat_aprox: number
+          lng_aprox: number
+          nearest_city_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          day?: string
+          device_hash?: string
+          id?: never
+          km?: number | null
+          lat_aprox: number
+          lng_aprox: number
+          nearest_city_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          day?: string
+          device_hash?: string
+          id?: never
+          km?: number | null
+          lat_aprox?: number
+          lng_aprox?: number
+          nearest_city_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coverage_requests_nearest_city_id_fkey"
+            columns: ["nearest_city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
             referencedColumns: ["id"]
           },
         ]
@@ -3646,6 +3696,15 @@ export type Database = {
         Args: { p_period_start: string }
         Returns: Json
       }
+      ciudad_de_la_ubicacion: {
+        Args: { p_lat: number; p_lng: number }
+        Returns: {
+          dentro: boolean
+          id: string
+          km: number
+          name: string
+        }[]
+      }
       claim_blocked_notice: {
         Args: { p_business_id: string; p_customer_id: string }
         Returns: boolean
@@ -3715,6 +3774,17 @@ export type Database = {
         Args: { p_week_start: string }
         Returns: Json
       }
+      cobertura_pedida: {
+        Args: { p_dias?: number }
+        Returns: {
+          ciudad_cercana: string
+          km: number
+          lat_aprox: number
+          lng_aprox: number
+          personas: number
+          ultima: string
+        }[]
+      }
       comision_payphone_bps: { Args: never; Returns: number }
       complete_outbox_event: {
         Args: { p_id: string; p_token: string }
@@ -3776,6 +3846,10 @@ export type Database = {
           p_scheduled_for?: string
         }
         Returns: Json
+      }
+      distancia_km: {
+        Args: { lat1: number; lat2: number; lng1: number; lng2: number }
+        Returns: number
       }
       enqueue_outbox_event: {
         Args: {
@@ -4176,6 +4250,10 @@ export type Database = {
       register_unpaid_expiry: {
         Args: { p_business_id: string; p_order_id: string }
         Returns: Json
+      }
+      registrar_sin_cobertura: {
+        Args: { p_dispositivo: string; p_lat: number; p_lng: number }
+        Returns: undefined
       }
       renew_webhook_event_lease: {
         Args: {

@@ -7389,6 +7389,80 @@ $ciudades$;
 
 select '✅ ciudades: cada cliente ve solo los locales de la suya, sin ciudad no se ve nada, y el motorizado reparte en la suya' as resultado;
 
+-- ═══════════════════════════════════════════════════════════════════════════
+-- LA CIUDAD POR LA UBICACIÓN (2026-10-05)
+-- ═══════════════════════════════════════════════════════════════════════════
+-- La app manda el GPS y la base dice la ciudad; la entrega tiene que caer
+-- dentro de la ciudad del local; y quien abre la app fuera queda anotado,
+-- redondeado y una vez por día y dispositivo.
+do $ubicacion$
+declare
+  v_chone uuid := pg_temp.chone();
+  v_local uuid; v_r record; v_falló boolean; v_mensaje text; v_n integer;
+begin
+  -- ── 1. La distancia y la ciudad de un punto ──────────────────────────────
+  if public.distancia_km(-0.69819, -80.09361, -1.05458, -80.45445) not between 50 and 60 then
+    raise exception 'Chone–Portoviejo no mide ~55 km: %', public.distancia_km(-0.69819, -80.09361, -1.05458, -80.45445);
+  end if;
+  select * into v_r from public.ciudad_de_la_ubicacion(-0.6995, -80.0930);
+  if v_r.id is distinct from v_chone or not v_r.dentro then
+    raise exception 'a 200 m del centro de Chone no se está en Chone: %', row_to_json(v_r);
+  end if;
+  select * into v_r from public.ciudad_de_la_ubicacion(-0.1807, -78.4678); -- Quito
+  if v_r.dentro or v_r.km < 100 then
+    raise exception 'Quito sale dentro de una ciudad de Manabí: %', row_to_json(v_r);
+  end if;
+  update cities set active = false where id = v_chone;
+  if exists (select 1 from public.ciudad_de_la_ubicacion(-0.6995, -80.0930) where id = v_chone) then
+    raise exception 'una ciudad apagada sigue encontrándose por GPS';
+  end if;
+  update cities set active = true where id = v_chone;
+
+  -- ── 2. La entrega, dentro de la ciudad del local ─────────────────────────
+  insert into businesses (slug, name, type, whatsapp_provider, whatsapp_number, ycloud_number, takes_orders, storefront_enabled, city_id)
+  values ('verif-ubicacion', 'Asadero de Chone', 'asadero', 'ycloud', '+593900333001', '+593900333001', true, true, v_chone)
+  returning id into v_local;
+  -- Dentro: entra.
+  insert into orders (business_id, contact_phone, source, status, fulfillment, subtotal, total, delivery_latitude, delivery_longitude)
+  values (v_local, '593900333100', 'storefront', 'pendiente', 'delivery', 10, 11.5, -0.6995, -80.0930);
+  -- En Portoviejo: no, y el cliente lee dónde está el problema.
+  v_falló := false;
+  begin
+    insert into orders (business_id, contact_phone, source, status, fulfillment, subtotal, total, delivery_latitude, delivery_longitude)
+    values (v_local, '593900333101', 'storefront', 'pendiente', 'delivery', 10, 11.5, -1.0546, -80.4545);
+  exception when insufficient_privilege then
+    v_falló := true;
+    get stacked diagnostics v_mensaje = message_text;
+  end;
+  if not v_falló or v_mensaje not like '%fuera de la zona de reparto de Chone%' then
+    raise exception 'una entrega en Portoviejo entró a un local de Chone (mensaje: %)', v_mensaje;
+  end if;
+  -- El retiro no tiene entrega; el mostrador lo teclea el dueño; sin punto no se puede medir.
+  insert into orders (business_id, contact_phone, source, status, fulfillment, subtotal, total, delivery_latitude, delivery_longitude)
+  values (v_local, '593900333102', 'storefront', 'pendiente', 'pickup', 10, 10, -1.0546, -80.4545);
+  insert into orders (business_id, contact_phone, source, status, fulfillment, subtotal, total, delivery_latitude, delivery_longitude)
+  values (v_local, '593900333103', 'manual', 'pendiente', 'delivery', 10, 11.5, -1.0546, -80.4545);
+  insert into orders (business_id, contact_phone, source, status, fulfillment, subtotal, total)
+  values (v_local, '593900333104', 'storefront', 'pendiente', 'delivery', 10, 11.5);
+
+  -- ── 3. Quien abre la app fuera de toda ciudad ────────────────────────────
+  perform public.registrar_sin_cobertura(-0.1807, -78.4678, 'dispositivo-a');
+  perform public.registrar_sin_cobertura(-0.1807, -78.4678, 'dispositivo-a'); -- el mismo, el mismo día
+  perform public.registrar_sin_cobertura(-0.1809, -78.4681, 'dispositivo-b'); -- otro, en la misma celda
+  select count(*) into v_n from coverage_requests where lat_aprox = -0.18 and lng_aprox = -78.47;
+  if v_n <> 2 then raise exception 'abrir la app dos veces no son dos personas: % filas', v_n; end if;
+  if exists (select 1 from coverage_requests where lat_aprox::text !~ '^-?\d+\.\d{2}$') then
+    raise exception 'el punto no se guardó redondeado: se guardaría la casa de alguien';
+  end if;
+  select * into v_r from public.cobertura_pedida(30) where lat_aprox = -0.18 and lng_aprox = -78.47;
+  if v_r.personas <> 2 or v_r.ciudad_cercana is null then
+    raise exception 'la cobertura pedida no cuenta bien: %', row_to_json(v_r);
+  end if;
+end;
+$ubicacion$;
+
+select '✅ ubicación: el GPS da la ciudad, la entrega cae dentro de la del local, y lo de fuera se anota redondeado' as resultado;
+
 -- ════════════════════════════════════════════════════════════════════════════
 -- EL REGISTRO DE QUIÉN MUEVE DINERO (2026-09-29)
 -- ════════════════════════════════════════════════════════════════════════════

@@ -44,4 +44,34 @@ router.put('/api/admin/ciudades/:id/activa', auth.authAdmin, async (req, res) =>
   return res.json({ activa })
 })
 
+/**
+ * Centro y radio de cobertura (2026-10-05): de ahí sale la ciudad del cliente
+ * por su GPS, y la entrega tiene que caer dentro.
+ */
+router.put('/api/admin/ciudades/:id', auth.authAdmin, async (req, res) => {
+  const id = String(req.params.id || '')
+  if (!UUID.test(id)) return res.status(400).json({ error: 'Ciudad no válida' })
+  const body = (req.body || {}) as Record<string, unknown>
+  const latitude = Number(body.latitud)
+  const longitude = Number(body.longitud)
+  const radius_km = Number(body.radioKm)
+  if (!Number.isFinite(latitude) || Math.abs(latitude) > 90 || !Number.isFinite(longitude) || Math.abs(longitude) > 180
+    || body.latitud === '' || body.longitud === '' || body.latitud == null || body.longitud == null) {
+    return res.status(400).json({ error: 'Pon el centro de la ciudad (latitud y longitud)' })
+  }
+  if (!Number.isFinite(radius_km) || radius_km < 0.5 || radius_km > 50) {
+    return res.status(400).json({ error: 'El radio va de 0,5 a 50 km' })
+  }
+  if (!(await db.updateCityArea(id, { latitude, longitude, radius_km }))) {
+    return res.status(404).json({ error: 'No encontramos esa ciudad' })
+  }
+  return res.json({ latitud: latitude, longitud: longitude, radioKm: radius_km })
+})
+
+/** Quién abre la app fuera de toda ciudad: dónde abrir la siguiente. */
+router.get('/api/admin/ciudades/sin-cobertura', auth.authAdmin, async (req, res) => {
+  const dias = Math.min(Math.max(Number(req.query.dias) || 30, 1), 365)
+  return res.json({ dias, puntos: await db.coverageRequests(dias) })
+})
+
 export = router
