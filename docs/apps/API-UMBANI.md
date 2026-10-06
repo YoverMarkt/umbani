@@ -20,6 +20,13 @@ pantalla en [APP-CLIENTE.md §1b](APP-CLIENTE.md). El local de pruebas está en 
 **a) La sesión de la app (quién es el cliente).** Se inicia con WhatsApp, sin
 contraseña ni SMS:
 
+> ⚠️ **Hoy, y para desarrollar** (2026-10-05). El dueño NO quiere que las apps
+> Flutter entren con WhatsApp: quiere **Google, Apple o el número de teléfono**.
+> Mientras lo decide y el servidor lo acepta, construye la pantalla de entrada
+> **aislada** —un solo módulo que termina devolviendo el `token`— y desarrolla
+> con WhatsApp, que es lo único que el servidor acepta hoy. El resto de la app
+> no cambiará: todas las rutas solo miran `Authorization: Bearer <token>`.
+
 1. `POST /api/v1/auth/whatsapp` → `{ codigo, enlace, expiraEn }`.
 2. La app enseña el código y un botón que abre `enlace` (WhatsApp con el
    mensaje «Mi código de Umbani: XXXXXX» ya escrito hacia el número de Umbani).

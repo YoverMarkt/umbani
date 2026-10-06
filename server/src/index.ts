@@ -257,6 +257,8 @@ app.get('/t/*', (_req, res) => enviarHtmlDeSpa(res, path.join(storeDist, 'index.
 // La app web de clientes (2026-10-05): otra página de la mini app, con sus
 // archivos bajo /t/assets. Es la referencia de la app Flutter y se prueba aquí.
 app.get(['/u', '/u/*'], (_req, res) => enviarHtmlDeSpa(res, path.join(storeDist, 'u.html')))
+// Y la de repartidores, igual: la referencia viva de la app del motorizado.
+app.get(['/r', '/r/*'], (_req, res) => enviarHtmlDeSpa(res, path.join(storeDist, 'r.html')))
 // Páginas legales públicas de Vezzper (sin login): las necesita Meta y las ven
 // los clientes. Se sirven como HTML estático desde server/public.
 const legalRoot = path.join(serverRoot, 'public')

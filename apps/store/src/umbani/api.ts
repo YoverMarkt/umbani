@@ -13,8 +13,16 @@
 
 import { deviceId } from '../lib/session'
 
-const TOKEN = 'umbani_app_token'
+let TOKEN = 'umbani_app_token'
 const CIUDAD = 'umbani_ciudad'
+
+/**
+ * La app de repartidores (`/r`) guarda su sesión APARTE: es otra app, como lo
+ * serán las dos de Flutter. Comparten dominio, y con una sola llave entrar
+ * como repartidor cerraba la sesión de cliente — y en un mismo teléfono no se
+ * podía probar a la vez quien pide y quien reparte con números distintos.
+ */
+export function usarLlaveDeSesion(llave: string): void { TOKEN = llave }
 
 export interface Ciudad { id: string; nombre: string }
 
@@ -54,6 +62,9 @@ export class ErrorDeLaApp extends Error {
   }
 }
 
+/** Lo que se le dice a la persona cuando algo falla: el mensaje del servidor, o uno genérico. */
+export const mensaje = (error: unknown) => (error instanceof Error ? error.message : 'Algo salió mal. Inténtalo de nuevo.')
+
 // ── Lo que se guarda en el teléfono ────────────────────────────────────────
 // ⚠️ Cada lectura y escritura va con `try`: en una ventana privada el
 // almacenamiento puede lanzar, y la app tiene que seguir funcionando.
@@ -85,7 +96,7 @@ export function recordarCiudad(ciudad: Ciudad): void {
 
 // ── Las llamadas ───────────────────────────────────────────────────────────
 
-async function pedir<T>(ruta: string, opciones: {
+export async function pedir<T>(ruta: string, opciones: {
   metodo?: 'GET' | 'POST' | 'PUT'
   cuerpo?: unknown
   conSesion?: boolean
