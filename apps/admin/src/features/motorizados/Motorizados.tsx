@@ -28,6 +28,8 @@ type Motorizado = {
   id: string; phone: string; name: string; vehicle: string | null; fleet_business_id: string | null
   active: boolean; available: boolean; cash_limit_cents: number
   businesses?: { name: string } | null; cities?: { name: string } | null; semana: Semana | null
+  /** Su cooperativa (2026-10-06): la registra ella, y cobra y liquida como uno de Umbani. */
+  cooperative_id?: string | null; cooperatives?: { name: string } | null
 }
 type Liquidacion = {
   id: string; period_start: string; period_end: string; orders_count: number
@@ -168,7 +170,13 @@ export default function Motorizados() {
                 {data.motorizados.map(m => (
                   <TableRow key={m.id}>
                     <TableCell><div className="font-medium">{m.name}</div><div className="text-xs text-muted-foreground">{m.phone}{m.vehicle ? ` · ${m.vehicle}` : ''}</div></TableCell>
-                    <TableCell>{m.fleet_business_id ? `De ${m.businesses?.name || 'un local'}` : `Umbani · ${m.cities?.name || 'sin ciudad'}`}</TableCell>
+                    <TableCell>
+                      {m.fleet_business_id
+                        ? `De ${m.businesses?.name || 'un local'}`
+                        : m.cooperative_id
+                          ? `${m.cooperatives?.name || 'Una cooperativa'} · ${m.cities?.name || 'sin ciudad'}`
+                          : `Umbani · ${m.cities?.name || 'sin ciudad'}`}
+                    </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {dinero(m.semana?.efectivoEncimaCents ?? 0)} <span className="text-xs text-muted-foreground">/ {dinero(m.cash_limit_cents)}</span>
                     </TableCell>
@@ -178,7 +186,7 @@ export default function Motorizados() {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
-                        {/* Solo los de Umbani: la carrera de la flota de un local es del local. */}
+                        {/* Los de Umbani y los de una cooperativa: la carrera de la flota de un local es del local. */}
                         {!m.fleet_business_id && (
                           <Button size="sm" variant="outline" onClick={() => { setViendo(m); setARetener(null); setMotivo('') }}>Carreras</Button>
                         )}

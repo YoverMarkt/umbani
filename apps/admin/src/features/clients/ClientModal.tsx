@@ -11,6 +11,7 @@ import { Skeleton } from '@botpanel/ui/components/skeleton'
 import { toast } from 'sonner'
 import CartaDelLocal from './CartaDelLocal'
 import { getCiudades, type Ciudad } from '../ciudades/api'
+import { getCooperativas, type Cooperativa } from '../cooperativas/api'
 import { contarProductos, paraEnviar, preciosQueFaltan, type CartaEnRevision } from './carta'
 import {
   BUSINESS_TYPE_OPTIONS,
@@ -45,7 +46,8 @@ const EMPTY = {
   monthly_contact_limit: '50', monthly_outbound_message_limit: '250',
   client_email: '', client_password: '', notes: '',
   card_mode: 'apagado' as 'apagado' | 'pruebas' | 'produccion',
-  delivery_by: 'local' as 'local' | 'umbani',
+  delivery_by: 'local' as 'local' | 'umbani' | 'cooperativa',
+  cooperative_id: '',
   own_fleet: false,
   city_id: '',
 }
@@ -90,6 +92,7 @@ export default function ClientModal({ id, onClose, onSaved }: { id: string | nul
         notes: c.notes ?? '',
         card_mode: c.card_mode ?? 'apagado',
         delivery_by: c.delivery_by ?? 'local',
+        cooperative_id: c.cooperative_id ?? '',
         own_fleet: c.own_fleet === true,
         city_id: c.city_id ?? '',
       })
@@ -124,6 +127,11 @@ export default function ClientModal({ id, onClose, onSaved }: { id: string | nul
   const [ciudades, setCiudades] = useState<Ciudad[]>([])
   useEffect(() => {
     getCiudades().then(setCiudades).catch(() => setCiudades([]))
+  }, [])
+  // Las cooperativas de reparto (2026-10-06): se ofrecen las de la ciudad del local.
+  const [cooperativas, setCooperativas] = useState<Cooperativa[]>([])
+  useEffect(() => {
+    getCooperativas().then(setCooperativas).catch(() => setCooperativas([]))
   }, [])
 
   const alternarCajon = (code: string) => {
@@ -223,6 +231,8 @@ export default function ClientModal({ id, onClose, onSaved }: { id: string | nul
     // La tarjeta solo se decide EDITANDO: un local nace sin cobro con tarjeta.
     if (id) payload.card_mode = f.card_mode === 'apagado' ? null : f.card_mode
     if (id) payload.delivery_by = f.delivery_by
+    // La cooperativa solo con «Una cooperativa»; con las otras dos, se suelta.
+    if (id) payload.cooperative_id = f.delivery_by === 'cooperativa' ? (f.cooperative_id || null) : null
     if (id) payload.own_fleet = f.own_fleet
     // Al crear y al editar: sin ella no aparece a los clientes.
     payload.city_id = f.city_id || null
@@ -460,8 +470,37 @@ export default function ClientModal({ id, onClose, onSaved }: { id: string | nul
                   <SelectContent>
                     <SelectItem value="local">El local, con su gente (como hoy)</SelectItem>
                     <SelectItem value="umbani">Motorizados de Umbani</SelectItem>
+                    <SelectItem value="cooperativa">Una cooperativa</SelectItem>
                   </SelectContent>
                 </Select>
+
+                {/* Una cooperativa (2026-10-06): de la ciudad del local, o sus
+                    motorizados nunca verían sus pedidos. La base lo exige igual. */}
+                {f.delivery_by === 'cooperativa' && (() => {
+                  const deSuCiudad = cooperativas.filter(c => c.ciudadId === f.city_id && (c.activa || c.id === f.cooperative_id))
+                  return (
+                    <div className="mt-3">
+                      <Label htmlFor="client-cooperative">Qué cooperativa</Label>
+                      {!f.city_id
+                        ? <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">Primero elige la ciudad del local (más abajo).</p>
+                        : !deSuCiudad.length
+                          ? <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">No hay cooperativas en la ciudad del local. Créala en «Cooperativas».</p>
+                          : (
+                            <Select value={f.cooperative_id || 'ninguna'} onValueChange={v => setF(prev => ({ ...prev, cooperative_id: v === 'ninguna' ? '' : v }))}>
+                              <SelectTrigger id="client-cooperative" className="mt-1 w-full sm:max-w-md"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="ninguna">Elige la cooperativa</SelectItem>
+                                {deSuCiudad.map(c => <SelectItem key={c.id} value={c.id}>{c.nombre}{c.activa ? '' : ' (apagada)'}</SelectItem>)}
+                              </SelectContent>
+                            </Select>
+                          )}
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Sus motorizados llevan los pedidos de este local: Umbani les paga la carrera el lunes y ellos
+                        liquidan su efectivo con Umbani.
+                      </p>
+                    </div>
+                  )
+                })()}
 
                 {/* Repartidores propios, local por local (2026-10-04): se
                     enciende al local que dice «tengo mi flota». Solo tiene

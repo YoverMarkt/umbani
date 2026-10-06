@@ -642,3 +642,101 @@ test('Pagos → Cobros con tarjeta dice qué cuadra con PayPhone y qué no', asy
   await expect(page.getByText('Descuadre', { exact: true })).toBeVisible()
   await expect(page.getByText(/hay que devolverlo a mano/)).toBeVisible()
 })
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LAS COOPERATIVAS DE REPARTO (2026-10-06): la tercera flota
+// ═══════════════════════════════════════════════════════════════════════════
+const CHONE = 'ciudad-chone'
+const ciudadesDePrueba = { ciudades: [{ id: CHONE, name: 'Chone', province: 'Manabí', active: true, sort: 1, latitude: -0.69819, longitude: -80.09361, radius_km: 6 }] }
+const cooperativaDeChone = {
+  id: 'coop-1', nombre: 'Cooperativa Chone', ciudadId: CHONE, ciudad: 'Chone', telefono: null, activa: true,
+  repartidores: 3, usuarios: [{ id: 'u1', email: 'coop@chone.ec', nombre: 'Rosa', activo: true }],
+}
+
+test('Cooperativas: la lista, el alta con su acceso y apagarla con confirmación', async ({ page }) => {
+  await seedAdminSession(page)
+  await mockAdminApi(page)
+  const creadas: unknown[] = []
+  const cambios: unknown[] = []
+  await page.route('**/api/admin/ciudades', route => route.fulfill({ json: ciudadesDePrueba }))
+  await page.route('**/api/admin/cooperativas', async route => {
+    if (route.request().method() === 'POST') {
+      creadas.push(route.request().postDataJSON())
+      return route.fulfill({ status: 201, json: { id: 'coop-2', nombre: 'Cooperativa de Motos' } })
+    }
+    return route.fulfill({ json: { cooperativas: [cooperativaDeChone] } })
+  })
+  await page.route('**/api/admin/cooperativas/coop-1/activa', async route => {
+    cambios.push(route.request().postDataJSON())
+    return route.fulfill({ json: { activa: false } })
+  })
+
+  await page.goto(`${adminUrl}#/cooperativas`)
+  await expect(page.getByRole('heading', { name: 'Cooperativas' })).toBeVisible()
+  const fila = page.getByRole('row', { name: /Cooperativa Chone/ })
+  await expect(fila).toContainText('coop@chone.ec')
+  await expect(fila).toContainText('Repartiendo')
+
+  // El alta no se deja pulsar sin una contraseña de 12.
+  const crear = page.getByRole('button', { name: 'Crear cooperativa' })
+  await page.getByLabel('Nombre', { exact: true }).fill('Cooperativa de Motos')
+  await page.getByLabel('Ciudad donde reparte').click()
+  await page.getByRole('option', { name: 'Chone' }).click()
+  await page.getByLabel('Correo para entrar a su panel').fill('motos@chone.ec')
+  await page.getByLabel('Contraseña', { exact: true }).fill('corta')
+  await expect(crear).toBeDisabled()
+  await page.getByLabel('Contraseña', { exact: true }).fill('una-clave-de-12+')
+  await crear.click()
+  await expect.poll(() => creadas.length).toBe(1)
+  expect(creadas[0]).toMatchObject({
+    nombre: 'Cooperativa de Motos', ciudadId: CHONE, usuario: { email: 'motos@chone.ec', clave: 'una-clave-de-12+' },
+  })
+
+  // Apagarla dice qué pasa antes de hacerlo.
+  await fila.getByRole('button', { name: 'Apagar' }).click()
+  const aviso = page.getByRole('alertdialog')
+  await expect(aviso).toContainText('dejan de recibir pedidos nuevos')
+  await aviso.getByRole('button', { name: 'Apagar' }).click()
+  await expect.poll(() => cambios.length).toBe(1)
+  expect(cambios[0]).toEqual({ activa: false })
+})
+
+test('la ficha del local: «Quién reparte → Una cooperativa» ofrece las de SU ciudad y la guarda', async ({ page }) => {
+  await seedAdminSession(page)
+  await mockAdminApi(page)
+  let guardado: Record<string, unknown> | null = null
+  await page.route('**/api/admin/ciudades', route => route.fulfill({ json: ciudadesDePrueba }))
+  await page.route('**/api/admin/cooperativas', route => route.fulfill({ json: {
+    cooperativas: [cooperativaDeChone, { ...cooperativaDeChone, id: 'coop-porto', nombre: 'Cooperativa Portoviejo', ciudadId: 'otra' }],
+  } }))
+  await page.route('**/api/admin/clients/biz-e2e', async route => {
+    if (route.request().method() === 'PUT') {
+      guardado = route.request().postDataJSON()
+      return route.fulfill({ json: { ok: true } })
+    }
+    return route.fulfill({ json: {
+      id: 'biz-e2e', slug: 'negocio-e2e', name: 'Negocio E2E', type: 'pizzería',
+      whatsapp_number: null, whatsapp_provider: 'marketplace', owner_phone: '+593999999999',
+      ycloud_number: null, ycloud_webhook_endpoint_id: null, meta_phone_id: null,
+      active: true, bot_active: true, suspended: false, takes_orders: true, storefront_enabled: true, chat_mode: 'miniapp',
+      plan: 'basic', monthly_rate: 49, monthly_contact_limit: 200, monthly_outbound_message_limit: 1000,
+      created_at: '2026-07-11T00:00:00.000Z', notes: null, client_email: 'dueno@e2e.test',
+      city_id: CHONE, delivery_by: 'umbani', cooperative_id: null,
+    } })
+  })
+
+  await page.goto(`${adminUrl}#/clients`)
+  await page.getByRole('row', { name: /Negocio E2E/ }).getByRole('button', { name: 'Editar' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Editar negocio' })
+  await dialog.getByRole('combobox', { name: 'Quién reparte' }).click()
+  await page.getByRole('option', { name: 'Una cooperativa' }).click()
+
+  // Solo las de la ciudad del local: la de Portoviejo no se ofrece.
+  await dialog.getByRole('combobox', { name: 'Qué cooperativa' }).click()
+  await expect(page.getByRole('option', { name: 'Cooperativa Portoviejo' })).toHaveCount(0)
+  await page.getByRole('option', { name: 'Cooperativa Chone' }).click()
+  await dialog.getByRole('button', { name: 'Guardar cambios' }).click()
+
+  await expect.poll(() => guardado?.delivery_by).toBe('cooperativa')
+  expect(guardado?.cooperative_id).toBe('coop-1')
+})
