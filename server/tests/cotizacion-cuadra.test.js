@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { createRequire } from 'node:module'
 
 const require = createRequire(import.meta.url)
-const { quoteCart, reglaDeMargen } = require('../dist/services/storefront')
+const { quoteCart } = require('../dist/services/cotizacion')
+const { reglaDeMargen } = require('../dist/services/storefront')
 
 // ═══════════════════════════════════════════════════════════════════════════
 // LA COTIZACIÓN COBRA LO MISMO QUE EL PEDIDO

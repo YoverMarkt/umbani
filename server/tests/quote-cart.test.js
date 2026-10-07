@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { createRequire } from 'node:module'
 
 const require = createRequire(import.meta.url)
-const { quoteCart } = require('../dist/services/storefront')
+const { quoteCart } = require('../dist/services/cotizacion')
 
 // ═══════════════════════════════════════════════════════════════════════════
 // COTIZAR EL CARRITO

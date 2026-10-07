@@ -4,7 +4,8 @@ import fs from 'node:fs'
 import { fuenteDeLaTienda } from './fuente-de-la-tienda.mjs'
 
 const require = createRequire(import.meta.url)
-const { quoteCart, publicBusiness } = require('../dist/services/storefront')
+const { publicBusiness } = require('../dist/services/storefront')
+const { quoteCart } = require('../dist/services/cotizacion')
 const { tarifaDeServicio, olvidarTarifa } = require('../dist/services/tarifa-de-servicio')
 
 // ═══════════════════════════════════════════════════════════════════════════

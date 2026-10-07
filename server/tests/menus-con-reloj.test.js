@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { createRequire } from 'node:module'
 
 const require = createRequire(import.meta.url)
-const { buildStorefrontCatalog, quoteCart, reglaDeMargen } = require('../dist/services/storefront')
+const { buildStorefrontCatalog, reglaDeMargen } = require('../dist/services/storefront')
+const { quoteCart } = require('../dist/services/cotizacion')
 const { enHorarioDeProducto, textoDeFranja } = require('../dist/services/schedule')
 
 // ═══════════════════════════════════════════════════════════════════════════

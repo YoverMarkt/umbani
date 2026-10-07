@@ -5,7 +5,8 @@ import { createRequire } from 'node:module'
 
 const require = createRequire(import.meta.url)
 const { calculatePlatformMarkup } = require('../dist/services/platform-pricing.js')
-const { precioDeVitrina, reglaDeMargen, quoteCart, publicBusiness } = require('../dist/services/storefront.js')
+const { precioDeVitrina, reglaDeMargen, publicBusiness } = require('../dist/services/storefront.js')
+const { quoteCart } = require('../dist/services/cotizacion.js')
 
 // ═══════════════════════════════════════════════════════════════════════════
 // EL MARGEN SE SUMA AL PRECIO, NO SE LE QUITA AL DUEÑO (2026-08-25)

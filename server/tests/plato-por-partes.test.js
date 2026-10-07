@@ -3,7 +3,7 @@ import { createRequire } from 'node:module'
 
 const require = createRequire(import.meta.url)
 const { buildMealLines } = require('../dist/services/pricing')
-const { quoteCart } = require('../dist/services/storefront')
+const { quoteCart } = require('../dist/services/cotizacion')
 
 // ═══════════════════════════════════════════════════════════════════════════
 // EL PLATO POR PARTES — el almuerzo de una familia
