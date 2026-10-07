@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createRequire } from 'node:module'
 import jwt from 'jsonwebtoken'
-import fs from 'node:fs'
+import { fuenteDeLasRutasDeLocales } from './fuente-de-rutas.mjs'
 
 const require = createRequire(import.meta.url)
 const client = require('../dist/db/client')
@@ -195,7 +195,7 @@ describe('el superadmin', () => {
   // La tercera, UNA cooperativa (2026-10-06): su prueba de verdad, con la
   // ficha guardándose, está en `cooperativas.test.js`.
   it('«Quién reparte»: el local, Umbani o una cooperativa, y nada más', () => {
-    const fuente = fs.readFileSync('src/routes/admin-clients.routes.ts', 'utf8')
+    const fuente = fuenteDeLasRutasDeLocales()
     expect(fuente).toMatch(/'delivery_by',/)
     expect(fuente).toMatch(/const QUIEN_REPARTE = \['local', 'umbani', 'cooperativa'\]/)
   })
@@ -203,7 +203,7 @@ describe('el superadmin', () => {
   // Local por local (2026-10-04). Un «true» en texto o un 1 no se adivinan:
   // decide qué repartidores pueden llevar la comida de ese local.
   it('«Repartidores propios» lo edita el superadmin, y solo con un sí o un no', () => {
-    const fuente = fs.readFileSync('src/routes/admin-clients.routes.ts', 'utf8')
+    const fuente = fuenteDeLasRutasDeLocales()
     expect(fuente).toMatch(/'own_fleet',/)
     expect(fuente).toMatch(/typeof body\.own_fleet !== 'boolean'/)
   })

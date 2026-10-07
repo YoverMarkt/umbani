@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { fuenteDeLaTienda } from './fuente-de-la-tienda.mjs'
+import { fuenteDeLaTienda } from './fuente-de-rutas.mjs'
 import { fileURLToPath } from 'node:url'
 import crypto from 'node:crypto'
 import {

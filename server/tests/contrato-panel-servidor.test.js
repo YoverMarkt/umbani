@@ -64,12 +64,18 @@ const rutasDeArchivo = (contenido) => {
     .map(([, metodo, ruta]) => `${metodo.toUpperCase()} ${canonica(ruta)}`)
 }
 
+// ⚠️ Y las SECCIONES de los routers partidos (2026-10-07): `routes/tienda/`,
+// `routes/locales/`… registran sus rutas con el mismo `router.get(...)`. Sin
+// leerlas, las rutas de un router partido «no existirían» para este contrato.
+const archivosConRutas = (dir, enSeccion = false) => readdirSync(dir, { withFileTypes: true }).flatMap((entrada) => {
+  const ruta = path.join(dir, entrada.name)
+  if (entrada.isDirectory()) return archivosConRutas(ruta, true)
+  return (enSeccion ? entrada.name.endsWith('.ts') : entrada.name.endsWith('.routes.ts')) ? [ruta] : []
+})
+
 const DEL_SERVIDOR = new Set(
-  readdirSync(path.join(serverDir, 'src/routes'))
-    .filter(nombre => nombre.endsWith('.routes.ts'))
-    .flatMap(nombre => rutasDeArchivo(
-      readFileSync(path.join(serverDir, 'src/routes', nombre), 'utf8'),
-    )),
+  archivosConRutas(path.join(serverDir, 'src/routes'))
+    .flatMap(archivo => rutasDeArchivo(readFileSync(archivo, 'utf8'))),
 )
 
 // ── Lado panel: lo que los paneles llaman de verdad ────────────────────────

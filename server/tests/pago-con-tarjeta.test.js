@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createRequire } from 'node:module'
 import fs from 'node:fs'
-import { fuenteDeLaTienda } from './fuente-de-la-tienda.mjs'
+import { fuenteDeLaTienda } from './fuente-de-rutas.mjs'
 
 const require = createRequire(import.meta.url)
 const { leerConfiguracionPayphone, estadoDePayphone } = require('../dist/config/payphone')

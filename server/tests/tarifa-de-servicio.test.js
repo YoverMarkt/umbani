@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createRequire } from 'node:module'
 import fs from 'node:fs'
-import { fuenteDeLaTienda } from './fuente-de-la-tienda.mjs'
+import { fuenteDeLaTienda } from './fuente-de-rutas.mjs'
 
 const require = createRequire(import.meta.url)
 const { publicBusiness } = require('../dist/services/storefront')

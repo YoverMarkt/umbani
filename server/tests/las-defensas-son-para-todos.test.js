@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { fuenteDeLaTienda } from './fuente-de-la-tienda.mjs'
+import { fuenteDeLaTienda } from './fuente-de-rutas.mjs'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // LAS DEFENSAS SON PARA TODOS LOS LOCALES

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createRequire } from 'node:module'
 import { readFileSync } from 'node:fs'
-import { fuenteDeLaTienda } from './fuente-de-la-tienda.mjs'
+import { fuenteDeLaTienda } from './fuente-de-rutas.mjs'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // FRENOS CONTRA TARJETAS ROBADAS (2026-09-29)
