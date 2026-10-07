@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createRequire } from 'node:module'
 import fs from 'node:fs'
+import { fuenteDeLaTienda } from './fuente-de-la-tienda.mjs'
 
 const require = createRequire(import.meta.url)
 const { quoteCart, publicBusiness } = require('../dist/services/storefront')
@@ -57,7 +58,7 @@ describe('la tienda la enseña antes de confirmar', () => {
   })
 
   it('la portada, el catálogo y la cotización la piden a la base', () => {
-    const rutas = fs.readFileSync('src/routes/storefront.routes.ts', 'utf8')
+    const rutas = fuenteDeLaTienda()
     expect(rutas.match(/await tarifaDeServicio\(\)/g)).toHaveLength(3)
   })
 

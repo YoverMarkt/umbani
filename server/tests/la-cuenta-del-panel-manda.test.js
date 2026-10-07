@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { fuenteDeLaTienda } from './fuente-de-la-tienda.mjs'
 import path from 'node:path'
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -53,7 +54,7 @@ describe('una sola puerta a la cuenta del dueño', () => {
     // `/payment-info` es lo que el cliente ve en la mini app; `receipt-ingest`
     // es lo que decide si su comprobante cuadra. Si esos dos se separaran, la
     // app pediría pagar a una cuenta y rechazaría los pagos a esa cuenta.
-    const enseña = readFileSync('src/routes/storefront.routes.ts', 'utf8')
+    const enseña = fuenteDeLaTienda()
     const compara = readFileSync('src/services/receipt-ingest.ts', 'utf8')
     expect(enseña).toContain('getBusinessBankAccount')
     expect(compara).toContain('getBusinessBankAccount')
@@ -63,11 +64,11 @@ describe('una sola puerta a la cuenta del dueño', () => {
     // La mini app y el aviso por WhatsApp. Los dos tienen que nombrar la MISMA
     // cuenta, o el cliente recibe una instrucción distinta según por dónde
     // entró. Eran TRES hasta que el checkout del chat se retiró (2026-09-15).
-    for (const ruta of [
-      'src/routes/storefront.routes.ts', // mini app
-      'src/routes/orders.routes.ts',     // el aviso al cliente
+    for (const [sitio, fuente] of [
+      ['la mini app', fuenteDeLaTienda()],
+      ['el aviso al cliente', readFileSync('src/routes/orders.routes.ts', 'utf8')],
     ]) {
-      expect(readFileSync(ruta, 'utf8'), ruta).toContain('getBusinessBankAccount')
+      expect(fuente, sitio).toContain('getBusinessBankAccount')
     }
   })
 

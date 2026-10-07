@@ -32,8 +32,6 @@ const PENDIENTES_DE_PARTIR = {
   'apps/store/src/screens/FoodStore.tsx': 1346,
   'server/src/services/marketplace-menu.ts': 1326,
   'apps/client/src/features/catalog/OptionsManager.tsx': 1307,
-  'server/tests/storefront.routes.test.js': 1279,
-  'server/src/routes/storefront.routes.ts': 1178,
   'server/tests/admin-clients.routes.test.js': 1141,
   'server/src/db/repositories/storefront.ts': 1123,
   'server/src/routes/admin-clients.routes.ts': 1074,

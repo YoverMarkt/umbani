@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createRequire } from 'node:module'
 import jwt from 'jsonwebtoken'
-import fs from 'node:fs'
+import { fuenteDeLaTienda } from './fuente-de-la-tienda.mjs'
 
 const require = createRequire(import.meta.url)
 const client = require('../dist/db/client')
@@ -274,7 +274,7 @@ describe('el salto a PayPhone desde la app', () => {
   })
 
   it('la respuesta de pagar con tarjeta trae la URL para la app', () => {
-    const tienda = fs.readFileSync('src/routes/storefront.routes.ts', 'utf8')
+    const tienda = fuenteDeLaTienda()
     expect(tienda).toMatch(/urlApp: base \? `\$\{base\}\/pagos\/payphone\/ir\?destino=/)
   })
 })

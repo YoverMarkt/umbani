@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createRequire } from 'node:module'
 import { readFileSync } from 'node:fs'
+import { fuenteDeLaTienda } from './fuente-de-la-tienda.mjs'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // FRENOS CONTRA TARJETAS ROBADAS (2026-09-29)
@@ -13,7 +14,7 @@ import { readFileSync } from 'node:fs'
 const require = createRequire(import.meta.url)
 const { metodoTarjeta } = require('../dist/services/pago-con-tarjeta')
 const schema = readFileSync(new URL('../schema.sql', import.meta.url), 'utf8')
-const rutas = readFileSync(new URL('../src/routes/storefront.routes.ts', import.meta.url), 'utf8')
+const rutas = fuenteDeLaTienda()
 
 const frenos = (() => {
   const cuerpo = /create or replace function public\.frenos_de_tarjeta\(\)[\s\S]*?\$\$([\s\S]*?)\$\$/.exec(schema)?.[1] || ''

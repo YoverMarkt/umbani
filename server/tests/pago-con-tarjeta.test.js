@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createRequire } from 'node:module'
 import fs from 'node:fs'
+import { fuenteDeLaTienda } from './fuente-de-la-tienda.mjs'
 
 const require = createRequire(import.meta.url)
 const { leerConfiguracionPayphone, estadoDePayphone } = require('../dist/config/payphone')
@@ -544,7 +545,7 @@ describe('lo que le llega al cliente por WhatsApp', () => {
 
 // ═══════════════════════════════════════════════════════════════════════════
 describe('el camino real: lo nuevo está conectado', () => {
-  const tienda = fs.readFileSync('src/routes/storefront.routes.ts', 'utf8')
+  const tienda = fuenteDeLaTienda()
   const arranque = fs.readFileSync('src/index.ts', 'utf8')
 
   it('la tarea de cobros arranca con el servidor, dentro del freno de tareas', () => {
