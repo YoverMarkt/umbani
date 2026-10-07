@@ -56,6 +56,15 @@ $$;
 -- La tarjeta, en pruebas: el servidor arranca con PAYPHONE_MODO=pruebas.
 update businesses set card_mode = 'pruebas' where slug = '${SLUG}';
 
+-- ⚠️ El techo de pedidos por hora del local, por encima de lo que pide la
+-- batería entera (2026-10-07). Toda la batería pide en ESTE local en menos de
+-- una hora, y con el techo de producción (30) iba justa: al sumar el recorrido
+-- de entrar con correo, el que corría último tropezaba con «este local está
+-- recibiendo muchos pedidos» — y cuál era dependía del orden en que Vitest
+-- lanza los archivos, que no es alfabético. Ningún recorrido prueba el techo
+-- (lo prueban las de la base); aquí solo estorbaba.
+update businesses set max_orders_per_hour = 200 where slug = '${SLUG}';
+
 -- Lo demás (abierto siempre, los tres cobros, la cuenta, el número falso de
 -- Umbani, el repartidor) ya lo pone la siembra común del staging.
 `
@@ -102,6 +111,10 @@ export default async function montarEscenario({ provide }) {
       BASE_URL: base,
       PAYPHONE_TOKEN: 'token-falso-de-los-recorridos',
       PAYPHONE_MODO: 'pruebas',
+      // El correo sale de verdad hacia «Resend», que aquí es el falso: así el
+      // recorrido lee el código del correo como lo leería la persona.
+      RESEND_API_KEY: 'clave-falsa-de-los-recorridos',
+      CORREO_REMITENTE: 'Umbani <hola@umbani.test>',
       RECORRIDOS_PROVEEDOR_FALSO: urlFalso,
     },
     stdio: ['ignore', 'pipe', 'pipe'],

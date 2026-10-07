@@ -90,7 +90,7 @@ describe('una cooperativa de reparto, de punta a punta', () => {
   it('entra a su panel y registra a SU motorizado como se escribe un celular en Ecuador', async () => {
     panel = await entrarAlPanel(CORREO.toUpperCase(), CLAVE)
     const creado = await exigir(201, panel.pedir('POST', '/api/cooperativa/repartidores', {
-      nombre: 'Motorizado de Cooperativa', telefono: '099 000 0555', vehiculo: 'Moto', cedula: '1312345678', placa: 'mb123a',
+      nombre: 'Motorizado de Cooperativa', telefono: '099 000 0555', correo: 'moto.cooperativa@umbani.test', vehiculo: 'Moto', cedula: '1312345678', placa: 'mb123a',
     }))
     motoId = creado.id
     const [fila] = await sql('select phone, plate, city_id, cooperative_id, fleet_business_id from couriers where id = $1', [motoId])
@@ -101,7 +101,7 @@ describe('una cooperativa de reparto, de punta a punta', () => {
   it('«Quién reparte: la cooperativa»: su motorizado lleva el pedido; el de Umbani ni lo ve', async () => {
     await exigir(200, admin.pedir('PUT', `/api/admin/clients/${negocio}`, { delivery_by: 'cooperativa', cooperative_id: coop }))
     const deUmbani = await exigir(201, admin.pedir('POST', '/api/admin/motorizados', {
-      nombre: 'Motorizado de Umbani', telefono: '593990000556', vehiculo: 'Moto', ciudadId: chone,
+      nombre: 'Motorizado de Umbani', telefono: '593990000556', correo: 'moto.umbani.coop@umbani.test', vehiculo: 'Moto', ciudadId: chone,
     }))
 
     // Entra con el número tal como lo manda WhatsApp por YCloud: con «+».

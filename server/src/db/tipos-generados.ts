@@ -61,6 +61,36 @@ export type Database = {
           },
         ]
       }
+      app_email_codes: {
+        Row: {
+          attempts: number
+          code_hash: string
+          created_at: string
+          email: string
+          expires_at: string
+          id: string
+          used_at: string | null
+        }
+        Insert: {
+          attempts?: number
+          code_hash: string
+          created_at?: string
+          email: string
+          expires_at: string
+          id?: string
+          used_at?: string | null
+        }
+        Update: {
+          attempts?: number
+          code_hash?: string
+          created_at?: string
+          email?: string
+          expires_at?: string
+          id?: string
+          used_at?: string | null
+        }
+        Relationships: []
+      }
       app_login_codes: {
         Row: {
           code: string
@@ -1101,6 +1131,7 @@ export type Database = {
           city_id: string | null
           cooperative_id: string | null
           created_at: string
+          email: string | null
           fleet_business_id: string | null
           id: string
           id_number: string | null
@@ -1118,6 +1149,7 @@ export type Database = {
           city_id?: string | null
           cooperative_id?: string | null
           created_at?: string
+          email?: string | null
           fleet_business_id?: string | null
           id?: string
           id_number?: string | null
@@ -1135,6 +1167,7 @@ export type Database = {
           city_id?: string | null
           cooperative_id?: string | null
           created_at?: string
+          email?: string | null
           fleet_business_id?: string | null
           id?: string
           id_number?: string | null
@@ -1288,10 +1321,11 @@ export type Database = {
           blocked_until: string | null
           city_id: string | null
           created_at: string
+          email: string | null
           id: string
           insult_warned_at: string | null
           name: string | null
-          phone: string
+          phone: string | null
           unblock_notice_pending: boolean
           updated_at: string
         }
@@ -1303,10 +1337,11 @@ export type Database = {
           blocked_until?: string | null
           city_id?: string | null
           created_at?: string
+          email?: string | null
           id?: string
           insult_warned_at?: string | null
           name?: string | null
-          phone: string
+          phone?: string | null
           unblock_notice_pending?: boolean
           updated_at?: string
         }
@@ -1318,10 +1353,11 @@ export type Database = {
           blocked_until?: string | null
           city_id?: string | null
           created_at?: string
+          email?: string | null
           id?: string
           insult_warned_at?: string | null
           name?: string | null
-          phone?: string
+          phone?: string | null
           unblock_notice_pending?: boolean
           updated_at?: string
         }

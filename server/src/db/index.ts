@@ -23,6 +23,7 @@ import pricingRules = require('./repositories/pricing-rules')
 import payments = require('./repositories/payments')
 import settlements = require('./repositories/settlements')
 import appLogin = require('./repositories/app-login')
+import appCuentas = require('./repositories/app-cuentas')
 import couriers = require('./repositories/couriers')
 import adminSeguridad = require('./repositories/admin-seguridad')
 import registroDeDinero = require('./repositories/registro-de-dinero')
@@ -62,6 +63,7 @@ const database = {
   ...payments,
   ...settlements,
   ...appLogin,
+  ...appCuentas,
   ...couriers,
   ...adminSeguridad,
   ...registroDeDinero,

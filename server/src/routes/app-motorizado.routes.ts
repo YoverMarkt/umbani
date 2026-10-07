@@ -1,7 +1,7 @@
 import rateLimit from 'express-rate-limit'
 import type { Request, RequestHandler } from 'express'
 import { createRouter } from '../middleware/async'
-import { authApp, telefonoDe } from '../services/sesion-app'
+import { authApp, correoDe, telefonoDe } from '../services/sesion-app'
 import { avisarAlCliente } from '../services/order-status-notice'
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -23,10 +23,19 @@ const limiter = rateLimit({
 
 type ConMotorizado = Request & { motorizado?: import('../db/repositories/couriers').Courier }
 
-/** El motorizado activo de la sesión, o 403. */
+/**
+ * El motorizado activo de la sesión, o 403. Desde el 2026-10-06 entra con el
+ * CORREO con el que lo registraron; el teléfono queda para la puerta de
+ * WhatsApp, en espera.
+ */
 const soloMotorizado: RequestHandler = async (req, res, next) => {
-  const courier = await db.getActiveCourierByPhone(telefonoDe(req)).catch(() => null)
-  if (!courier) return res.status(403).json({ error: 'Este número no es de un motorizado activo de Umbani' })
+  const correo = correoDe(req)
+  const courier = await (correo ? db.getActiveCourierByEmail(correo) : db.getActiveCourierByPhone(telefonoDe(req))).catch(() => null)
+  if (!courier) {
+    return res.status(403).json({ error: correo
+      ? 'Este correo no es de un repartidor activo de Umbani'
+      : 'Este número no es de un motorizado activo de Umbani' })
+  }
   ;(req as ConMotorizado).motorizado = courier
   return next()
 }

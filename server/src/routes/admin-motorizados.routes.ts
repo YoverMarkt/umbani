@@ -1,6 +1,8 @@
 import type { RequestHandler } from 'express'
 import { createRouter } from '../middleware/async'
 import { telefonoDelRepartidor } from '../lib/telefono-del-repartidor'
+import { ERROR_SIN_CORREO, MENSAJE_CORREO_REPETIDO, datoRepetido } from '../lib/alta-del-repartidor'
+import { correoNormalizado } from '../lib/correo-normalizado'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MOTORIZADOS (SUPERADMIN): registrarlos, su semana y su liquidación
@@ -29,7 +31,9 @@ router.post('/api/admin/motorizados', auth.authAdmin, async (req, res) => {
   const name = String(body.nombre || '').trim()
   const flota = String(body.flotaLocalId || '').trim()
   const tope = body.topeEfectivo == null || body.topeEfectivo === '' ? null : Math.round(Number(body.topeEfectivo) * 100)
+  const email = correoNormalizado(body.correo)
   if (!phone) return res.status(400).json({ error: 'Teléfono no válido' })
+  if (!email) return res.status(400).json({ error: ERROR_SIN_CORREO })
   if (name.length < 2 || name.length > 80) return res.status(400).json({ error: 'Escribe el nombre' })
   if (flota && !UUID.test(flota)) return res.status(400).json({ error: 'Local no válido' })
   if (tope != null && (!Number.isInteger(tope) || tope < 0 || tope > 100000)) return res.status(400).json({ error: 'Tope de efectivo no válido' })
@@ -42,12 +46,13 @@ router.post('/api/admin/motorizados', auth.authAdmin, async (req, res) => {
   }
   try {
     const creado = await db.createCourier({
-      phone, name, vehicle: String(body.vehiculo || '').trim() || null,
+      phone, email, name, vehicle: String(body.vehiculo || '').trim() || null,
       fleetBusinessId: flota || null, cityId: ciudadId, cashLimitCents: tope ?? undefined,
     })
     return res.status(201).json(creado)
   } catch (error) {
-    if ((error as { code?: string }).code === '23505') return res.status(409).json({ error: 'Ese teléfono ya es de un motorizado' })
+    const repetido = datoRepetido(error)
+    if (repetido) return res.status(409).json({ error: repetido === 'correo' ? MENSAJE_CORREO_REPETIDO : 'Ese teléfono ya es de un motorizado' })
     throw error
   }
 })

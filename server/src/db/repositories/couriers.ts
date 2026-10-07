@@ -21,6 +21,8 @@ const sinError = <T>(r: { data: T; error: { message: string } | null }): T => {
 export interface Courier {
   id: string
   phone: string
+  /** Con lo que entra a su app (2026-10-06): lo registra quien lo da de alta. */
+  email: string | null
   name: string
   vehicle: string | null
   fleet_business_id: string | null
@@ -33,7 +35,7 @@ export interface Courier {
   cash_limit_cents: number
 }
 
-const COLUMNAS = 'id, phone, name, vehicle, fleet_business_id, cooperative_id, city_id, active, available, cash_limit_cents'
+const COLUMNAS = 'id, phone, email, name, vehicle, fleet_business_id, cooperative_id, city_id, active, available, cash_limit_cents'
 
 /**
  * El motorizado ACTIVO de ese teléfono (el de su sesión de la app), o null.
@@ -45,6 +47,14 @@ const getActiveCourierByPhone = async (phone: string): Promise<Courier | null> =
   if (!digitos) return null
   const { data, error } = await db.from('couriers').select(COLUMNAS)
     .in('phone', [digitos, `+${digitos}`]).eq('active', true).maybeSingle()
+  if (error) throw new Error(error.message)
+  return data || null
+}
+
+/** El motorizado ACTIVO de ese correo (el de su sesión de la app), o null. */
+const getActiveCourierByEmail = async (email: string): Promise<Courier | null> => {
+  if (!email) return null
+  const { data, error } = await db.from('couriers').select(COLUMNAS).eq('email', email).eq('active', true).maybeSingle()
   if (error) throw new Error(error.message)
   return data || null
 }
@@ -98,9 +108,10 @@ const listCouriers = async () => {
   return data || []
 }
 
-const createCourier = async (input: { phone: string; name: string; vehicle?: string | null; fleetBusinessId?: string | null; cityId?: string | null; cashLimitCents?: number }) => {
+const createCourier = async (input: { phone: string; email: string; name: string; vehicle?: string | null; fleetBusinessId?: string | null; cityId?: string | null; cashLimitCents?: number }) => {
   const { data, error } = await db.from('couriers').insert({
     phone: input.phone,
+    email: input.email,
     name: input.name,
     vehicle: input.vehicle ?? null,
     fleet_business_id: input.fleetBusinessId ?? null,
@@ -199,7 +210,7 @@ const fleetCash = async (businessId: string, courierIds: string[], desde: string
 }
 
 export {
-  getActiveCourierByPhone, setCourierAvailable, getCourierOrders, courierTakeOrder, courierAdvanceOrder,
+  getActiveCourierByPhone, getActiveCourierByEmail, setCourierAvailable, getCourierOrders, courierTakeOrder, courierAdvanceOrder,
   getCourierBalance, retainCourierFee, closeWeeklyCourierSettlements, markCourierSettlementPaid,
   listCourierSettlements, listCouriers, createCourier, setCourierActive,
   listCourierRuns, listFleetCouriers, setFleetCourierActive, fleetCash,

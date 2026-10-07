@@ -135,6 +135,9 @@ describe('la primera pantalla', () => {
     const { default: RepartidorApp } = await import('../src/repartidor/RepartidorApp')
     const html = renderToStaticMarkup(createElement(RepartidorApp))
     expect(html).toContain('Entra como repartidor')
-    expect(html).toContain('Pedir mi código')
+    // Con el correo con el que lo registraron (2026-10-06), ya no con WhatsApp.
+    expect(html).toContain('Enviarme el código')
+    expect(html).toContain('type="email"')
+    expect(html).not.toContain('WhatsApp')
   })
 })

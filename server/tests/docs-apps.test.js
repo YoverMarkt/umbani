@@ -30,6 +30,13 @@ function rutasDelContrato() {
   return rutas
 }
 
+/**
+ * Los routers que hablan con las apps. ⚠️ Una sola lista para las dos pruebas:
+ * el de entrar con correo (2026-10-06) nació fuera y sus rutas quedaban sin
+ * documentar sin que nada protestara.
+ */
+const ROUTERS_DE_LAS_APPS = ['app-v1.routes', 'app-entrar.routes', 'app-motorizado.routes', 'storefront.routes', 'pagos.routes']
+
 /** Las que NO usa la app, con su motivo. */
 const FUERA_DEL_CONTRATO = {
   '/s/{code}': 'enlace corto de WhatsApp para la mini app web',
@@ -49,7 +56,7 @@ describe('docs/apps/openapi.yaml', () => {
   it('cada ruta que usa la app está documentada con su método', () => {
     const documentadas = rutasDelContrato()
     const faltan = []
-    for (const archivo of ['app-v1.routes', 'app-motorizado.routes', 'storefront.routes', 'pagos.routes']) {
+    for (const archivo of ROUTERS_DE_LAS_APPS) {
       const router = require(`../dist/routes/${archivo}`)
       for (const layer of router.stack.filter(l => l.route)) {
         const ruta = layer.route.path.replace(/:(\w+)/g, '{$1}')
@@ -64,7 +71,7 @@ describe('docs/apps/openapi.yaml', () => {
 
   it('no documenta rutas que ya no existen', () => {
     const reales = new Set()
-    for (const archivo of ['app-v1.routes', 'app-motorizado.routes', 'storefront.routes', 'pagos.routes']) {
+    for (const archivo of ROUTERS_DE_LAS_APPS) {
       for (const layer of require(`../dist/routes/${archivo}`).stack.filter(l => l.route)) {
         reales.add(layer.route.path.replace(/:(\w+)/g, '{$1}'))
       }

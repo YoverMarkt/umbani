@@ -17,10 +17,10 @@ import { Dato, Ficha, Fichas, SoloEnPantallaAncha } from '../../components/Ficha
 import { activarRepartidor, crearRepartidor, getRepartidores, type NuevoRepartidor, type Repartidor } from './api'
 
 // Los motorizados de la cooperativa: los registra ella. Entran a la app de
-// Umbani con su WhatsApp y solo ven los pedidos de los locales que reparte
+// Umbani con su CORREO (2026-10-06) y solo ven los pedidos de los locales que reparte
 // esta cooperativa, en su ciudad (lo decide el servidor).
 
-const VACIO: NuevoRepartidor = { nombre: '', telefono: '', vehiculo: 'Moto', cedula: '', placa: '', licencia: '' }
+const VACIO: NuevoRepartidor = { nombre: '', telefono: '', correo: '', vehiculo: 'Moto', cedula: '', placa: '', licencia: '' }
 
 function estadoDe(r: Repartidor) {
   if (!r.activo) return { texto: 'Apagado', variante: 'outline' as const }
@@ -37,7 +37,7 @@ export default function Repartidores() {
   const crear = useMutation({
     mutationFn: () => crearRepartidor(nuevo),
     onSuccess: () => {
-      toast.success('Repartidor registrado. Ya puede entrar a la app de Umbani con su WhatsApp.')
+      toast.success('Repartidor registrado. Ya puede entrar a la app de Umbani con su correo.')
       setNuevo(VACIO)
       setAbierto(false)
       refrescar()
@@ -54,7 +54,7 @@ export default function Repartidores() {
     value: nuevo[clave],
     onChange: (e: React.ChangeEvent<HTMLInputElement>) => setNuevo({ ...nuevo, [clave]: e.target.value }),
   })
-  const listo = nuevo.nombre.trim().length >= 2 && nuevo.telefono.replace(/\D/g, '').length >= 9
+  const listo = nuevo.nombre.trim().length >= 2 && nuevo.telefono.replace(/\D/g, '').length >= 9 && nuevo.correo.includes('@')
     && nuevo.cedula.trim().length >= 5 && nuevo.placa.trim().length >= 3 && nuevo.vehiculo.trim().length >= 2
 
   /** Apagar pide confirmación: le cierra la app. Encender, no. */
@@ -77,7 +77,7 @@ export default function Repartidores() {
         <div className="min-w-0 flex-1">
           <h1 className="text-2xl font-bold text-foreground">Repartidores</h1>
           <p className="text-sm text-muted-foreground">
-            Entran a la app de Umbani con su WhatsApp y solo ven los pedidos de los locales que reparte tu
+            Entran a la app de Umbani con su correo y solo ven los pedidos de los locales que reparte tu
             cooperativa.
           </p>
         </div>
@@ -149,7 +149,7 @@ export default function Repartidores() {
           <DialogHeader>
             <DialogTitle>Nuevo repartidor</DialogTitle>
             <DialogDescription>
-              Con su WhatsApp entra a la app de Umbani. La cédula y la placa quedan registradas por si hay un problema.
+              Con su correo entra a la app de Umbani; su WhatsApp es para llamarlo. La cédula y la placa quedan registradas por si hay un problema.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -160,6 +160,10 @@ export default function Repartidores() {
             <div>
               <Label htmlFor="rep-telefono">WhatsApp</Label>
               <Input id="rep-telefono" inputMode="tel" placeholder="0991234567" {...campo('telefono')} />
+            </div>
+            <div>
+              <Label htmlFor="rep-correo">Correo (con él entra a la app)</Label>
+              <Input id="rep-correo" type="email" inputMode="email" autoCapitalize="none" placeholder="andres@correo.com" {...campo('correo')} />
             </div>
             <div>
               <Label htmlFor="rep-cedula">Cédula o pasaporte</Label>

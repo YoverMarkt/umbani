@@ -10,7 +10,7 @@ import { createElement } from 'react'
 // la API como la app de tu amigo tendrá que hablar.
 //   1. Entrar a un local pide su sesión con el token de la app y el MISMO
 //      dispositivo que usa la tienda (la sesión queda atada a él).
-//   2. Una sesión vencida se olvida; un código vencido se dice.
+//   2. Una sesión vencida se olvida; un código malo se dice; sin número, se pide.
 //   3. Cada ruta que usa está documentada (`apps-web-contrato.test.mjs`).
 
 const almacen = (): Storage => {
@@ -71,19 +71,40 @@ describe('entrar a un local', () => {
   })
 })
 
-describe('entrar con WhatsApp', () => {
-  it('mientras el mensaje no llega es «pendiente»; cuando llega, el token', async () => {
+describe('entrar con el correo (2026-10-06)', () => {
+  it('pide el código para ESE correo, y en el servidor de pruebas lo recibe de vuelta', async () => {
     const api = await cargar()
-    fetchFalso.mockResolvedValueOnce(respuesta(202, { pendiente: true }))
-    expect(await api.verificarCodigo('K7P2QX')).toEqual({ pendiente: true })
-    fetchFalso.mockResolvedValueOnce(respuesta(200, { token: 'nuevo', telefono: '593999111222' }))
-    expect((await api.verificarCodigo('K7P2QX')).token).toBe('nuevo')
+    fetchFalso.mockResolvedValueOnce(respuesta(201, { enviado: false, expiraEn: 'x', codigoDePruebas: '012345' }))
+    expect((await api.pedirCodigoPorCorreo('ana@correo.com')).codigoDePruebas).toBe('012345')
+    const [ruta, opciones] = fetchFalso.mock.calls[0]
+    expect(ruta).toBe('/api/v1/auth/correo')
+    expect(JSON.parse(opciones.body)).toEqual({ correo: 'ana@correo.com' })
   })
 
-  it('un código vencido (410) se dice', async () => {
+  it('canjear el código da el token; uno incorrecto (401) se dice', async () => {
     const api = await cargar()
-    fetchFalso.mockResolvedValue(respuesta(410, { error: 'Ese código ya no vale. Pide uno nuevo.' }))
-    await expect(api.verificarCodigo('K7P2QX')).rejects.toMatchObject({ status: 410 })
+    fetchFalso.mockResolvedValueOnce(respuesta(200, { token: 'nuevo', correo: 'ana@correo.com' }))
+    expect((await api.canjearCodigoDeCorreo('ana@correo.com', '012345')).token).toBe('nuevo')
+    fetchFalso.mockResolvedValueOnce(respuesta(401, { error: 'Ese código no es correcto' }))
+    await expect(api.canjearCodigoDeCorreo('ana@correo.com', '999999')).rejects.toMatchObject({ status: 401 })
+  })
+
+  it('sin número, abrir un local lleva a pedirlo: el error dice QUÉ falta', async () => {
+    const api = await cargar()
+    api.guardarToken('token-de-correo')
+    fetchFalso.mockResolvedValue(respuesta(409, { error: 'Antes de pedir…', falta: 'telefono' }))
+    await expect(api.abrirLocal('monster-pizza')).rejects.toMatchObject({ status: 409, falta: 'telefono' })
+  })
+
+  it('el número se manda con la sesión', async () => {
+    const api = await cargar()
+    api.guardarToken('token-de-correo')
+    fetchFalso.mockResolvedValue(respuesta(200, { telefono: '593991234567' }))
+    expect(await api.ponerMiTelefono('0991234567')).toEqual({ telefono: '593991234567' })
+    const [ruta, opciones] = fetchFalso.mock.calls[0]
+    expect(ruta).toBe('/api/v1/yo/telefono')
+    expect(opciones.method).toBe('PUT')
+    expect(opciones.headers.Authorization).toBe('Bearer token-de-correo')
   })
 })
 

@@ -1,18 +1,25 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { RiArrowLeftSLine, RiWhatsappLine } from '@remixicon/react'
+import { useState, type FormEvent, type ReactNode } from 'react'
+import { RiArrowLeftSLine } from '@remixicon/react'
 import { Aviso, Boton } from '../components/ui'
-import { ErrorDeLaApp, guardarToken, mensaje, pedirCodigo, verificarCodigo } from './api'
+import { canjearCodigoDeCorreo, guardarToken, mensaje, pedirCodigoPorCorreo } from './api'
 
 // ═══════════════════════════════════════════════════════════════════════════
-// LO COMÚN DE LAS APPS WEB: el marco, la cabecera y ENTRAR CON WHATSAPP
+// LO COMÚN DE LAS APPS WEB: el marco, la cabecera y ENTRAR CON EL CORREO
 // ═══════════════════════════════════════════════════════════════════════════
 //
 // Lo usan la app de clientes (`/u`) y la de repartidores (`/r`). Entrar es
-// igual para los dos: el teléfono lo prueba WhatsApp, y la API decide después
-// si ese teléfono es un repartidor.
+// igual para los dos: el correo lo prueba un código que llega a él, y la API
+// decide después si ese correo es de un repartidor.
 //
-// ⚠️ Es la forma de entrar de las PRUEBAS. La app Flutter no tiene por qué
-// usarla: el dueño quiere Google, Apple o teléfono (ver `docs/apps/`).
+// ⚠️ Desde el 2026-10-06 las apps NO entran por WhatsApp (decisión del dueño).
+// Esa puerta sigue en el servidor, en espera, pero aquí no se usa.
+
+/**
+ * Un campo de texto de las apps. ⚠️ 16 px como mínimo: con menos, el iPhone
+ * agranda la pantalla al tocarlo y no la devuelve (lo aprendió Buscar).
+ */
+export const CAMPO = 'superficie w-full rounded-2xl border-2 borde-tema px-4 py-3.5 text-[16px] font-semibold outline-none '
+  + 'focus:border-(--tinta) placeholder:font-normal placeholder:texto-tenue'
 
 /** El marco de todas las pantallas: el fondo y el ancho de un teléfono. */
 export function Marco({ children }: { children: ReactNode }) {
@@ -36,75 +43,107 @@ export function Cabecera({ titulo, onVolver }: { titulo: string; onVolver?: () =
   )
 }
 
-// ── Entrar con WhatsApp ──────────────────────────────────────────────────────
-// El cliente MANDA el código a Umbani: recibir no le cuesta a Umbani, y el
-// teléfono queda probado por WhatsApp. Mientras tanto se pregunta cada 2,5 s.
+// ── Entrar con el correo ───────────────────────────────────────────────────
+// Dos pasos: el correo, y el código de 6 números que llega a él. Sin
+// contraseñas. En el servidor de PRUEBAS no se mandan correos: el código
+// vuelve en la respuesta y se enseña aquí (en producción eso no existe).
 
-export function Entrar({ explicacion, onVolver, onDentro, titulo = 'Entra con WhatsApp' }: {
+export function Entrar({ explicacion, onVolver, onDentro, titulo = 'Entra con tu correo' }: {
   explicacion?: ReactNode
   onVolver?: () => void
   onDentro: () => void
   titulo?: string
 }) {
-  const [codigo, setCodigo] = useState<{ codigo: string; enlace: string } | null>(null)
-  const [estado, setEstado] = useState<'inicio' | 'pidiendo' | 'esperando' | 'vencido'>('inicio')
+  const [paso, setPaso] = useState<'correo' | 'codigo'>('correo')
+  const [correo, setCorreo] = useState('')
+  const [codigo, setCodigo] = useState('')
+  const [dePruebas, setDePruebas] = useState<string | null>(null)
+  const [ocupado, setOcupado] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const reloj = useRef<number | null>(null)
 
-  const parar = () => { if (reloj.current) window.clearInterval(reloj.current); reloj.current = null }
-  useEffect(() => parar, [])
-
-  const pedir = async () => {
+  const pedirCodigo = async (evento?: FormEvent) => {
+    evento?.preventDefault()
     setError(null)
-    setEstado('pidiendo')
+    setOcupado(true)
     try {
-      const nuevo = await pedirCodigo()
-      setCodigo(nuevo)
-      setEstado('esperando')
-      parar()
-      reloj.current = window.setInterval(async () => {
-        try {
-          const r = await verificarCodigo(nuevo.codigo)
-          if (r.token) { parar(); guardarToken(r.token); onDentro() }
-        } catch (e) {
-          parar()
-          if (e instanceof ErrorDeLaApp && e.status === 410) setEstado('vencido')
-          else { setError(mensaje(e)); setEstado('inicio') }
-        }
-      }, 2500)
+      const r = await pedirCodigoPorCorreo(correo.trim())
+      setDePruebas(r.codigoDePruebas ?? null)
+      setCodigo('')
+      setPaso('codigo')
     } catch (e) {
       setError(mensaje(e))
-      setEstado('inicio')
+    } finally {
+      setOcupado(false)
+    }
+  }
+
+  const entrar = async (evento: FormEvent) => {
+    evento.preventDefault()
+    setError(null)
+    setOcupado(true)
+    try {
+      guardarToken((await canjearCodigoDeCorreo(correo.trim(), codigo)).token)
+      onDentro()
+    } catch (e) {
+      setError(mensaje(e))
+      setCodigo('')
+      setOcupado(false)
     }
   }
 
   return (
     <Marco>
-      <Cabecera titulo={titulo} onVolver={onVolver ? () => { parar(); onVolver() } : undefined} />
+      <Cabecera
+        titulo={titulo}
+        onVolver={paso === 'codigo' ? () => { setPaso('correo'); setError(null) } : onVolver}
+      />
       {error && <div className="mb-4"><Aviso tono="alerta" titulo="No pudimos seguir">{error}</Aviso></div>}
-      {explicacion && <p className="texto-cuerpo mb-4 text-[15px]">{explicacion}</p>}
 
-      {estado === 'esperando' && codigo
+      {paso === 'correo'
         ? (
-          <div className="space-y-4">
-            <div className="superficie rounded-(--radius-tarjeta) px-4 py-6 text-center shadow-tarjeta">
-              <p className="texto-cuerpo text-[13px] font-bold tracking-[0.08em] uppercase">Tu código</p>
-              <p className="mt-1 text-[40px] font-extrabold tracking-[0.12em]">{codigo.codigo}</p>
-            </div>
-            <a href={codigo.enlace} className="tinta flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-4 text-[15px] font-bold shadow-alzada">
-              <RiWhatsappLine size={20} /> Abrir WhatsApp y enviarlo
-            </a>
-            <p className="texto-cuerpo text-center text-[14px]">Esperando tu mensaje… Vuelve aquí después de enviarlo.</p>
-          </div>
+          <form onSubmit={evento => void pedirCodigo(evento)} className="space-y-4">
+            {explicacion && <p className="texto-cuerpo text-[15px]">{explicacion}</p>}
+            <p className="texto-cuerpo text-[15px]">Te mandamos un código a tu correo y entras. Sin contraseñas.</p>
+            <label className="block">
+              <span className="mb-1.5 block text-[14px] font-bold">Tu correo</span>
+              <input
+                type="email"
+                inputMode="email"
+                autoComplete="email"
+                autoCapitalize="none"
+                spellCheck={false}
+                value={correo}
+                onChange={evento => setCorreo(evento.target.value)}
+                placeholder="nombre@correo.com"
+                className={CAMPO}
+              />
+            </label>
+            <Boton type="submit" disabled={ocupado || !correo.includes('@')}>
+              {ocupado ? 'Enviando…' : 'Enviarme el código'}
+            </Boton>
+          </form>
         )
         : (
-          <div className="space-y-3">
-            {estado === 'vencido' && <Aviso tono="alerta" titulo="El código venció">Pide otro: solo dura unos minutos.</Aviso>}
-            <p className="texto-cuerpo text-[15px]">Te damos un código, lo envías a Umbani por WhatsApp y entras. Sin contraseñas.</p>
-            <Boton onClick={() => void pedir()} disabled={estado === 'pidiendo'}>
-              {estado === 'pidiendo' ? 'Preparando tu código…' : estado === 'vencido' ? 'Pedir otro código' : 'Pedir mi código'}
-            </Boton>
-          </div>
+          <form onSubmit={evento => void entrar(evento)} className="space-y-4">
+            <p className="texto-cuerpo text-[15px]">
+              Escribe el código de 6 números que mandamos a <b>{correo.trim()}</b>. Si no lo ves, mira en spam.
+            </p>
+            {dePruebas && (
+              <Aviso titulo="Servidor de pruebas">Aquí no se mandan correos. Tu código es <b>{dePruebas}</b>.</Aviso>
+            )}
+            <input
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              aria-label="Código de 6 números"
+              maxLength={6}
+              value={codigo}
+              onChange={evento => setCodigo(evento.target.value.replace(/\D/g, '').slice(0, 6))}
+              placeholder="000000"
+              className={`${CAMPO} text-center text-[28px] font-extrabold tracking-[0.3em]`}
+            />
+            <Boton type="submit" disabled={ocupado || codigo.length !== 6}>{ocupado ? 'Entrando…' : 'Entrar'}</Boton>
+            <Boton variante="linea" onClick={() => void pedirCodigo()} disabled={ocupado}>Mandarme otro código</Boton>
+          </form>
         )}
     </Marco>
   )

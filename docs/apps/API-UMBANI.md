@@ -6,7 +6,7 @@
 | Producción | `https://web-production-3433c.up.railway.app` | Clientes reales. **Nunca** se desarrolla contra ella. |
 
 El de pruebas lleva abajo a la izquierda la franja «STAGING · datos de mentira».
-No tiene número de WhatsApp de verdad: mira §1a para iniciar sesión ahí.
+No manda correos de verdad: el código para entrar vuelve en la respuesta (mira §1a).
 
 **Ciudades (2026-10-05):** cada cliente ve solo los locales de SU ciudad, y la
 app la saca del **GPS**: `GET /api/v1/ciudades/aqui?lat=&lng=`. Sin permiso de
@@ -17,47 +17,41 @@ pantalla en [APP-CLIENTE.md §1b](APP-CLIENTE.md). El local de pruebas está en 
 
 ## 1. La sesión, en dos niveles
 
-**a) La sesión de la app (quién es el cliente).** Se inicia con WhatsApp, sin
-contraseña ni SMS:
+**a) La sesión de la app (quién es el cliente).** Se entra con el **CORREO**,
+sin contraseña (decisión del dueño, 2026-10-06: las apps ya NO entran por
+WhatsApp). Google y Apple llegarán después, cuando estén sus credenciales: la
+pantalla de entrada tiene que ser un módulo **aislado** que termina devolviendo
+el `token`, porque el resto de la app no cambiará — todas las rutas solo miran
+`Authorization: Bearer <token>`.
 
-> ⚠️ **Hoy, y para desarrollar** (2026-10-05). El dueño NO quiere que las apps
-> Flutter entren con WhatsApp: quiere **Google, Apple o el número de teléfono**.
-> Mientras lo decide y el servidor lo acepta, construye la pantalla de entrada
-> **aislada** —un solo módulo que termina devolviendo el `token`— y desarrolla
-> con WhatsApp, que es lo único que el servidor acepta hoy. El resto de la app
-> no cambiará: todas las rutas solo miran `Authorization: Bearer <token>`.
-
-1. `POST /api/v1/auth/whatsapp` → `{ codigo, enlace, expiraEn }`.
-2. La app enseña el código y un botón que abre `enlace` (WhatsApp con el
-   mensaje «Mi código de Umbani: XXXXXX» ya escrito hacia el número de Umbani).
-   El cliente solo toca **enviar**.
-3. Mientras tanto, la app pregunta cada 2–3 s `POST /api/v1/auth/whatsapp/verificar`
-   con `{ codigo }`:
-   - `202 { pendiente: true }` → todavía no llegó el mensaje, sigue esperando.
-   - `200 { token, telefono }` → listo. Guarda `token` de forma segura.
-   - `410` → el código venció (10 minutos): pide otro.
+1. `POST /api/v1/auth/correo` con `{ correo }` → `201 { enviado, expiraEn }`.
+   Llega un código de **6 números** a ese correo (vale 10 minutos).
+2. `POST /api/v1/auth/correo/verificar` con `{ correo, codigo }`:
+   - `200 { token, correo }` → listo. Guarda `token` de forma segura.
+   - `401` → código incorrecto: gasta uno de sus **5 intentos**.
+   - `410` → venció, se usó o agotó sus intentos: vuelve al paso 1.
+   Solo vale el **último** código pedido. Como mucho **5 códigos por hora** por
+   correo (`429`).
+3. **El número.** Una cuenta de correo nace SIN teléfono, y sin él no se puede
+   pedir: `POST /api/v1/locales/{slug}/sesion` responde `409 { falta: 'telefono' }`.
+   La app pregunta UNA vez «¿a qué número te llama el repartidor?» y lo manda
+   con `PUT /api/v1/yo/telefono` `{ telefono }` (acepta `0991234567`; responde
+   en dígitos con el código del país). ⚠️ El número se reclama en **EXCLUSIVA**:
+   de él cuelgan «Mis pedidos», los reclamos y la tienda, así que si ya es de
+   otra persona (o hay pedidos con él) responde `409` y no se dice de quién.
+   `GET /api/v1/yo` → `{ telefono, correo, ciudadId }` (`telefono` null = falta).
 4. En adelante: `Authorization: Bearer <token>` en las rutas `/api/v1/*`. Dura
-   30 días; con `401`, vuelve al paso 1.
+   30 días; con `401`, vuelve al paso 1. Un `503` en cualquier ruta autenticada
+   quiere decir que no se pudo comprobar la sesión: reintenta en unos segundos,
+   no la borres.
 
-⚠️ **El cliente puede cerrar la sesión desde WhatsApp** (2026-09-29): el mensaje
-de «iniciaste sesión» le dice que escriba **CERRAR SESIÓN** si no fue él —la
-estafa de «mándame el código que te llegó»—. Desde ese momento TODAS las
-sesiones de la app de su número responden `401` con
-`«Tu sesión se cerró desde WhatsApp. Inicia sesión otra vez.»`: enseña ese
-texto y vuelve al paso 1. Se cierran también sus sesiones de tienda (como con
-MENÚ), salvo la del local donde un pedido espera su pago. Un `503` en
-cualquier ruta autenticada quiere decir que no se pudo comprobar la sesión:
-reintenta en unos segundos, no la borres.
+🧪 **En PRUEBAS no se mandan correos** (el proveedor de correo es de las
+credenciales que llegan al final): el paso 1 devuelve además
+`codigoDePruebas` con el código, para poder probar. En producción ese campo no
+existe nunca —el servidor lo impide—, y sin proveedor la puerta responde `503`.
 
-El teléfono lo prueba WhatsApp (es el remitente del mensaje), no el cliente
-escribiendo un número.
-
-🧪 **En PRUEBAS no hay WhatsApp de verdad.** El paso 2 se hace a mano: entra al
-superadmin de pruebas (`https://umbani-pruebas.up.railway.app/app-admin`, la
-cuenta te la da el dueño) → **Simulador** → escribe `Mi código de Umbani: XXXXXX`
-con el código que enseña la app. El simulador es el teléfono `000000000000`:
-con él inicias sesión como cliente de prueba (y como repartidor de prueba, que
-tiene ese mismo número).
+⏸️ **La puerta de WhatsApp sigue en el servidor, en espera** (`/api/v1/auth/whatsapp`
+y `/verificar`): una sesión de WhatsApp vale igual, pero las apps no la usan.
 
 **b) La sesión de tienda (en qué local está).** Para entrar en un local:
 `POST /api/v1/locales/{slug}/sesion` → `{ token }`. Con ese token la app usa
@@ -83,7 +77,7 @@ Algunos traen `reason`:
 
 | Código | Qué hacer |
 |---|---|
-| `401` | Sesión vencida o cerrada desde WhatsApp: enseña el texto y pide otra (de app o de tienda). |
+| `401` | Sesión vencida o cerrada: enseña el texto y pide otra (de app o de tienda). |
 | `503` | No se pudo comprobar la sesión: reintenta en unos segundos, sin borrarla. |
 | `403` + `reason: "bloqueado"` | El cliente está bloqueado: enseña el texto, sin reintentar. |
 | `409` | El local está cerrado, no recibe pedidos o el pedido ya no se puede pagar. |

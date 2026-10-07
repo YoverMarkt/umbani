@@ -70,7 +70,7 @@ describe('el motorizado de UMBANI', () => {
     // En la ciudad del local de pruebas (2026-10-05): solo ve los pedidos de ella.
     const [{ id: chone }] = await sql(`select id from cities where lower(name) = 'chone'`)
     const creado = await exigir(201, admin.pedir('POST', '/api/admin/motorizados', {
-      nombre: 'Motorizado de Umbani', telefono: TELEFONO, vehiculo: 'Moto', topeEfectivo: '150', ciudadId: chone,
+      nombre: 'Motorizado de Umbani', telefono: TELEFONO, correo: 'moto.umbani@umbani.test', vehiculo: 'Moto', topeEfectivo: '150', ciudadId: chone,
     }))
     motorizadoId = creado.id
     moto = comoMotorizado(TELEFONO)
@@ -181,7 +181,7 @@ describe('la flota propia del LOCAL', () => {
   it('el superadmin la enciende en ESTE local, y el local registra a SU repartidor', async () => {
     await exigir(200, admin.pedir('PUT', `/api/admin/clients/${negocio}`, { own_fleet: true }))
     expect((await exigir(200, local.pedir('GET', '/api/client/business'))).flota_propia).toBe(true)
-    const creado = await exigir(201, local.pedir('POST', '/api/client/repartidores', { nombre: 'Repartidor del Local', telefono: TELEFONO }))
+    const creado = await exigir(201, local.pedir('POST', '/api/client/repartidores', { nombre: 'Repartidor del Local', telefono: TELEFONO, correo: 'repartidor.local@umbani.test' }))
     repartidorId = creado.id
     const [{ fleet_business_id: flota }] = await sql('select fleet_business_id from couriers where id = $1', [repartidorId])
     expect(flota).toBe(negocio)
@@ -192,7 +192,7 @@ describe('la flota propia del LOCAL', () => {
   // YCloud— dice que escribe desde «+593 99…». Comparando el texto tal cual,
   // NINGÚN repartidor real habría podido entrar a su app.
   it('registrado como «099…», entra con el número tal como lo manda WhatsApp («+593…»)', async () => {
-    const creado = await exigir(201, local.pedir('POST', '/api/client/repartidores', { nombre: 'Repartidora Local', telefono: '099 000 0999' }))
+    const creado = await exigir(201, local.pedir('POST', '/api/client/repartidores', { nombre: 'Repartidora Local', telefono: '099 000 0999', correo: 'repartidora.local@umbani.test' }))
     const [{ phone }] = await sql('select phone from couriers where id = $1', [creado.id])
     expect(phone).toBe('593990000999')
     const yo = await exigir(200, comoMotorizado('+593990000999').pedir('GET', '/yo'))

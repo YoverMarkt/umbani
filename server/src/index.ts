@@ -56,6 +56,7 @@ import pagosRouter = require('./routes/pagos.routes')
 import misPagosRouter = require('./routes/mis-pagos.routes')
 import repartidoresRouter = require('./routes/repartidores.routes')
 import appV1Router = require('./routes/app-v1.routes')
+import appEntrarRouter = require('./routes/app-entrar.routes')
 import appMotorizadoRouter = require('./routes/app-motorizado.routes')
 import cooperativaRouter = require('./routes/cooperativa.routes')
 import healthRouter = require('./routes/health.routes')
@@ -304,6 +305,8 @@ app.use(storefrontRouter)
 app.use(pagosRouter)
 // La API de la app del cliente (Flutter). Ver docs/apps/.
 app.use(appV1Router)
+// Entrar a las apps con el correo (2026-10-06), y el teléfono de la cuenta.
+app.use(appEntrarRouter)
 // La API de la app del motorizado. Ver docs/apps/APP-MOTORIZADO.md.
 app.use(appMotorizadoRouter)
 // El panel de las cooperativas de reparto: su propio login y su sesión.

@@ -46,14 +46,14 @@ export default function Repartidores() {
     // El efectivo cambia con cada entrega: se refresca solo.
     refetchInterval: 60_000,
   })
-  const [nuevo, setNuevo] = useState({ nombre: '', telefono: '', vehiculo: '' })
+  const [nuevo, setNuevo] = useState({ nombre: '', telefono: '', correo: '', vehiculo: '' })
   const refrescar = () => qc.invalidateQueries({ queryKey: ['repartidores'] })
 
   const registrar = useMutation({
     mutationFn: () => api('/api/client/repartidores', { method: 'POST', body: JSON.stringify(nuevo) }),
     onSuccess: () => {
-      toast.success('Repartidor registrado. Ya puede entrar a la app con su WhatsApp.')
-      setNuevo({ nombre: '', telefono: '', vehiculo: '' })
+      toast.success('Repartidor registrado. Ya puede entrar a la app con su correo.')
+      setNuevo({ nombre: '', telefono: '', correo: '', vehiculo: '' })
       refrescar()
     },
     onError: (e: Error) => toast.error(e.message),
@@ -75,7 +75,7 @@ export default function Repartidores() {
       <div>
         <h1 className="text-2xl font-bold text-foreground">Repartidores</h1>
         <p className="text-sm text-muted-foreground">
-          Tus repartidores entran a la app de Umbani con su WhatsApp y solo ven los pedidos de tu local.
+          Tus repartidores entran a la app de Umbani con su correo y solo ven los pedidos de tu local.
           El envío es tuyo; aquí ves cuánto efectivo lleva cada uno.
         </p>
       </div>
@@ -83,7 +83,7 @@ export default function Repartidores() {
       <Card>
         <CardHeader><CardTitle className="text-base">Registrar un repartidor</CardTitle></CardHeader>
         <CardContent>
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <Label htmlFor="rep-nombre">Nombre</Label>
               <Input id="rep-nombre" value={nuevo.nombre} onChange={e => setNuevo({ ...nuevo, nombre: e.target.value })} />
@@ -94,13 +94,19 @@ export default function Repartidores() {
                 onChange={e => setNuevo({ ...nuevo, telefono: e.target.value })} />
             </div>
             <div>
+              <Label htmlFor="rep-correo">Correo (con él entra a la app)</Label>
+              <Input id="rep-correo" type="email" inputMode="email" autoCapitalize="none" placeholder="nombre@correo.com"
+                value={nuevo.correo} onChange={e => setNuevo({ ...nuevo, correo: e.target.value })} />
+            </div>
+            <div>
               <Label htmlFor="rep-veh">Vehículo (opcional)</Label>
               <Input id="rep-veh" placeholder="Moto ABC-123" value={nuevo.vehiculo}
                 onChange={e => setNuevo({ ...nuevo, vehiculo: e.target.value })} />
             </div>
           </div>
           <Button className="mt-3"
-            disabled={registrar.isPending || nuevo.nombre.trim().length < 2 || nuevo.telefono.replace(/\D/g, '').length < 8}
+            disabled={registrar.isPending || nuevo.nombre.trim().length < 2 || nuevo.telefono.replace(/\D/g, '').length < 8
+              || !nuevo.correo.includes('@')}
             onClick={() => registrar.mutate()}>
             Registrar
           </Button>

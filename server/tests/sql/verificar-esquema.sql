@@ -7095,6 +7095,61 @@ $login$;
 select '✅ inicio de sesión de la app: código sin ambigüedad, único, y verificado solo con el teléfono' as resultado;
 
 -- ═══════════════════════════════════════════════════════════════════════════
+-- ENTRAR CON CORREO (2026-10-06): la persona se prueba con un correo, y su
+-- teléfono sigue siendo SOLO suyo, porque de él cuelgan sus pedidos.
+-- ═══════════════════════════════════════════════════════════════════════════
+do $correo$
+declare v_falló boolean; v_cuenta uuid;
+begin
+  -- Una cuenta de correo nace sin teléfono…
+  insert into customers (email) values ('verif-correo@umbani.test') returning id into v_cuenta;
+  -- …pero nadie existe sin teléfono NI correo: no habría cómo reconocerlo.
+  v_falló := false;
+  begin insert into customers (name) values ('Nadie');
+  exception when check_violation then v_falló := true; end;
+  if not v_falló then raise exception 'se guardó una persona sin teléfono ni correo'; end if;
+  -- En minúsculas y sin espacios: si no, el mismo correo serían dos personas.
+  v_falló := false;
+  begin insert into customers (email) values ('Verif-Correo@Umbani.test');
+  exception when check_violation then v_falló := true; end;
+  if not v_falló then raise exception 'se guardó un correo con mayúsculas'; end if;
+  v_falló := false;
+  begin insert into customers (email) values ('verif-correo@umbani.test');
+  exception when unique_violation then v_falló := true; end;
+  if not v_falló then raise exception 'dos personas con el mismo correo'; end if;
+  -- El teléfono que reclama una cuenta no puede ser de otra persona: de él
+  -- cuelgan «Mis pedidos», los reclamos y la tienda.
+  insert into customers (phone) values ('593900222001');
+  v_falló := false;
+  begin update customers set phone = '593900222001' where id = v_cuenta;
+  exception when unique_violation then v_falló := true; end;
+  if not v_falló then raise exception 'una cuenta reclamó el teléfono de otra persona'; end if;
+  -- Un correo, un repartidor: es con lo que entra a su app.
+  insert into couriers (phone, name, city_id, email) values ('593900222002', 'Rita', pg_temp.chone(), 'verif-moto@umbani.test');
+  v_falló := false;
+  begin insert into couriers (phone, name, city_id, email) values ('593900222003', 'Rosa', pg_temp.chone(), 'verif-moto@umbani.test');
+  exception when unique_violation then v_falló := true; end;
+  if not v_falló then raise exception 'dos repartidores con el mismo correo'; end if;
+  -- Los códigos se guardan como huella, nunca en claro, y con cinco intentos.
+  v_falló := false;
+  begin insert into app_email_codes (email, code_hash, expires_at) values ('verif-correo@umbani.test', '123456', now() + interval '10 minutes');
+  exception when check_violation then v_falló := true; end;
+  if not v_falló then raise exception 'se guardó un código de correo en claro'; end if;
+  insert into app_email_codes (email, code_hash, expires_at) values ('verif-correo@umbani.test', repeat('a', 64), now() + interval '10 minutes');
+  v_falló := false;
+  begin update app_email_codes set attempts = 6 where email = 'verif-correo@umbani.test';
+  exception when check_violation then v_falló := true; end;
+  if not v_falló then raise exception 'un código de correo aceptó más de cinco intentos'; end if;
+
+  delete from app_email_codes where email = 'verif-correo@umbani.test';
+  delete from couriers where phone in ('593900222002', '593900222003');
+  delete from customers where id = v_cuenta or phone = '593900222001';
+end;
+$correo$;
+
+select '✅ entrar con correo: un correo y un teléfono por persona, un correo por repartidor, códigos solo como huella' as resultado;
+
+-- ═══════════════════════════════════════════════════════════════════════════
 -- LOS MOTORIZADOS: TOMAR, TOPE DE EFECTIVO, RETENER Y LIQUIDAR (2026-09-28)
 -- ═══════════════════════════════════════════════════════════════════════════
 create or replace function public.liquidacion_semanal_desde()

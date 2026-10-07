@@ -46,12 +46,29 @@ export function firmarSesionApp(telefono: string): string {
   return jwt.sign({ role: 'cliente_app', phone: telefono }, secreto(), { audience: AUDIENCIA, expiresIn: DURACION })
 }
 
-/** El teléfono de la sesión y cuándo se emitió, o null si el token no es de la app o no vale. */
-export function leerSesionAppConFecha(token: string): { telefono: string; emitidaMs: number } | null {
+/** La sesión de quien probó su CORREO (2026-10-06): la puerta de las apps desde que no entran por WhatsApp. */
+export function firmarSesionDeCorreo(correo: string): string {
+  return jwt.sign({ role: 'cliente_app', email: correo }, secreto(), { audience: AUDIENCIA, expiresIn: DURACION })
+}
+
+/**
+ * Lo que prueba una sesión: un teléfono (WhatsApp) O un correo, nunca los dos
+ * ni ninguno, y cuándo se emitió. `null` si el token no es de la app o no vale.
+ */
+export interface SesionDeLaApp {
+  telefono: string | null
+  correo: string | null
+  emitidaMs: number
+}
+
+export function leerSesionAppConFecha(token: string): SesionDeLaApp | null {
   try {
-    const datos = jwt.verify(token, secreto(), { audience: AUDIENCIA }) as { role?: string; phone?: string; iat?: number }
-    if (datos?.role !== 'cliente_app' || typeof datos.phone !== 'string') return null
-    return { telefono: datos.phone, emitidaMs: Number(datos.iat) * 1000 }
+    const datos = jwt.verify(token, secreto(), { audience: AUDIENCIA }) as { role?: string; phone?: unknown; email?: unknown; iat?: number }
+    if (datos?.role !== 'cliente_app') return null
+    const telefono = typeof datos.phone === 'string' && datos.phone ? datos.phone : null
+    const correo = typeof datos.email === 'string' && datos.email ? datos.email : null
+    if (Boolean(telefono) === Boolean(correo)) return null
+    return { telefono, correo, emitidaMs: Number(datos.iat) * 1000 }
   } catch {
     return null
   }
@@ -91,15 +108,25 @@ export const authApp: RequestHandler = async (req, res, next) => {
   const db = require('../db') as typeof import('../db')
   let validasDesde: string | null
   try {
-    validasDesde = await db.sesionesDeLaAppValidasDesde(sesion.telefono)
+    validasDesde = sesion.telefono
+      ? await db.sesionesDeLaAppValidasDesde(sesion.telefono)
+      : await db.sesionesDeLaAppValidasDesdeCorreo(sesion.correo || '')
   } catch {
     return res.status(503).json({ error: 'No se pudo comprobar tu sesión. Inténtalo en un momento.' })
   }
   if (sesionCerrada(sesion.emitidaMs, validasDesde)) {
-    return res.status(401).json({ error: 'Tu sesión se cerró desde WhatsApp. Inicia sesión otra vez.' })
+    return res.status(401).json({ error: sesion.telefono
+      ? 'Tu sesión se cerró desde WhatsApp. Inicia sesión otra vez.'
+      : 'Tu sesión se cerró. Inicia sesión otra vez.' })
   }
-  ;(req as Request & { telefonoApp?: string }).telefonoApp = sesion.telefono
+  ;(req as ConSesionDeLaApp).telefonoApp = sesion.telefono || ''
+  ;(req as ConSesionDeLaApp).correoApp = sesion.correo || ''
   return next()
 }
 
-export const telefonoDe = (req: Request): string => String((req as Request & { telefonoApp?: string }).telefonoApp || '')
+type ConSesionDeLaApp = Request & { telefonoApp?: string; correoApp?: string }
+
+/** El teléfono que probó la sesión (la puerta de WhatsApp), o '' si entró con correo. */
+export const telefonoDe = (req: Request): string => String((req as ConSesionDeLaApp).telefonoApp || '')
+/** El correo que probó la sesión, o '' si entró por WhatsApp. */
+export const correoDe = (req: Request): string => String((req as ConSesionDeLaApp).correoApp || '')

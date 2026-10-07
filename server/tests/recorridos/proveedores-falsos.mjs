@@ -22,6 +22,8 @@ import http from 'node:http'
 
 const PAYPHONE = 'pay.payphonetodoesposible.com'
 const YCLOUD = 'api.ycloud.com'
+// El correo de los códigos para entrar a las apps (2026-10-06).
+const RESEND = 'api.resend.com'
 
 export function crearProveedoresFalsos() {
   let siguienteId = 900001
@@ -36,6 +38,8 @@ export function crearProveedoresFalsos() {
     revertidas: [],
     /** Los mensajes de WhatsApp que salieron: { to, tipo, texto } */
     mensajes: [],
+    /** Los correos que salieron: { para, asunto, texto } */
+    correos: [],
     /** Cualquier llamada a un proveedor sin falso: delata una puerta abierta. */
     desconocidas: [],
   }
@@ -46,6 +50,7 @@ export function crearProveedoresFalsos() {
     estado.confirmadas = []
     estado.revertidas = []
     estado.mensajes = []
+    estado.correos = []
     estado.desconocidas = []
   }
 
@@ -142,6 +147,19 @@ export function crearProveedoresFalsos() {
     return responder(res, 200, {})
   }
 
+  async function resend(req, res, ruta, cuerpo) {
+    if (req.method === 'POST' && ruta === '/emails') {
+      estado.correos.push({
+        para: Array.isArray(cuerpo.to) ? cuerpo.to.join(',') : String(cuerpo.to || ''),
+        asunto: String(cuerpo.subject || ''),
+        texto: String(cuerpo.text || ''),
+      })
+      return responder(res, 200, { id: `correo-falso-${estado.correos.length}` })
+    }
+    estado.desconocidas.push(`${req.method} ${RESEND}${ruta}`)
+    return responder(res, 404, { message: 'Ruta de Resend sin falso' })
+  }
+
   async function control(req, res, ruta, cuerpo) {
     if (ruta === '/__control/pagar') {
       estado.pagadas.set(cuerpo.referencia, { aprobado: cuerpo.aprobado !== false, centavos: cuerpo.centavos })
@@ -158,6 +176,7 @@ export function crearProveedoresFalsos() {
         confirmadas: estado.confirmadas,
         revertidas: estado.revertidas,
         mensajes: estado.mensajes,
+        correos: estado.correos,
         desconocidas: estado.desconocidas,
       })
     }
@@ -172,6 +191,7 @@ export function crearProveedoresFalsos() {
     const ruta = `/${resto.join('/')}`
     if (anfitrion === PAYPHONE) return payphone(req, res, ruta, cuerpo)
     if (anfitrion === YCLOUD) return ycloud(req, res, ruta, cuerpo)
+    if (anfitrion === RESEND) return resend(req, res, ruta, cuerpo)
     estado.desconocidas.push(`${req.method} ${anfitrion}${ruta}`)
     return responder(res, 404, { message: `Sin falso para ${anfitrion}` })
   })

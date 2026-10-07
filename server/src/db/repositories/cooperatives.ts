@@ -35,7 +35,7 @@ export interface CooperativeUser {
 
 const COLUMNAS = 'id, name, city_id, contact_phone, active, created_at'
 const COLUMNAS_USUARIO = 'id, cooperative_id, email, name, active'
-const COLUMNAS_MOTORIZADO = 'id, phone, name, vehicle, id_number, plate, license_number, active, available, cash_limit_cents, created_at'
+const COLUMNAS_MOTORIZADO = 'id, phone, email, name, vehicle, id_number, plate, license_number, active, available, cash_limit_cents, created_at'
 
 // ── El superadmin ──────────────────────────────────────────────────────────
 
@@ -119,12 +119,13 @@ const listCooperativeCouriers = async (cooperativeId: string) => {
 }
 
 const createCooperativeCourier = async (cooperativeId: string, input: {
-  phone: string; name: string; vehicle: string; idNumber: string; plate: string; licenseNumber?: string | null
+  phone: string; email: string; name: string; vehicle: string; idNumber: string; plate: string; licenseNumber?: string | null
 }) => {
   // La ciudad la pone la base: la de su cooperativa, siempre.
   const { data, error } = await db.from('couriers').insert({
     cooperative_id: cooperativeId,
     phone: input.phone,
+    email: input.email,
     name: input.name,
     vehicle: input.vehicle,
     id_number: input.idNumber,

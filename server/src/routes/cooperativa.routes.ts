@@ -3,6 +3,8 @@ import type { Response } from 'express'
 import { createRouter } from '../middleware/async'
 import { cooperativaDe, cooperativaGuard, firmarSesionDeCooperativa } from '../middleware/auth-cooperativa'
 import { telefonoDelRepartidor } from '../lib/telefono-del-repartidor'
+import { ERROR_SIN_CORREO, MENSAJE_CORREO_REPETIDO, datoRepetido } from '../lib/alta-del-repartidor'
+import { correoNormalizado } from '../lib/correo-normalizado'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // EL PANEL DE UNA COOPERATIVA DE REPARTO (`/cooperativa`, 2026-10-06)
@@ -106,7 +108,9 @@ router.post('/api/cooperativa/repartidores', ...puerta, async (req, res) => {
   const cedula = texto(body.cedula, 20).replace(/\s/g, '')
   const placa = texto(body.placa, 12).toUpperCase()
   const licencia = texto(body.licencia, 30) || null
+  const correo = correoNormalizado(body.correo)
   if (!telefono) return res.status(400).json({ error: 'Escribe su WhatsApp, por ejemplo 0991234567' })
+  if (!correo) return res.status(400).json({ error: ERROR_SIN_CORREO })
   if (nombre.length < 2 || nombre.length > 80) return res.status(400).json({ error: 'Escribe su nombre' })
   if (vehiculo.length < 2 || vehiculo.length > 60) return res.status(400).json({ error: 'Escribe su vehículo, por ejemplo «Moto»' })
   if (!/^[0-9A-Za-z-]{5,20}$/.test(cedula)) return res.status(400).json({ error: 'Escribe su cédula o pasaporte' })
@@ -114,13 +118,14 @@ router.post('/api/cooperativa/repartidores', ...puerta, async (req, res) => {
   if (licencia && (licencia.length < 3 || licencia.length > 30)) return res.status(400).json({ error: 'La licencia no es válida' })
   try {
     const creado = await db.createCooperativeCourier(cooperativaDe(req).cooperativeId, {
-      phone: telefono, name: nombre, vehicle: vehiculo, idNumber: cedula, plate: placa, licenseNumber: licencia,
+      phone: telefono, email: correo, name: nombre, vehicle: vehiculo, idNumber: cedula, plate: placa, licenseNumber: licencia,
     })
-    return res.status(201).json({ id: creado.id, nombre: creado.name, telefono: creado.phone, activo: creado.active })
+    return res.status(201).json({ id: creado.id, nombre: creado.name, telefono: creado.phone, correo: creado.email, activo: creado.active })
   } catch (error) {
-    // El mismo texto sea de quien sea el número: no se dice de quién es.
-    if ((error as { code?: string }).code === '23505') {
-      return res.status(409).json({ error: 'Ese teléfono ya está registrado como repartidor' })
+    // El mismo texto sea de quien sea el dato: no se dice de quién es.
+    const repetido = datoRepetido(error)
+    if (repetido) {
+      return res.status(409).json({ error: repetido === 'correo' ? MENSAJE_CORREO_REPETIDO : 'Ese teléfono ya está registrado como repartidor' })
     }
     throw error
   }
