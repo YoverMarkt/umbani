@@ -3,6 +3,7 @@ import {
   RiCheckLine, RiEBikeLine, RiHistoryLine, RiMapPin2Line, RiMoneyDollarCircleLine, RiStore2Line, RiUser3Line,
 } from '@remixicon/react'
 import { Aviso, Boton, EstadoVacio, LISTA, ROTULO } from '../components/ui'
+import { InstalarApp } from '../components/InstalarApp'
 import { Cabecera, Entrar, Marco } from '../umbani/Entrar'
 import { money } from '../lib/format'
 import { ErrorDeLaApp, mensaje, salir, tokenDeLaApp } from '../umbani/api'
@@ -184,6 +185,8 @@ function Inicio({ perfil, onPerfil, onSemana, onSalir, alFallar }: {
           <RiHistoryLine size={18} /> Mi semana
         </button>
       </header>
+
+      <InstalarApp nombre="la app de repartidor" />
 
       {error && <div className="mb-4"><Aviso tono="alerta" titulo="No pudimos seguir">{error}</Aviso></div>}
 

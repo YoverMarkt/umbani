@@ -60,6 +60,7 @@ import appMotorizadoRouter = require('./routes/app-motorizado.routes')
 import cooperativaRouter = require('./routes/cooperativa.routes')
 import healthRouter = require('./routes/health.routes')
 import { cachearEstaticos, enviarHtmlDeSpa } from './lib/cache-estaticos'
+import { montarAppsInstalables } from './lib/apps-instalables'
 import { alEntrarUnMensaje } from './lib/despertador-de-la-cola'
 
 interface StartupDatabase {
@@ -264,6 +265,8 @@ app.get('/cooperativa/*', (_req, res) => enviarHtmlDeSpa(res, path.join(cooperat
 const storeDist = path.join(projectRoot, 'apps/store/dist')
 app.use('/t', express.static(storeDist, { setHeaders: cachearEstaticos }))
 app.get('/t/*', (_req, res) => enviarHtmlDeSpa(res, path.join(storeDist, 'index.html')))
+// Su service worker, ANTES que los comodines de abajo (ver lib/apps-instalables).
+montarAppsInstalables(app, storeDist)
 // La app web de clientes (2026-10-05): otra página de la mini app, con sus
 // archivos bajo /t/assets. Es la referencia de la app Flutter y se prueba aquí.
 app.get(['/u', '/u/*'], (_req, res) => enviarHtmlDeSpa(res, path.join(storeDist, 'u.html')))
