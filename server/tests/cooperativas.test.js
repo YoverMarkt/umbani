@@ -299,6 +299,7 @@ describe('sus problemas', () => {
       order_id: 'o1', courier_id: MOTO, sold_at: '2026-10-01T15:00:00Z', reparto_cents: 150,
       retenido_motivo: 'Se le cayó la pizza', courier_settlement_id: null, orders: { order_number: 41 }, businesses: { name: 'Monster Pizza' },
     }])
+    vi.spyOn(db, 'cooperativeIncidents').mockResolvedValue([])
     const r = await correr(panel, 'get', '/api/cooperativa/problemas', { headers: sesionDe() })
     expect(retenidas).toHaveBeenCalledWith(COOP)
     expect(r.body.retenidas).toEqual([{
