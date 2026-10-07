@@ -71,7 +71,10 @@ export default function ComoFunciona() {
           Si a un repartidor se le cae la comida, Umbani le retiene la carrera de ese pedido y el local cobra su
           comida igual. Lo ves en «Problemas».
         </p>
-        <p>Pronto: las demás incidencias (cliente ausente, un producto que faltó, un accidente), con quién responde por cada una.</p>
+        <p>
+          Si algo sale mal con un pedido (faltó algo, no llegó, el cliente no estaba…), Umbani lo revisa y decide
+          quién responde. Lo ves en «Problemas», con lo que se decidió.
+        </p>
       </Bloque>
 
       <Bloque titulo="6. Apagar">

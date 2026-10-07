@@ -9,6 +9,7 @@ import {
   RiShoppingBag3Line,
 } from '@remixicon/react'
 import { Aviso, Boton, EstadoVacio } from '../components/ui'
+import { LlegoTodoBien } from '../components/LlegoTodoBien'
 import { getOrders } from '../lib/api'
 import { COMO_VA, PILL_ACTIVO, PILL_QUIETO } from '../lib/como-va'
 import { money } from '../lib/format'
@@ -258,11 +259,13 @@ export default function Account({
               return (
                 // ⚠️ Sigue siendo un `div`, no un botón: esta fila no lleva a
                 // ninguna parte desde que se retiró el seguimiento, y fingir
-                // que sí es peor que no ofrecerlo.
+                // que sí es peor que no ofrecerlo. Lo que sí lleva, desde el
+                // 2026-10-06, es «¿Llegó todo bien?» debajo, si está entregado.
                 <div
                   key={pedido.id}
-                  className="superficie flex w-full items-center gap-3 rounded-(--radius-tarjeta) px-4 py-3.5 text-left shadow-tarjeta"
+                  className="superficie w-full rounded-(--radius-tarjeta) px-4 py-3.5 text-left shadow-tarjeta"
                 >
+                <div className="flex w-full items-center gap-3">
                   <span className="min-w-0 flex-1">
                     <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
                       <span className="text-[15px] font-extrabold tracking-tight tabular-nums">
@@ -280,6 +283,8 @@ export default function Account({
                   <span className="shrink-0 text-[16px] font-extrabold tracking-tight tabular-nums">
                     {money(Number(pedido.total) || 0)}
                   </span>
+                </div>
+                <LlegoTodoBien slug={slug} pedido={pedido} onCambio={() => setIntento(n => n + 1)} />
                 </div>
               )
             })}

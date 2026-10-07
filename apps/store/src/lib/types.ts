@@ -290,6 +290,8 @@ export interface GrupoElegido {
 
 /** Una línea del pedido, tal como la congeló la base al crearlo. */
 export interface TrackedItem {
+  /** La línea: con ella se dice QUÉ faltó al reclamar (2026-10-06). */
+  id?: string
   product_name: string
   variant_name?: string | null
   /** Ya agrupado. Vacío en los pedidos anteriores al motor de opciones. */
@@ -344,6 +346,21 @@ export interface TrackedOrder {
   order_items?: TrackedItem[] | null
   /** El historial de estados, que es de donde sale la hora de cada paso. */
   events: { to_status: string; created_at: string }[]
+  /** «¿Llegó todo bien?» (2026-10-06): lo dice el servidor. */
+  confirmacion?: ConfirmacionDelPedido | null
+}
+
+/** Si el cliente dijo «Todo bien», su reclamo, y hasta cuándo puede reclamar. */
+export interface ConfirmacionDelPedido {
+  todoBien: boolean
+  /** null = ya no puede (no se entregó, ya reclamó, o pasaron 48 h). */
+  reclamableHasta: string | null
+  reclamo: {
+    tipo: 'falta_producto' | 'vino_mal' | 'no_llego'
+    estado: 'abierta' | 'resuelta' | 'descartada'
+    sugeridoCents: number
+    compensacionCents: number | null
+  } | null
 }
 
 export interface BankAccount {
