@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createRequire } from 'node:module'
 import jwt from 'jsonwebtoken'
-import { fuenteDeLaTienda } from './fuente-de-la-tienda.mjs'
+import { fuenteDeLaTienda } from './fuente-de-rutas.mjs'
 
 const require = createRequire(import.meta.url)
 const client = require('../dist/db/client')

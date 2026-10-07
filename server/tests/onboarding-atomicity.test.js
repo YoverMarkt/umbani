@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
+import { fuenteDeLasRutasDeLocales } from './fuente-de-rutas.mjs'
 import { fileURLToPath } from 'node:url'
 
 const serverDir = fileURLToPath(new URL('..', import.meta.url))
@@ -12,10 +13,7 @@ const businessesRepository = readFileSync(
   `${serverDir}/src/db/repositories/businesses.ts`,
   'utf8',
 )
-const routeSource = readFileSync(
-  `${serverDir}/src/routes/admin-clients.routes.ts`,
-  'utf8',
-)
+const routeSource = fuenteDeLasRutasDeLocales()
 
 describe('atomicidad del onboarding de clientes', () => {
   it('crea todas las entidades dentro de una sola función PostgreSQL', () => {

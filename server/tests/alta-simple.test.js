@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
+import { fuenteDeLasRutasDeLocales } from './fuente-de-rutas.mjs'
 import { fileURLToPath } from 'node:url'
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -16,10 +17,7 @@ const leer = ruta => readFileSync(
 )
 
 describe('el modo de atención ya no se elige, ni a mano ni por API', () => {
-  const ruta = readFileSync(
-    fileURLToPath(new URL('../../server/src/routes/admin-clients.routes.ts', import.meta.url)),
-    'utf8',
-  )
+  const ruta = fuenteDeLasRutasDeLocales()
 
   // ⚠️ Aquí había TRES pruebas sobre `CHAT_MODES`, la lista de modos que la
   // ruta aceptaba. Nacieron de un bug real: el defecto era `'ai'`, que el CHECK
@@ -51,7 +49,7 @@ describe('la IA de este negocio se retira del alta', () => {
   })
 
   it('la ruta ya no la acepta ni la guarda', () => {
-    const ruta = leer('../src/routes/admin-clients.routes.ts')
+    const ruta = fuenteDeLasRutasDeLocales()
     expect(ruta).not.toContain('ai_provider')
   })
 

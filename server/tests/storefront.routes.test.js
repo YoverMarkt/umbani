@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import fs from 'node:fs'
-import { fuenteDeLaTienda } from './fuente-de-la-tienda.mjs'
+import { fuenteDeLaTienda } from './fuente-de-rutas.mjs'
 import { router, rutas } from './manejadores-de-la-tienda.mjs'
 
 // Guardián de las rutas de la mini app.

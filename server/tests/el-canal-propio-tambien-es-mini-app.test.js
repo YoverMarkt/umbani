@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { readFileSync, existsSync } from 'node:fs'
+import { fuenteDeLasRutasDeLocales } from './fuente-de-rutas.mjs'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 
@@ -208,7 +209,7 @@ describe('un local nuevo no puede nacer en modo chat', () => {
   })
 
   it('la ruta del alta deja de elegir modo y de validar el de la mini app', () => {
-    const ruta = sinComentarios(leer('../src/routes/admin-clients.routes.ts'))
+    const ruta = sinComentarios(fuenteDeLasRutasDeLocales())
     expect(ruta).not.toContain('CHAT_MODES')
     expect(ruta).not.toContain('invalidChatMode')
     expect(ruta).not.toContain('miniappConfigurationError')
