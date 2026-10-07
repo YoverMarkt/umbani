@@ -740,3 +740,41 @@ test('la ficha del local: «Quién reparte → Una cooperativa» ofrece las de S
   await expect.poll(() => guardado?.delivery_by).toBe('cooperativa')
   expect(guardado?.cooperative_id).toBe('coop-1')
 })
+
+// ═══════════════════════════════════════════════════════════════════════════
+// INCIDENCIAS (2026-10-06): «¿Llegó todo bien?» llega al superadmin
+// ═══════════════════════════════════════════════════════════════════════════
+test('Incidencias: el reclamo del cliente, con el responsable propuesto por la tabla y la compensación sugerida', async ({ page }) => {
+  await seedAdminSession(page)
+  await mockAdminApi(page)
+  const decisiones: unknown[] = []
+  await page.route('**/api/admin/incidencias?estado=*', route => route.fulfill({ json: { incidencias: [{
+    id: 'inc-1', tipo: 'falta_producto', origen: 'cliente', estado: 'abierta', responsable: null,
+    lineas: [{ nombre: 'Pizza', cantidad: 1, centavos: 440 }], nota: 'Faltó una pizza', sugeridoCents: 440,
+    compensacionCents: null, resolucion: null, resueltaPor: null, creadaEn: '2026-10-06T12:00:00Z', resueltaEn: null,
+    pedido: { id: 'p1', numero: 41, totalCents: 1250, pago: 'efectivo', cliente: 'Ana', telefono: '593991234567' },
+    local: { id: 'b1', nombre: 'Monster Pizza' }, repartidor: { nombre: 'Andrés', cooperativa: 'Cooperativa Chone' },
+  }] } }))
+  await page.route('**/api/admin/incidencias/inc-1/resolver', async route => {
+    decisiones.push(route.request().postDataJSON())
+    return route.fulfill({ json: { ok: true } })
+  })
+
+  await page.goto(`${adminUrl}#/incidencias`)
+  await expect(page.getByRole('heading', { name: 'Incidencias' })).toBeVisible()
+  await expect(page.getByText('#41 · Monster Pizza')).toBeVisible()
+  await expect(page.getByText('«Faltó una pizza»')).toBeVisible()
+  await expect(page.getByText('Andrés (Cooperativa Chone)')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Resolver' }).click()
+  const ventana = page.getByRole('dialog', { name: /Resolver #41/ })
+  // Faltó un producto → responde el local, según la tabla aprobada.
+  await expect(ventana.getByRole('combobox', { name: 'Quién responde' })).toContainText('El local')
+  await expect(ventana.getByLabel('Compensación al cliente ($)')).toHaveValue('4.40')
+  const resolver = ventana.getByRole('button', { name: 'Resolver' })
+  await expect(resolver).toBeDisabled() // sin decir qué pasó
+  await ventana.getByLabel('Qué pasó (queda anotado)').fill('El local olvidó la pizza')
+  await resolver.click()
+  await expect.poll(() => decisiones.length).toBe(1)
+  expect(decisiones[0]).toEqual({ estado: 'resuelta', responsable: 'local', compensacionCents: 440, nota: 'El local olvidó la pizza' })
+})

@@ -56,7 +56,7 @@ export interface Bloqueo {
   permanent: boolean
 }
 
-const request = async <T>(
+export const request = async <T>(
   path: string,
   options: { method?: string; body?: unknown } = {},
 ): Promise<T> => {

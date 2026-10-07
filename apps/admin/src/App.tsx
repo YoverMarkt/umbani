@@ -21,6 +21,7 @@ const Pagos = lazy(() => import('./features/pagos/Pagos'))
 const Motorizados = lazy(() => import('./features/motorizados/Motorizados'))
 const Ciudades = lazy(() => import('./features/ciudades/Ciudades'))
 const Cooperativas = lazy(() => import('./features/cooperativas/Cooperativas'))
+const Incidencias = lazy(() => import('./features/incidencias/Incidencias'))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -62,6 +63,7 @@ export default function App() {
               <Route path="/motorizados" element={<Motorizados />} />
               <Route path="/ciudades" element={<Ciudades />} />
               <Route path="/cooperativas" element={<Cooperativas />} />
+              <Route path="/incidencias" element={<Incidencias />} />
               <Route path="/usage" element={<Usage />} />
               <Route path="/umbani" element={<Umbani />} />
               <Route path="/simulator" element={<Simulator />} />

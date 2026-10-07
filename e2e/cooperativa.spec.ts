@@ -39,7 +39,7 @@ async function simularApi(page: Page) {
       registro.descarga = route.request().headers().authorization ?? null
       return route.fulfill({ status: 200, headers: { 'content-type': 'text/csv; charset=utf-8' }, body: '﻿"Repartidor";"WhatsApp"\n' })
     }
-    if (ruta === '/api/cooperativa/problemas') return route.fulfill({ json: { retenidas: [] } })
+    if (ruta === '/api/cooperativa/problemas') return route.fulfill({ json: { retenidas: [], incidencias: [] } })
     return route.fulfill({ json: {} })
   })
   return registro
@@ -107,7 +107,7 @@ test('la guía «Cómo funciona» explica el dinero y no promete lo que aún no 
   await page.goto(`${url}#/como-funciona`)
   await expect(page.getByRole('heading', { name: 'Cómo funciona' })).toBeVisible()
   await expect(page.getByText('Cada lunes Umbani cierra su semana')).toBeVisible()
-  await expect(page.getByText(/Pronto: las demás incidencias/)).toBeVisible()
+  await expect(page.getByText(/Umbani lo revisa y decide\s+quién responde/)).toBeVisible()
 })
 
 // En el teléfono, donde la cooperativa lo usa durante el turno: las tablas se
