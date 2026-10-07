@@ -4,7 +4,7 @@
 //
 // Escribe en la salida un SQL que da de alta un negocio por CADA tipo con
 // plantilla y le aplica la plantilla de verdad —la de
-// `services/business-templates.ts`, no una copia escrita a mano—, dentro de
+// `services/plantillas-por-tipo.ts`, no una copia escrita a mano—, dentro de
 // una transacción que se deshace.
 //
 // ⚠️ Existe porque este fallo es SILENCIOSO. El alta se traga el error de la
@@ -24,7 +24,7 @@
 import {
   businessTypesWithTemplate,
   templateForBusinessType,
-} from '../../src/services/business-templates.ts'
+} from '../../src/services/plantillas-por-tipo.ts'
 
 const literal = valor => `'${String(valor).replace(/'/g, "''")}'`
 
