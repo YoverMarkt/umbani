@@ -33,7 +33,6 @@ const PENDIENTES_DE_PARTIR = {
   'server/src/services/marketplace-menu.ts': 1326,
   'apps/client/src/features/catalog/OptionsManager.tsx': 1307,
   'server/tests/admin-clients.routes.test.js': 1141,
-  'server/src/db/repositories/storefront.ts': 1123,
   'server/src/routes/admin-clients.routes.ts': 1074,
   'server/src/services/storefront.ts': 1037,
   'server/src/services/business-templates.ts': 1025,
