@@ -99,7 +99,7 @@ describe('el aviso al bloqueado', () => {
   // Si el dueño lo vuelve a bloquear, es una decisión NUEVA y merece su propia
   // explicación. Sin esto, el segundo bloqueo sería mudo para siempre.
   it('desbloquear limpia la marca', () => {
-    const repo = leer('src/db/repositories/storefront.ts')
+    const repo = leer('src/db/repositories/bloqueos.ts')
     // Hasta el `update`, no un número fijo de caracteres: el bloque creció al
     // documentar por qué también se limpia `blocked_until` (2026-08-29), y un
     // `slice(0, 900)` dejó de alcanzar lo que comprobaba.
@@ -117,7 +117,7 @@ describe('el aviso al bloqueado', () => {
    * uno vigente. El dueño pulsaba y no pasaba nada, en los dos sentidos.
    */
   it('bloquear y desbloquear mandan sobre el automático pendiente', () => {
-    const repo = leer('src/db/repositories/storefront.ts')
+    const repo = leer('src/db/repositories/bloqueos.ts')
     const fn = repo.slice(repo.indexOf('const setContactBlocked'))
     const update = fn.slice(0, fn.indexOf('fail(error'))
     // Se comprueban las DOS ramas por su forma, y no contando apariciones: el
@@ -144,7 +144,7 @@ describe('el aviso al bloqueado', () => {
 describe('desbloquear limpia también la pizarra', () => {
   const leerFuente = () => {
     const fs = require('node:fs')
-    const repo = fs.readFileSync('src/db/repositories/storefront.ts', 'utf8')
+    const repo = fs.readFileSync('src/db/repositories/bloqueos.ts', 'utf8')
     const fn = repo.slice(repo.indexOf('const setContactBlocked'))
     return fn.slice(0, fn.indexOf('fail(error'))
   }

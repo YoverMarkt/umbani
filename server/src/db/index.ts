@@ -17,6 +17,8 @@ import menuModifiers = require('./repositories/menu-modifiers')
 import usage = require('./repositories/usage')
 import platformErrors = require('./repositories/platform-errors')
 import storefront = require('./repositories/storefront')
+import comprobantes = require('./repositories/comprobantes')
+import bloqueos = require('./repositories/bloqueos')
 import catalog = require('./repositories/catalog')
 import productOptions = require('./repositories/product-options')
 import pricingRules = require('./repositories/pricing-rules')
@@ -57,6 +59,8 @@ const database = {
   ...usage,
   ...platformErrors,
   ...storefront,
+  ...comprobantes,
+  ...bloqueos,
   ...catalog,
   ...productOptions,
   ...pricingRules,
