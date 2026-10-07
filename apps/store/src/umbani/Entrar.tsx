@@ -129,7 +129,12 @@ export function Entrar({ explicacion, onVolver, onDentro, titulo = 'Entra con tu
               Escribe el código de 6 números que mandamos a <b>{correo.trim()}</b>. Si no lo ves, mira en spam.
             </p>
             {dePruebas && (
-              <Aviso titulo="Servidor de pruebas">Aquí no se mandan correos. Tu código es <b>{dePruebas}</b>.</Aviso>
+              // El código en el TÍTULO: es lo que se busca con la vista, y el
+              // cuerpo del aviso va en gris pequeño (2026-10-07, revisado en
+              // el staging).
+              <Aviso titulo={<>Tu código de pruebas: <span className="tracking-[0.12em]">{dePruebas}</span></>}>
+                Este servidor no manda correos: el código sale aquí.
+              </Aviso>
             )}
             <input
               inputMode="numeric"
