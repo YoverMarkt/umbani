@@ -960,7 +960,9 @@ const bindStorefrontSession = async (sessionId: string, deviceHash: string) => {
 // sale de aquí lo pasa la ruta por `pedidoParaElCliente`
 // (`lib/precio-para-el-cliente.ts`), que convierte cada línea al precio que
 // pagó el CLIENTE. `line_total` en la base es el precio del LOCAL.
-const CAMPOS_DEL_SEGUIMIENTO = 'id,order_number,status,total,shipping,service_fee,currency,fulfillment,created_at,payment_confirmed_at,payment_method,order_items(product_name,variant_name,extras_names,item_note,quantity,line_total,order_item_options(option_group_name,option_name,quantity,group_sort))' as const
+// ⚠️ `received_ok_at` y el `id` de cada línea (2026-10-06): el cliente dice
+// «Todo bien» o reporta QUÉ línea faltó, y para eso necesita su identificador.
+const CAMPOS_DEL_SEGUIMIENTO = 'id,order_number,status,total,shipping,service_fee,currency,fulfillment,created_at,payment_confirmed_at,payment_method,received_ok_at,order_items(id,product_name,variant_name,extras_names,item_note,quantity,line_total,order_item_options(option_group_name,option_name,quantity,group_sort))' as const
 
 /**
  * Los pedidos de UN cliente en ESTE negocio, para su pestaña de Cuenta.

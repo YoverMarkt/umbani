@@ -8150,3 +8150,161 @@ returns date language sql stable set search_path = public, pg_temp
 as $x$ select date '2026-09-28' $x$;
 
 select '✅ cooperativas: cada flota lleva solo lo suyo en su ciudad, la apagada no lleva nada nuevo, y su carrera y su efectivo son del motorizado' as resultado;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- LAS INCIDENCIAS Y EL «¿LLEGÓ TODO BIEN?» (2026-10-06, fase 1)
+-- ═══════════════════════════════════════════════════════════════════════════
+-- El cliente reclama UNA vez, en 48 h, solo lo de SU pedido entregado; y lo
+-- que le corresponde lo calcula la base: lo que pagó por esas unidades —el
+-- precio del local más su parte del margen—, nunca más que el total.
+-- Cuentas a mano: pizza $4,00 y cola $2,00 con un 10 % de margen
+-- → $4,40 y $2,20 → falta una de cada una = 660 centavos.
+do $incidencias$
+declare
+  v_local uuid; v_ped uuid; v_otro uuid; v_tarde uuid; v_sin uuid; v_corto uuid;
+  v_pizza uuid; v_cola uuid; v_pizza_otro uuid; v_ajeno uuid;
+  v_r jsonb; v_inc public.order_incidents%rowtype;
+  v_crear_pedido text := $q$
+    insert into orders (business_id, contact_phone, source, status, fulfillment, subtotal, shipping, total, payment_method)
+    values ($1, '593900123200', 'manual', 'preparacion', 'delivery', 10, 1.5, 12.5, 'efectivo') returning id
+  $q$;
+begin
+  insert into businesses (slug, name, type, whatsapp_provider, whatsapp_number, ycloud_number, takes_orders, storefront_enabled)
+  values ('verif-incidencias', 'Incidencias', 'pizzería', 'ycloud', '+593900123001', '+593900123001', true, true) returning id into v_local;
+
+  -- Un pedido entregado con dos líneas, y su margen (10 %) sellado.
+  execute v_crear_pedido using v_local into v_ped;
+  insert into order_items (order_id, business_id, product_name, quantity, unit_price, line_total)
+  values (v_ped, v_local, 'Pizza', 2, 4.00, 8.00) returning id into v_pizza;
+  insert into order_items (order_id, business_id, product_name, quantity, unit_price, line_total)
+  values (v_ped, v_local, 'Cola', 1, 2.00, 2.00) returning id into v_cola;
+  update orders set platform_markup = 1.00, total = 12.50 where id = v_ped;
+  update orders set status = 'completado' where id = v_ped;
+
+  -- ── 1. Solo el de SU teléfono, y entregado ───────────────────────────────
+  if public.customer_report_order(v_ped, '593900999999', 'falta_producto', jsonb_build_array(jsonb_build_object('item', v_pizza, 'cantidad', 1)), null) ->> 'result' <> 'not_found' then
+    raise exception 'otro teléfono reclamó un pedido ajeno';
+  end if;
+  execute v_crear_pedido using v_local into v_sin;
+  if public.customer_report_order(v_sin, '593900123200', 'no_llego', '[]', null) ->> 'result' <> 'no_entregado' then
+    raise exception 'se reclamó un pedido que aún no se entregaba';
+  end if;
+  if public.customer_report_order(v_ped, '593900123200', 'comida_caida', '[]', null) ->> 'result' <> 'tipo_invalido' then
+    raise exception 'el cliente abrió una incidencia que solo registra el superadmin';
+  end if;
+
+  -- ── 2. Las líneas, de ESTE pedido y sin pasarse de la cantidad ───────────
+  if public.customer_report_order(v_ped, '593900123200', 'falta_producto', '[]', null) ->> 'result' <> 'sin_lineas' then
+    raise exception 'un «faltó algo» sin decir qué entró';
+  end if;
+  if public.customer_report_order(v_ped, '593900123200', 'falta_producto',
+       jsonb_build_array(jsonb_build_object('item', v_pizza, 'cantidad', 3)), null) ->> 'result' <> 'linea_invalida' then
+    raise exception 'se reclamaron 3 pizzas de un pedido que tenía 2';
+  end if;
+  if public.customer_report_order(v_ped, '593900123200', 'falta_producto',
+       jsonb_build_array(jsonb_build_object('item', 'no-es-un-id', 'cantidad', 1)), null) ->> 'result' <> 'linea_invalida' then
+    raise exception 'una línea con un id inválido no se rechazó';
+  end if;
+  execute v_crear_pedido using v_local into v_otro;
+  insert into order_items (order_id, business_id, product_name, quantity, unit_price, line_total)
+  values (v_otro, v_local, 'Pizza', 2, 4.00, 8.00) returning id into v_pizza_otro;
+  if public.customer_report_order(v_ped, '593900123200', 'falta_producto',
+       jsonb_build_array(jsonb_build_object('item', v_pizza_otro, 'cantidad', 1)), null) ->> 'result' <> 'linea_invalida' then
+    raise exception 'se reclamó la línea de OTRO pedido';
+  end if;
+
+  -- ── 3. Lo que le corresponde lo calcula la base ──────────────────────────
+  v_r := public.customer_report_order(v_ped, '+593900123200', 'falta_producto',
+    jsonb_build_array(jsonb_build_object('item', v_pizza, 'cantidad', 1), jsonb_build_object('item', v_cola, 'cantidad', 1)),
+    '  Faltó una pizza y la cola  ');
+  if v_r ->> 'result' <> 'ok' or (v_r ->> 'sugeridoCents')::integer <> 660 then
+    raise exception 'el reclamo no cuadró (esperaba 660 centavos): %', v_r;
+  end if;
+  select * into v_inc from order_incidents where id = (v_r ->> 'id')::uuid;
+  if v_inc.origin <> 'cliente' or v_inc.status <> 'abierta' or v_inc.kind <> 'falta_producto'
+     or v_inc.note <> 'Faltó una pizza y la cola' or jsonb_array_length(v_inc.lines) <> 2 then
+    raise exception 'la incidencia no quedó como debía: %', row_to_json(v_inc);
+  end if;
+
+  -- ── 4. Una vez por pedido; y después ya no es «todo bien» ────────────────
+  if public.customer_report_order(v_ped, '593900123200', 'no_llego', '[]', null) ->> 'result' <> 'ya_reclamado' then
+    raise exception 'el mismo pedido se reclamó dos veces';
+  end if;
+  if public.customer_confirm_order(v_ped, '593900123200') ->> 'result' <> 'ya_reclamado' then
+    raise exception 'un pedido reclamado quedó como «todo bien»';
+  end if;
+
+  -- ── 5. La misma línea dos veces suma; y no se pasa de la cantidad ────────
+  update orders set platform_markup = 1.00, total = 12.50 where id = v_otro;
+  update orders set status = 'completado' where id = v_otro;
+  if public.customer_report_order(v_otro, '593900123200', 'falta_producto',
+       jsonb_build_array(jsonb_build_object('item', v_pizza_otro, 'cantidad', 2), jsonb_build_object('item', v_pizza_otro, 'cantidad', 1)), null) ->> 'result' <> 'linea_invalida' then
+    raise exception 'repitiendo la línea se reclamaron 3 pizzas de 2';
+  end if;
+  v_r := public.customer_report_order(v_otro, '593900123200', 'falta_producto',
+    jsonb_build_array(jsonb_build_object('item', v_pizza_otro, 'cantidad', 1), jsonb_build_object('item', v_pizza_otro, 'cantidad', 1)), null);
+  -- Solo la pizza en la base (8,00) con 1,00 de margen: factor 1,125 → 4,50 c/u.
+  if (v_r ->> 'sugeridoCents')::integer <> 900 then
+    raise exception 'dos veces la misma línea no sumó bien (esperaba 900): %', v_r;
+  end if;
+
+  -- ── 6. «No llegó»: el pedido entero; y nunca más que el total ────────────
+  execute v_crear_pedido using v_local into v_corto;
+  update orders set status = 'completado' where id = v_corto;
+  if (public.customer_report_order(v_corto, '593900123200', 'no_llego', '[]', null) ->> 'sugeridoCents')::integer <> 1250 then
+    raise exception '«no llegó» no devolvió el pedido entero';
+  end if;
+
+  -- ── 7. Pasadas 48 h, ya no ───────────────────────────────────────────────
+  execute v_crear_pedido using v_local into v_tarde;
+  update orders set status = 'completado' where id = v_tarde;
+  update sales set sold_at = now() - interval '49 hours' where order_id = v_tarde;
+  if not exists (select 1 from sales where order_id = v_tarde) then
+    insert into order_events (business_id, order_id, from_status, to_status, created_at)
+    values (v_local, v_tarde, 'preparacion', 'completado', now() - interval '49 hours');
+    update orders set updated_at = now() - interval '49 hours' where id = v_tarde;
+  end if;
+  if public.customer_report_order(v_tarde, '593900123200', 'no_llego', '[]', null) ->> 'result' <> 'fuera_de_plazo' then
+    raise exception 'se reclamó pasadas las 48 horas';
+  end if;
+
+  -- ── 8. «Todo bien», una vez ──────────────────────────────────────────────
+  v_r := public.customer_confirm_order(v_tarde, '593900123200');
+  if v_r ->> 'result' <> 'ok' or (select received_ok_at from orders where id = v_tarde) is null then
+    raise exception '«Todo bien» no quedó anotado: % (received_ok_at = %)', v_r, (select received_ok_at from orders where id = v_tarde);
+  end if;
+
+  -- ── 9. El superadmin: registrar y resolver ───────────────────────────────
+  if public.register_incident(v_local, 999999, 'comida_caida', 'Se cayó la pizza') ->> 'result' <> 'not_found' then
+    raise exception 'se registró una incidencia de un pedido que no existe';
+  end if;
+  if public.register_incident(v_local, (select order_number from orders where id = v_sin), 'comida_caida', 'x') ->> 'result' <> 'nota_invalida' then
+    raise exception 'se registró una incidencia sin explicar qué pasó';
+  end if;
+  v_r := public.register_incident(v_local, (select order_number from orders where id = v_sin), 'comida_caida', 'Se le cayó la pizza en la calle');
+  if v_r ->> 'result' <> 'ok' then raise exception 'el superadmin no pudo registrar la incidencia: %', v_r; end if;
+
+  v_ajeno := (select id from order_incidents where order_id = v_ped);
+  if public.resolve_incident(v_ajeno, 'resuelta', null, 660, 'Le falta decir quién', 'superadmin') ->> 'result' <> 'datos_invalidos' then
+    raise exception 'se resolvió sin decir quién responde';
+  end if;
+  if public.resolve_incident(v_ajeno, 'resuelta', 'local', 1251, 'Más que el pedido', 'superadmin') ->> 'result' <> 'compensacion_invalida' then
+    raise exception 'se compensó más que el total del pedido';
+  end if;
+  if public.resolve_incident(v_ajeno, 'resuelta', 'local', 660, 'El local olvidó la pizza y la cola', 'superadmin:yo') ->> 'result' <> 'ok' then
+    raise exception 'no se pudo resolver la incidencia';
+  end if;
+  select * into v_inc from order_incidents where id = v_ajeno;
+  if v_inc.status <> 'resuelta' or v_inc.responsible <> 'local' or v_inc.compensation_cents <> 660 or v_inc.resolved_by <> 'superadmin:yo' then
+    raise exception 'la resolución no quedó anotada: %', row_to_json(v_inc);
+  end if;
+  if public.resolve_incident(v_ajeno, 'descartada', null, null, 'Cambio de opinión', 'superadmin') ->> 'result' <> 'ya_resuelta' then
+    raise exception 'una incidencia resuelta se reescribió';
+  end if;
+  if public.resolve_incident((v_r ->> 'id')::uuid, 'descartada', null, null, 'El cliente lo encontró', 'superadmin') ->> 'result' <> 'ok' then
+    raise exception 'no se pudo descartar una incidencia';
+  end if;
+end;
+$incidencias$;
+
+select '✅ incidencias: el cliente reclama una vez, en 48 h y solo lo suyo; la base calcula lo que le corresponde; resuelta no se reescribe' as resultado;

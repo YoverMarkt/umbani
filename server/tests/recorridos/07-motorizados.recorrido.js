@@ -131,8 +131,14 @@ describe('el motorizado de UMBANI', () => {
     // se colaba en el cierre de otro recorrido.
     const [{ r }] = await sql('select close_weekly_courier_settlements($1::date) as r', [SEMANA])
     await sql('select close_weekly_settlements($1::date)', [SEMANA])
-    expect(r.creadas).toBe(1)
-    const [liq] = await sql('select * from courier_settlements where courier_id = $1 and period_start = $2', [motorizadoId, SEMANA])
+    expect(r.creadas).toBeGreaterThanOrEqual(1)
+    // ⚠️ Se cuenta la de SU motorizado, no el total del cierre (2026-10-06):
+    // Vitest no corre los recorridos en orden alfabético, y si otro dejó a su
+    // motorizado debiendo, el lunes le arrastra la deuda en una liquidación
+    // nueva —como debe—. Contar el total hacía depender esta prueba del orden.
+    const suyas = await sql('select * from courier_settlements where courier_id = $1 and period_start = $2', [motorizadoId, SEMANA])
+    expect(suyas).toHaveLength(1)
+    const [liq] = suyas
     expect(liq.derecho_cents).toBe(0) // la carrera retenida no se le paga
     expect(liq.en_mano_cents).toBe(centavos(pedido.total)) // el efectivo lo cobró él
     expect(liq.neto_cents).toBe(-centavos(pedido.total))

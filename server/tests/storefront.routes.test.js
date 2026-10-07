@@ -53,6 +53,9 @@ describe('rutas de la mini app', () => {
       '/api/store/:slug/orders/:id/proof',
       // Pagar con tarjeta (POST) y preguntar en qué quedó el cobro (GET).
       '/api/store/:slug/orders/:id/tarjeta',
+      // «¿Llegó todo bien?» (2026-10-06): decir «todo bien» o reclamar.
+      '/api/store/:slug/orders/:id/todo-bien',
+      '/api/store/:slug/orders/:id/reclamo',
       '/api/store/:slug/payment-info',
       '/api/store/:slug/quote',
       '/api/store/:slug/session/verify',
@@ -101,6 +104,9 @@ describe('rutas de la mini app', () => {
       '/api/store/:slug/orders/:id/proof',
       // Cobrar con tarjeta ES dinero de una persona: con sesión, siempre.
       '/api/store/:slug/orders/:id/tarjeta',
+      // Y reclamar lo es también: con sesión, y del pedido de ESA sesión.
+      '/api/store/:slug/orders/:id/todo-bien',
+      '/api/store/:slug/orders/:id/reclamo',
       '/api/store/:slug/payment-info',
     ]) {
       expect(middlewareDe(path), path).toBe('exige')

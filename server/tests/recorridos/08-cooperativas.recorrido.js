@@ -160,6 +160,14 @@ describe('una cooperativa de reparto, de punta a punta', () => {
       saldoCents: linea.reparto_cents - linea.total_cents,
       estado: 'por_cobrar',
     })
+    // Entrega el efectivo y el superadmin lo marca cobrado. ⚠️ Sin esto la
+    // deuda se arrastraba al lunes siguiente y se colaba en el cierre de OTRO
+    // recorrido (Vitest no los corre en orden alfabético).
+    const [{ id: liquidacion }] = await sql('select id from courier_settlements where courier_id = $1 and period_start = $2', [motoId, SEMANA])
+    expect(await exigir(200, admin.pedir('POST', `/api/admin/motorizados/liquidaciones/${liquidacion}/marcar`, { referencia: 'EF-COOP-1' })))
+      .toEqual({ status: 'cobrada' })
+    const { filas: cobrada } = await exigir(200, panel.pedir('GET', `/api/cooperativa/carreras/semana/${SEMANA}`))
+    expect(cobrada.find(f => f.id === motoId).estado).toBe('cobrada')
   })
 
   it('otra cooperativa no ve ni toca nada de esta', async () => {

@@ -106,11 +106,28 @@ components:
         payment_method: { type: string }
         payment_confirmed_at: { type: [string, 'null'] }
         created_at: { type: string }
+        received_ok_at: { type: [string, 'null'], description: Cuándo el cliente dijo «Todo bien» }
+        confirmacion:
+          type: object
+          description: |
+            «¿Llegó todo bien?» (2026-10-06). Enseña los botones «Todo bien» y «Reportar un problema»
+            solo si `reclamableHasta` no es null (entregado, sin reclamo, dentro de las 48 h).
+          properties:
+            todoBien: { type: boolean }
+            reclamableHasta: { type: [string, 'null'], description: 'ISO; null = ya no se puede reclamar' }
+            reclamo:
+              type: [object, 'null']
+              properties:
+                tipo: { type: string, enum: [falta_producto, vino_mal, no_llego] }
+                estado: { type: string, enum: [abierta, resuelta, descartada] }
+                sugeridoCents: { type: integer, description: Lo que calculó la base que le corresponde }
+                compensacionCents: { type: [integer, 'null'], description: Lo que se decidió al resolver }
         order_items:
           type: array
           items:
             type: object
             properties:
+              id: { type: string, description: 'La línea: con ella se dice QUÉ faltó al reclamar' }
               product_name: { type: string }
               variant_name: { type: [string, 'null'] }
               quantity: { type: integer }
@@ -282,6 +299,43 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/PedidoDelCliente' }
         '404': { description: No existe o no es de este teléfono (mismo mensaje) }
+  /api/v1/pedidos/{id}/todo-bien:
+    post:
+      summary: «Todo bien» — el cliente confirma que su pedido entregado llegó completo
+      security: [{ sesionApp: [] }]
+      parameters: [{ $ref: '#/components/parameters/id' }]
+      responses:
+        '200': { description: '{ ok: true }' }
+        '404': { description: No existe o no es de este teléfono }
+        '409': { description: 'Todavía no se entregó, o ya hay un reclamo de este pedido' }
+  /api/v1/pedidos/{id}/reclamo:
+    post:
+      summary: Reportar un problema con un pedido entregado (una vez, en las 48 h siguientes)
+      security: [{ sesionApp: [] }]
+      parameters: [{ $ref: '#/components/parameters/id' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tipo]
+              properties:
+                tipo: { type: string, enum: [falta_producto, vino_mal, no_llego] }
+                lineas:
+                  type: array
+                  description: 'Obligatorio con falta_producto y vino_mal: qué líneas y cuántas unidades'
+                  items:
+                    type: object
+                    properties:
+                      item: { type: string, description: El `id` de la línea del pedido }
+                      cantidad: { type: integer, minimum: 1 }
+                nota: { type: string, maxLength: 500 }
+      responses:
+        '201': { description: '{ ok: true, sugeridoCents } — lo que calculó la base que le corresponde; Umbani lo revisa' }
+        '400': { description: 'Tipo inválido, sin líneas, una línea que no es del pedido o se pasa de su cantidad, o nota larga' }
+        '404': { description: No existe o no es de este teléfono }
+        '409': { description: 'Todavía no se entregó, ya reclamó este pedido, o pasaron más de 48 horas' }
   /api/v1/motorizado/yo:
     get:
       summary: El motorizado de la sesión y su semana en curso
@@ -484,6 +538,26 @@ paths:
       parameters: [{ $ref: '#/components/parameters/slug' }, { $ref: '#/components/parameters/id' }]
       responses:
         '200': { description: '{ pagado, estadoDelPedido, estado, marca, ultimos }' }
+
+  /api/store/{slug}/orders/{id}/todo-bien:
+    post:
+      summary: «Todo bien» — lo mismo que /api/v1/pedidos/{id}/todo-bien, con la sesión de tienda
+      security: [{ sesionTienda: [] }]
+      parameters: [{ $ref: '#/components/parameters/slug' }, { $ref: '#/components/parameters/id' }]
+      responses:
+        '200': { description: '{ ok: true }' }
+        '404': { description: No es un pedido de este local y de este teléfono }
+        '409': { description: 'Todavía no se entregó, o ya hay un reclamo' }
+  /api/store/{slug}/orders/{id}/reclamo:
+    post:
+      summary: Reportar un problema — lo mismo que /api/v1/pedidos/{id}/reclamo, con la sesión de tienda
+      security: [{ sesionTienda: [] }]
+      parameters: [{ $ref: '#/components/parameters/slug' }, { $ref: '#/components/parameters/id' }]
+      responses:
+        '201': { description: '{ ok: true, sugeridoCents }' }
+        '400': { description: Datos inválidos (ver /api/v1/pedidos/{id}/reclamo) }
+        '404': { description: No es un pedido de este local y de este teléfono }
+        '409': { description: 'Todavía no se entregó, ya reclamó, o pasaron más de 48 horas' }
 
   /pagos/payphone/ir:
     get:

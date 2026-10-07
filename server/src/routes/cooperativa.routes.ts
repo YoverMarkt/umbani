@@ -232,8 +232,9 @@ router.get('/api/cooperativa/carreras.csv', ...puerta, async (req, res) => {
 })
 
 // ── Sus problemas ──────────────────────────────────────────────────────────
-// Por ahora, las carreras retenidas (se le cayó la comida). Las incidencias
-// —cliente ausente, faltó un producto, accidente— llegan con su propio módulo.
+// Las carreras retenidas (se le cayó la comida) y, desde el 2026-10-06, las
+// incidencias de los pedidos que llevaban sus motorizados: qué pasó y quién
+// respondió. ⚠️ Sin datos del cliente: ni su nombre, ni su nota.
 
 router.get('/api/cooperativa/problemas', ...puerta, async (req, res) => {
   const cooperativeId = cooperativaDe(req).cooperativeId
@@ -242,7 +243,17 @@ router.get('/api/cooperativa/problemas', ...puerta, async (req, res) => {
     db.listCooperativeCouriers(cooperativeId),
   ])
   const nombreDe = new Map(lista.map(m => [m.id, m.name]))
+  const incidencias = await db.cooperativeIncidents(lista.map(m => m.id))
   return res.json({
+    incidencias: incidencias.map(i => ({
+      pedido: i.orders?.order_number ?? null,
+      local: i.businesses?.name ?? null,
+      fecha: i.created_at,
+      repartidor: nombreDe.get(String(i.courier_id)) ?? '',
+      tipo: i.kind,
+      estado: i.status,
+      responsable: i.responsible,
+    })),
     retenidas: retenidas.map(r => ({
       pedido: r.orders?.order_number ?? null,
       local: r.businesses?.name ?? null,

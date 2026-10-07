@@ -12,6 +12,7 @@ import pagosRouter = require('./admin-pagos.routes')
 import motorizadosRouter = require('./admin-motorizados.routes')
 import ciudadesRouter = require('./admin-ciudades.routes')
 import cooperativasRouter = require('./admin-cooperativas.routes')
+import incidenciasRouter = require('./admin-incidencias.routes')
 
 const router = createRouter()
 
@@ -28,5 +29,6 @@ router.use(pagosRouter)
 router.use(motorizadosRouter)
 router.use(ciudadesRouter)
 router.use(cooperativasRouter)
+router.use(incidenciasRouter)
 
 export = router

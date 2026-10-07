@@ -26,6 +26,7 @@ import { metodoTarjeta, pagosConTarjeta, tarjetaDisponible } from '../services/p
 import { leerConfiguracionPayphone } from '../config/payphone'
 import { tarifaDeServicio } from '../services/tarifa-de-servicio'
 import { cotizacionParaElCliente, pedidoParaElCliente, porcentajePorProducto } from '../lib/precio-para-el-cliente'
+import { conConfirmacion, leerReclamo, respuestaAlCliente } from '../services/reclamos'
 
 // Rutas de la mini app del negocio.
 //
@@ -50,6 +51,9 @@ interface StorefrontSessionRow {
 }
 
 interface StorefrontRouteDatabase {
+  /** «¿Llegó todo bien?» (2026-10-06): las reglas viven en la base. */
+  confirmOrderReceived(orderId: string, phone: string): Promise<Record<string, unknown>>
+  reportOrderProblem(orderId: string, phone: string, kind: string, lines: unknown, note: string | null): Promise<Record<string, unknown>>
   /** La regla de margen vigente del negocio, o null si no hay ninguna. */
   getBusinessPricingRule(businessId: string): Promise<Record<string, unknown> | null>
   getStorefrontPaymentMethods(businessId: string): Promise<Array<{
@@ -863,7 +867,9 @@ router.get('/api/store/:slug/orders', requireStorefrontSession, async (req, res)
   // Agrupadas aquí, como en el pedido suelto: la lista enseña lo que se pidió.
   // Y con los precios que pagó el CLIENTE, nunca los del local (2026-10-01).
   const pct = await porcentajeDelLocal(businessId)
-  return res.json((data || []).map(pedido => pedidoParaElCliente(conOpcionesAgrupadas(pedido as Record<string, unknown>), pct)))
+  const pedidos = (data || []).map(pedido => pedidoParaElCliente(conOpcionesAgrupadas(pedido as Record<string, unknown>), pct) as Record<string, unknown>)
+  // «¿Llegó todo bien?» (2026-10-06): de todos los pedidos de una vez.
+  return res.json(await conConfirmacion(pedidos))
 })
 
 router.get('/api/store/:slug/orders/:id', requireStorefrontSession, async (req, res) => {
@@ -876,10 +882,38 @@ router.get('/api/store/:slug/orders/:id', requireStorefrontSession, async (req, 
   if (!data) return res.status(404).json({ error: 'No encontramos ese pedido' })
   // Agrupadas aquí y no en la app: el mismo plato tiene que leerse igual en el
   // seguimiento, en el panel del dueño y en el WhatsApp del cliente.
-  return res.json(pedidoParaElCliente(
+  const pedido = pedidoParaElCliente(
     conOpcionesAgrupadas(data as Record<string, unknown>),
     await porcentajeDelLocal(businessId),
-  ))
+  ) as Record<string, unknown>
+  const [conEstado] = await conConfirmacion([pedido])
+  return res.json(conEstado)
+})
+
+// ── «¿Llegó todo bien?» (2026-10-06) ─────────────────────────────────────
+// ⚠️ El pedido tiene que ser de ESTE local y de ESTE teléfono: la sesión de
+// tienda es de un local, y la base comprueba además el teléfono.
+const pedidoDeLaSesion: RequestHandler = async (req, res, next) => {
+  const { businessId, contactPhone } = req.storefront!
+  const orderId = String(req.params.id || '').trim()
+  const { data } = await db.getStorefrontOrder({ businessId, contactPhone, orderId }).catch(() => ({ data: null }))
+  if (!data) return res.status(404).json({ error: 'No encontramos ese pedido' })
+  return next()
+}
+
+router.post('/api/store/:slug/orders/:id/todo-bien', requireStorefrontSession, pedidoDeLaSesion, async (req, res) => {
+  const r = await db.confirmOrderReceived(String(req.params.id), req.storefront!.contactPhone)
+  if (r.result === 'ok') return res.json({ ok: true })
+  const e = respuestaAlCliente(r.result)
+  return res.status(e.status).json({ error: e.error })
+})
+
+router.post('/api/store/:slug/orders/:id/reclamo', requireStorefrontSession, pedidoDeLaSesion, async (req, res) => {
+  const { tipo, lineas, nota } = leerReclamo(req.body)
+  const r = await db.reportOrderProblem(String(req.params.id), req.storefront!.contactPhone, tipo, lineas, nota)
+  if (r.result === 'ok') return res.status(201).json({ ok: true, sugeridoCents: Number(r.sugeridoCents) || 0 })
+  const e = respuestaAlCliente(r.result)
+  return res.status(e.status).json({ error: e.error })
 })
 
 /** Datos bancarios para transferir. Solo con sesión y solo del propio negocio. */

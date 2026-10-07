@@ -2067,6 +2067,85 @@ export type Database = {
           },
         ]
       }
+      order_incidents: {
+        Row: {
+          business_id: string
+          compensation_cents: number | null
+          courier_id: string | null
+          created_at: string
+          id: string
+          kind: string
+          lines: Json
+          note: string | null
+          order_id: string
+          origin: string
+          resolution_note: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          responsible: string | null
+          status: string
+          suggested_cents: number
+        }
+        Insert: {
+          business_id: string
+          compensation_cents?: number | null
+          courier_id?: string | null
+          created_at?: string
+          id?: string
+          kind: string
+          lines?: Json
+          note?: string | null
+          order_id: string
+          origin: string
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          responsible?: string | null
+          status?: string
+          suggested_cents?: number
+        }
+        Update: {
+          business_id?: string
+          compensation_cents?: number | null
+          courier_id?: string | null
+          created_at?: string
+          id?: string
+          kind?: string
+          lines?: Json
+          note?: string | null
+          order_id?: string
+          origin?: string
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          responsible?: string | null
+          status?: string
+          suggested_cents?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_incidents_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_incidents_courier_id_fkey"
+            columns: ["courier_id"]
+            isOneToOne: false
+            referencedRelation: "couriers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_incidents_order_fk"
+            columns: ["order_id", "business_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id", "business_id"]
+          },
+        ]
+      }
       order_item_options: {
         Row: {
           business_id: string
@@ -2357,6 +2436,7 @@ export type Database = {
           platform_markup: number | null
           pricing_rule_id: string | null
           pricing_rule_version: number | null
+          received_ok_at: string | null
           scheduled_for: string | null
           service_fee: number
           shipping: number
@@ -2400,6 +2480,7 @@ export type Database = {
           platform_markup?: number | null
           pricing_rule_id?: string | null
           pricing_rule_version?: number | null
+          received_ok_at?: string | null
           scheduled_for?: string | null
           service_fee?: number
           shipping?: number
@@ -2443,6 +2524,7 @@ export type Database = {
           platform_markup?: number | null
           pricing_rule_id?: string | null
           pricing_rule_version?: number | null
+          received_ok_at?: string | null
           scheduled_for?: string | null
           service_fee?: number
           shipping?: number
@@ -3955,6 +4037,20 @@ export type Database = {
         }
         Returns: Json
       }
+      customer_confirm_order: {
+        Args: { p_order_id: string; p_phone: string }
+        Returns: Json
+      }
+      customer_report_order: {
+        Args: {
+          p_kind: string
+          p_lines: Json
+          p_note: string
+          p_order_id: string
+          p_phone: string
+        }
+        Returns: Json
+      }
       distancia_km: {
         Args: { lat1: number; lat2: number; lng1: number; lng2: number }
         Returns: number
@@ -4294,6 +4390,15 @@ export type Database = {
           status: string
         }[]
       }
+      pedido_entregado_de: {
+        Args: { p_order_id: string; p_phone: string }
+        Returns: {
+          business_id: string
+          entregado_en: string
+          order_id: string
+          status: string
+        }[]
+      }
       platform_markup_summary: {
         Args: { p_business_id?: string; p_from: string; p_to: string }
         Returns: {
@@ -4333,6 +4438,15 @@ export type Database = {
       refresh_business_channel_identifiers: {
         Args: { p_business_id: string }
         Returns: undefined
+      }
+      register_incident: {
+        Args: {
+          p_business_id: string
+          p_kind: string
+          p_note: string
+          p_order_number: number
+        }
+        Returns: Json
       }
       register_insult: {
         Args: { p_customer_id: string; p_dias?: number }
@@ -4385,6 +4499,17 @@ export type Database = {
       }
       request_new_payment_proof: {
         Args: { p_business_id: string; p_order_id: string }
+        Returns: Json
+      }
+      resolve_incident: {
+        Args: {
+          p_actor: string
+          p_compensation_cents: number
+          p_id: string
+          p_note: string
+          p_responsible: string
+          p_status: string
+        }
         Returns: Json
       }
       retain_courier_fee: {

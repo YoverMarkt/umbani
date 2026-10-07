@@ -12,6 +12,7 @@ import { conOpcionesAgrupadas } from '../services/order-detail'
 import { reglaDeMargen } from '../services/storefront'
 import { pedidoParaElCliente, porcentajePorProducto } from '../lib/precio-para-el-cliente'
 import { ciudadesDe } from '../services/marketplace-ciudad'
+import { conConfirmacion, leerReclamo, respuestaAlCliente } from '../services/reclamos'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // LA API DE LA APP DEL CLIENTE (v1)
@@ -204,7 +205,8 @@ router.get('/api/v1/pedidos', appLimiter, authApp, async (req, res) => {
       local: elLocal({ businesses: businesses as { name?: string; slug?: string } | null }),
     })
   }
-  return res.json({ pedidos })
+  // «¿Llegó todo bien?» (2026-10-06): de todos los pedidos de una vez.
+  return res.json({ pedidos: await conConfirmacion(pedidos as Record<string, unknown>[]) })
 })
 
 router.get('/api/v1/pedidos/:id', appLimiter, authApp, async (req, res) => {
@@ -218,10 +220,33 @@ router.get('/api/v1/pedidos/:id', appLimiter, authApp, async (req, res) => {
   })
   if (error) return res.status(500).json({ error: 'No pudimos consultar tu pedido' })
   if (!data) return res.status(404).json({ error: 'No encontramos ese pedido' })
-  return res.json({
+  const [pedido] = await conConfirmacion([{
     ...pedidoParaElCliente(conOpcionesAgrupadas(data as Record<string, unknown>), await porcentajeDe(dueno.business_id)),
     local: elLocal(dueno),
-  })
+  } as Record<string, unknown>])
+  return res.json(pedido)
+})
+
+// ── «¿Llegó todo bien?» (2026-10-06) ─────────────────────────────────────
+// Por el teléfono de la sesión: la base comprueba que el pedido es suyo, que
+// se entregó y que no pasaron 48 horas; y calcula lo que le corresponde.
+router.post('/api/v1/pedidos/:id/todo-bien', appLimiter, authApp, async (req, res) => {
+  const id = String(req.params.id || '').trim()
+  if (!UUID.test(id)) return res.status(404).json({ error: 'No encontramos ese pedido' })
+  const r = await db.confirmOrderReceived(id, telefonoDe(req))
+  if (r.result === 'ok') return res.json({ ok: true })
+  const e = respuestaAlCliente(r.result)
+  return res.status(e.status).json({ error: e.error })
+})
+
+router.post('/api/v1/pedidos/:id/reclamo', appLimiter, authApp, async (req, res) => {
+  const id = String(req.params.id || '').trim()
+  if (!UUID.test(id)) return res.status(404).json({ error: 'No encontramos ese pedido' })
+  const { tipo, lineas, nota } = leerReclamo(req.body)
+  const r = await db.reportOrderProblem(id, telefonoDe(req), tipo, lineas, nota)
+  if (r.result === 'ok') return res.status(201).json({ ok: true, sugeridoCents: Number(r.sugeridoCents) || 0 })
+  const e = respuestaAlCliente(r.result)
+  return res.status(e.status).json({ error: e.error })
 })
 
 export = router
