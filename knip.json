@@ -3,7 +3,8 @@
   "workspaces": {
     ".": {
       "entry": [
-        "e2e/*.spec.ts"
+        "e2e/*.spec.ts",
+        "scripts/*.mjs"
       ]
     },
     "server": {
@@ -49,6 +50,7 @@
   },
   "ignore": [
     "apps/*/public/theme-boot.js",
+    "apps/store/public/sw.js",
     "server/src/services/platform-pricing.ts"
   ],
   "ignoreDependencies": [

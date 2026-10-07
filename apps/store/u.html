@@ -7,6 +7,11 @@
     <!-- La APP WEB DE CLIENTES (`/u`, 2026-10-05): la misma cabecera que la tienda. -->
     <!-- Un solo tema: la tienda es clara siempre (ver index.css). -->
     <meta name="theme-color" content="#0B0B0C" />
+    <!-- La app instalable (2026-10-06): su ficha, el icono del iPhone y el
+         nombre bajo el icono. Ver `src/lib/app-instalable.ts`. -->
+    <link rel="manifest" href="/t/u.webmanifest" />
+    <link rel="apple-touch-icon" href="/t/iconos/umbani-180.png" />
+    <meta name="apple-mobile-web-app-title" content="Umbani" />
     <!-- La fuente propia, pedida YA. Sin esto el navegador no se entera de que
          existe hasta que termina de leer el CSS, y el cambio de la fuente del
          sistema a la propia se ve a mitad de lectura. `crossorigin` es

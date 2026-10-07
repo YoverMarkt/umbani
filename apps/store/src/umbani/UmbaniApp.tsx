@@ -3,6 +3,7 @@ import {
   RiArrowDownSLine, RiHistoryLine, RiMapPin2Line, RiStore2Line,
 } from '@remixicon/react'
 import { Aviso, Boton, EstadoVacio, LISTA, ROTULO } from '../components/ui'
+import { InstalarApp } from '../components/InstalarApp'
 import { Entrar, Marco, Cabecera } from './Entrar'
 import { COMO_VA } from '../lib/como-va'
 import { money, rangoDeEspera } from '../lib/format'
@@ -240,6 +241,8 @@ function Inicio({ ciudad, error, onCambiarCiudad, onPedidos, onLocal }: {
           <RiHistoryLine size={18} /> Mis pedidos
         </button>
       </header>
+
+      <InstalarApp nombre="Umbani" />
 
       <h1 className="mb-4 text-[26px] leading-tight font-extrabold tracking-tight">¿Qué se te antoja hoy?</h1>
       {(error || fallo) && <div className="mb-4"><Aviso tono="alerta" titulo="No pudimos seguir">{error || fallo}</Aviso></div>}

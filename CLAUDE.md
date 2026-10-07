@@ -196,6 +196,7 @@ Cada una existe porque algo falló. Lo que parece complejidad de más suele ser 
 - **Las cuentas de cada uno y el cierre semanal (libro por pedido, liquidaciones, el corte del 28-sep)** → [DECISIONES.md](DECISIONES.md#las-cuentas-de-cada-uno-y-el-cierre-semanal)
 - **La tarifa de servicio (dentro de la parte de Umbani, la lee la base, congelada)** → [DECISIONES.md](DECISIONES.md#la-tarifa-de-servicio)
 - **Las apps Flutter: usan la API de la tienda, login con WhatsApp, el contrato vigilado** → [docs/apps/](docs/apps/README.md) y [DECISIONES.md](DECISIONES.md#la-api-de-las-apps-flutter)
+- **Las apps instalables (PWA): el service worker antes del comodín, no guarda nada, solo iconos que ya usa la tienda** → [DECISIONES.md](DECISIONES.md#las-apps-instalables-pwa)
 - **Los motorizados (tope de efectivo, carrera retenida, su liquidación, apagado por defecto)** → [DECISIONES.md](DECISIONES.md#los-motorizados)
 - **Las ciudades (Chone y Portoviejo): sin ciudad un local no aparece, falla cerrado, el motorizado reparte en la suya** → [DECISIONES.md](DECISIONES.md#las-ciudades)
 - **Las cooperativas de reparto (la tercera flota, la regla del reparto en un solo sitio, el teléfono del repartidor como lo ve WhatsApp)** → [DECISIONES.md](DECISIONES.md#las-cooperativas-de-reparto)

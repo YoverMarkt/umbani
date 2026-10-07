@@ -135,6 +135,19 @@ for (const [ruta, nombre, debeDecir = '<html'] of [
   const r = await pedir(ruta)
   revisar(nombre, r.status === 200 && r.texto.includes(debeDecir), `status ${r.status}`)
 }
+// Las apps instalables (2026-10-06). Si el comodín de la app se tragara
+// `/u/sw.js`, la app abriría igual y simplemente dejaría de instalarse: solo
+// se ve pidiéndolo (ver `lib/apps-instalables.ts`).
+for (const alcance of ['/u', '/r']) {
+  const r = await pedir(`${alcance}/sw.js`)
+  const tipo = String(r.headers.get('content-type') || '')
+  revisar(`service worker de ${alcance}`,
+    r.status === 200 && tipo.includes('javascript') && r.headers.get('service-worker-allowed') === alcance,
+    `status ${r.status}, ${tipo}`)
+}
+const ficha = await pedir('/t/u.webmanifest')
+revisar('ficha de instalación de /u', ficha.status === 200 && ficha.texto.includes('"start_url": "/u"'),
+  `status ${ficha.status}`)
 
 // ── 3. La puerta de la tienda ───────────────────────────────────────────────
 console.log('\n3. Tienda: el enlace es la credencial')
