@@ -199,7 +199,8 @@ describe('su panel: cada ruta exige su sesión', () => {
 
 describe('sus motorizados', () => {
   beforeEach(activa)
-  const alta = { nombre: 'Andrés Mera', telefono: '099 123 4567', vehiculo: 'Moto', cedula: '1312 345678', placa: 'mb123a' }
+  // El correo, en mayúsculas a propósito: se guarda como lo escribiría cualquiera y se compara en minúsculas.
+  const alta = { nombre: 'Andrés Mera', telefono: '099 123 4567', correo: ' Andres.Mera@Correo.com ', vehiculo: 'Moto', cedula: '1312 345678', placa: 'mb123a' }
 
   it('el nuevo entra en SU cooperativa aunque la petición diga otra, con el teléfono como lo verá WhatsApp', async () => {
     const crear = vi.spyOn(db, 'createCooperativeCourier').mockResolvedValue({ id: MOTO, name: 'Andrés Mera', phone: '593991234567', active: true })
@@ -208,13 +209,14 @@ describe('sus motorizados', () => {
     })
     expect(r.status).toBe(201)
     expect(crear).toHaveBeenCalledWith(COOP, {
-      phone: '593991234567', name: 'Andrés Mera', vehicle: 'Moto', idNumber: '1312345678', plate: 'MB123A', licenseNumber: null,
+      phone: '593991234567', email: 'andres.mera@correo.com', name: 'Andrés Mera', vehicle: 'Moto', idNumber: '1312345678', plate: 'MB123A', licenseNumber: null,
     })
   })
 
-  it('sin sus datos (cédula, placa, vehículo, teléfono) no llega a la base', async () => {
+  it('sin sus datos (cédula, placa, vehículo, teléfono, correo) no llega a la base', async () => {
     const crear = vi.spyOn(db, 'createCooperativeCourier')
-    for (const malo of [{ cedula: '' }, { placa: 'A' }, { vehiculo: '' }, { telefono: '12' }, { nombre: 'A' }, { licencia: 'x' }]) {
+    // Sin correo no podría entrar a su app (2026-10-06).
+    for (const malo of [{ cedula: '' }, { placa: 'A' }, { vehiculo: '' }, { telefono: '12' }, { nombre: 'A' }, { licencia: 'x' }, { correo: '' }, { correo: 'sin-arroba' }]) {
       const r = await correr(panel, 'post', '/api/cooperativa/repartidores', { headers: sesionDe(), body: { ...alta, ...malo } })
       expect(r.status).toBe(400)
     }
@@ -225,6 +227,13 @@ describe('sus motorizados', () => {
     vi.spyOn(db, 'createCooperativeCourier').mockRejectedValue(Object.assign(new Error('dup'), { code: '23505' }))
     const r = await correr(panel, 'post', '/api/cooperativa/repartidores', { headers: sesionDe(), body: alta })
     expect(r).toMatchObject({ status: 409, body: { error: 'Ese teléfono ya está registrado como repartidor' } })
+  })
+
+  it('un correo ya registrado lo dice con su propio texto: es otro dato el que sobra', async () => {
+    vi.spyOn(db, 'createCooperativeCourier').mockRejectedValue(Object.assign(
+      new Error('duplicate key value violates unique constraint "couriers_email_unico"'), { code: '23505' }))
+    const r = await correr(panel, 'post', '/api/cooperativa/repartidores', { headers: sesionDe(), body: alta })
+    expect(r).toMatchObject({ status: 409, body: { error: 'Ese correo ya es de otro repartidor' } })
   })
 
   it('apagar al de OTRA flota responde 404, igual que uno que no existe', async () => {

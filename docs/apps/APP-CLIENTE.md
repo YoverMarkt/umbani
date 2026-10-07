@@ -13,8 +13,9 @@ sesión, las cabeceras y los errores.
 > todas sus rutas estén en `openapi.yaml`.
 
 ## 1. Bienvenida e inicio de sesión
-- **Llama:** `POST /api/v1/auth/whatsapp`, luego `POST /api/v1/auth/whatsapp/verificar` cada 2–3 s.
-- **Enseña:** «Inicia sesión con WhatsApp», el código grande y el botón «Abrir WhatsApp» (abre `enlace`). Mientras espera: «Esperando tu mensaje…». Si vence: «El código venció, pide otro».
+- **Llama:** `POST /api/v1/auth/correo` con su correo, luego `POST /api/v1/auth/correo/verificar` con el código de 6 números que le llegó (2026-10-06: ya no se entra por WhatsApp).
+- **Enseña:** «Entra con tu correo» → «Enviarme el código» → «Escribe el código que mandamos a …». Código incorrecto (`401`): «Ese código no es correcto». Vencido (`410`): «Mandarme otro código». En PRUEBAS el código viene en `codigoDePruebas`: enséñalo en una caja «Servidor de pruebas».
+- **Su número, una vez:** si al entrar a un local la API responde `409 { falta: 'telefono' }`, pregunta «¿A qué número te llama el repartidor?» y mándalo con `PUT /api/v1/yo/telefono`; luego vuelve a entrar al local. Si responde `409` es que ese número ya es de otra cuenta: enseña el texto.
 - **Guarda:** el `token` en almacenamiento seguro (Keychain / Keystore).
 
 ## 1b. La ciudad, por la ubicación (2026-10-05)

@@ -13,6 +13,7 @@ import { reglaDeMargen } from '../services/storefront'
 import { pedidoParaElCliente, porcentajePorProducto } from '../lib/precio-para-el-cliente'
 import { ciudadesDe } from '../services/marketplace-ciudad'
 import { conConfirmacion, leerReclamo, respuestaAlCliente } from '../services/reclamos'
+import { clienteDeLaSesion, telefonoDelCliente } from '../services/cliente-de-la-app'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // LA API DE LA APP DEL CLIENTE (v1)
@@ -69,8 +70,9 @@ router.post('/api/v1/auth/whatsapp/verificar', verificarLimiter, async (req, res
 
 /** Con la ciudad que eligió el cliente (2026-10-05), si eligió alguna. */
 router.get('/api/v1/yo', appLimiter, authApp, async (req, res) => {
-  const cliente = await db.resolveMarketplaceCustomer(telefonoDe(req))
-  return res.json({ telefono: telefonoDe(req), ciudadId: cliente.city_id ?? null })
+  const cliente = await clienteDeLaSesion(req)
+  // `telefono` null = entró con correo y aún no dijo a qué número le llaman.
+  return res.json({ telefono: telefonoDe(req) || cliente.telefono, correo: cliente.correo, ciudadId: cliente.ciudadId })
 })
 
 // ── Las ciudades (2026-10-05) ─────────────────────────────────────────────
@@ -122,7 +124,7 @@ router.put('/api/v1/yo/ciudad', appLimiter, authApp, async (req, res) => {
   if (!UUID.test(ciudadId)) return res.status(400).json({ error: 'Ciudad no válida' })
   const ciudad = await db.getCity(ciudadId)
   if (!ciudad || !ciudad.active) return res.status(404).json({ error: 'No atendemos en esa ciudad' })
-  const cliente = await db.resolveMarketplaceCustomer(telefonoDe(req))
+  const cliente = await clienteDeLaSesion(req)
   await db.setCustomerCity(cliente.id, ciudad.id)
   return res.json({ ciudadId: ciudad.id, nombre: ciudad.name })
 })
@@ -162,11 +164,15 @@ router.get('/api/v1/marketplace', appLimiter, async (req, res) => {
 router.post('/api/v1/locales/:slug/sesion', appLimiter, authApp, async (req, res) => {
   const dispositivo = typeof req.headers['x-storefront-device'] === 'string' ? req.headers['x-storefront-device'].trim() : ''
   if (dispositivo.length < 8) return res.status(400).json({ error: 'Falta el identificador del dispositivo (x-storefront-device)' })
+  // Sin teléfono no hay pedido: el repartidor tiene que poder llamar, y de él
+  // cuelgan sus pedidos. La app lo pide con `PUT /api/v1/yo/telefono`.
+  const telefono = await telefonoDelCliente(req)
+  if (!telefono) return res.status(409).json({ error: 'Antes de pedir, dinos a qué número te llama el repartidor', falta: 'telefono' })
   const business = await db.getBusinessBySlug(String(req.params.slug || '').trim())
   if (!business) return res.status(404).json({ error: 'No encontramos ese local' })
   const token = await issueStorefrontSession({
     business,
-    phone: telefonoDe(req),
+    phone: telefono,
     deviceHash: deviceFingerprint({
       clientId: dispositivo,
       userAgent: req.headers['user-agent'] || '',
@@ -192,7 +198,8 @@ const elLocal = (fila: { businesses?: { name?: string | null; slug?: string | nu
 })
 
 router.get('/api/v1/pedidos', appLimiter, authApp, async (req, res) => {
-  const { data, error } = await db.getAppOrders(telefonoDe(req))
+  // Sin teléfono todavía, la lista sale vacía: nada cuelga de él.
+  const { data, error } = await db.getAppOrders(await telefonoDelCliente(req))
   if (error) return res.status(500).json({ error: 'No pudimos consultar tus pedidos' })
   const porLocal = new Map<string, number | null>()
   const pedidos = []
@@ -213,7 +220,7 @@ router.get('/api/v1/pedidos/:id', appLimiter, authApp, async (req, res) => {
   const id = String(req.params.id || '').trim()
   if (!UUID.test(id)) return res.status(404).json({ error: 'No encontramos ese pedido' })
   // El mismo 404 para «no existe» y «es de otro»: no se confirma qué ids hay.
-  const dueno = await db.getAppOrderOwner(telefonoDe(req), id).catch(() => null)
+  const dueno = await db.getAppOrderOwner(await telefonoDelCliente(req), id).catch(() => null)
   if (!dueno) return res.status(404).json({ error: 'No encontramos ese pedido' })
   const { data, error } = await db.getStorefrontOrder({
     businessId: dueno.business_id, contactPhone: dueno.contact_phone, orderId: id,
@@ -233,7 +240,7 @@ router.get('/api/v1/pedidos/:id', appLimiter, authApp, async (req, res) => {
 router.post('/api/v1/pedidos/:id/todo-bien', appLimiter, authApp, async (req, res) => {
   const id = String(req.params.id || '').trim()
   if (!UUID.test(id)) return res.status(404).json({ error: 'No encontramos ese pedido' })
-  const r = await db.confirmOrderReceived(id, telefonoDe(req))
+  const r = await db.confirmOrderReceived(id, await telefonoDelCliente(req))
   if (r.result === 'ok') return res.json({ ok: true })
   const e = respuestaAlCliente(r.result)
   return res.status(e.status).json({ error: e.error })
@@ -243,7 +250,7 @@ router.post('/api/v1/pedidos/:id/reclamo', appLimiter, authApp, async (req, res)
   const id = String(req.params.id || '').trim()
   if (!UUID.test(id)) return res.status(404).json({ error: 'No encontramos ese pedido' })
   const { tipo, lineas, nota } = leerReclamo(req.body)
-  const r = await db.reportOrderProblem(id, telefonoDe(req), tipo, lineas, nota)
+  const r = await db.reportOrderProblem(id, await telefonoDelCliente(req), tipo, lineas, nota)
   if (r.result === 'ok') return res.status(201).json({ ok: true, sugeridoCents: Number(r.sugeridoCents) || 0 })
   const e = respuestaAlCliente(r.result)
   return res.status(e.status).json({ error: e.error })

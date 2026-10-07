@@ -15,7 +15,7 @@ export type Repartidor = {
   efectivoEncimaCents: number
 }
 
-export type NuevoRepartidor = { nombre: string; telefono: string; vehiculo: string; cedula: string; placa: string; licencia: string }
+export type NuevoRepartidor = { nombre: string; telefono: string; correo: string; vehiculo: string; cedula: string; placa: string; licencia: string }
 
 export const getRepartidores = () =>
   api<{ repartidores?: Repartidor[] }>('/api/cooperativa/repartidores').then(r => r?.repartidores ?? [])

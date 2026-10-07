@@ -17,7 +17,7 @@ components:
     sesionApp:
       type: http
       scheme: bearer
-      description: Token de POST /api/v1/auth/whatsapp/verificar. Dura 30 días.
+      description: Token de POST /api/v1/auth/correo/verificar (la puerta de las apps desde el 2026-10-06; el de WhatsApp vale igual, pero esa puerta está en espera). Dura 30 días.
     sesionTienda:
       type: apiKey
       in: header
@@ -141,9 +141,56 @@ components:
             slug: { type: string, description: 'Para abrir su tienda (POST /api/v1/locales/{slug}/sesion)' }
 
 paths:
+  /api/v1/auth/correo:
+    post:
+      summary: Pide un código de 6 dígitos que llega al correo (la puerta de las apps)
+      description: |
+        La misma respuesta exista o no la cuenta: la cuenta nace al canjear el código.
+        Vale 10 minutos, 5 intentos y solo el ÚLTIMO pedido. Como mucho 5 códigos por hora y correo.
+        En el servidor de PRUEBAS, mientras no haya proveedor de correo, el código vuelve en
+        `codigoDePruebas` para poder probar; en producción eso no existe nunca.
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, required: [correo], properties: { correo: { type: string, format: email } } }
+      responses:
+        '201':
+          description: Código mandado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enviado: { type: boolean }
+                  expiraEn: { type: string, format: date-time }
+                  codigoDePruebas: { type: string, example: '012345', description: SOLO en el servidor de pruebas sin proveedor de correo }
+        '400': { description: Correo no válido }
+        '429': { description: Ya pidió 5 en la última hora }
+        '502': { description: El proveedor de correo falló; reintentar en un momento }
+        '503': { description: Entrar con correo todavía no está disponible en este servidor }
+  /api/v1/auth/correo/verificar:
+    post:
+      summary: Canjea el código del correo por la sesión de la app
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [correo, codigo]
+              properties:
+                correo: { type: string, format: email }
+                codigo: { type: string, example: '012345' }
+      responses:
+        '200':
+          description: Sesión iniciada
+          content:
+            application/json:
+              schema: { type: object, properties: { token: { type: string }, correo: { type: string } } }
+        '401': { description: Código incorrecto (gasta uno de los 5 intentos) }
+        '410': { description: El código venció, se usó o agotó sus intentos; pedir otro }
   /api/v1/auth/whatsapp:
     post:
-      summary: Pide un código para iniciar sesión con WhatsApp
+      summary: EN ESPERA (2026-10-06) — pide un código para iniciar sesión con WhatsApp
       responses:
         '201':
           description: Código y enlace de WhatsApp con el mensaje escrito
@@ -172,10 +219,10 @@ paths:
         '410': { description: El código venció o ya se usó }
   /api/v1/yo:
     get:
-      summary: El teléfono de la sesión y la ciudad que eligió (si eligió alguna)
+      summary: Quién es la sesión (su correo y su teléfono) y la ciudad que eligió
       security: [{ sesionApp: [] }]
       responses:
-        '200': { description: '{ telefono, ciudadId } — ciudadId null si nunca eligió' }
+        '200': { description: '{ telefono, correo, ciudadId } — telefono null si entró con correo y aún no lo puso (PUT /api/v1/yo/telefono); ciudadId null si nunca eligió' }
         '401': { description: Sesión vencida }
   /api/v1/ciudades:
     get:
@@ -207,6 +254,23 @@ paths:
       responses:
         '200': { description: '{ ciudad: { id, nombre }, conLocales } o { ciudad: null, cercana: { nombre, km } | null }' }
         '400': { description: Ubicación no válida }
+  /api/v1/yo/telefono:
+    put:
+      summary: El número al que le llama el repartidor (una vez, antes del primer pedido)
+      description: |
+        Una cuenta de correo nace SIN teléfono. Es la frontera de sus pedidos («Mis pedidos»,
+        los reclamos, la tienda), así que se reclama en EXCLUSIVA: si ya es de otra persona,
+        o hay pedidos hechos con él, no se da (y no se dice de quién es).
+      security: [{ sesionApp: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, required: [telefono], properties: { telefono: { type: string, example: '0991234567' } } }
+      responses:
+        '200': { description: '{ telefono } en dígitos y con código de país (593991234567)' }
+        '400': { description: No es un celular }
+        '409': { description: 'Ya es de otra cuenta, la cuenta ya tiene uno, o la sesión es de WhatsApp (ya lo tiene)' }
+        '401': { description: Sesión vencida }
   /api/v1/yo/ciudad:
     put:
       summary: Guarda la ciudad del cliente (la misma que usa el chat de WhatsApp)
@@ -271,7 +335,7 @@ paths:
         '201': { description: '{ token } para x-storefront-token' }
         '400': { description: Falta x-storefront-device }
         '404': { description: No existe ese local }
-        '409': { description: El local no recibe pedidos }
+        '409': { description: 'El local no recibe pedidos, o la cuenta aún no tiene teléfono: { falta: telefono } → PUT /api/v1/yo/telefono' }
 
   /api/v1/pedidos:
     get:

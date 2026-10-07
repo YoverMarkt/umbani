@@ -398,6 +398,8 @@ on conflict (key) do update set value = 'staging', updated_at = now();
   //     falsa: lo que el staging intente enviar a YCloud lo rechaza YCloud.
   //   · un REPARTIDOR del local de pruebas, con el teléfono del simulador, para
   //     la app del motorizado. Es de la flota del local: no cambia quién cobra.
+  //     Con su CORREO (2026-10-06): las apps ya entran con él, no con WhatsApp,
+  //     y el código de pruebas sale en la pantalla (`repartidor@umbani.test`).
   //     ⚠️ Con los repartidores propios ENCENDIDOS en ese local (2026-10-04):
   //     se encienden local por local y nacen apagados, y apagados la base no
   //     le ofrece ningún pedido — la app del motorizado se vería vacía.
@@ -412,9 +414,9 @@ on conflict (key) do update set value = excluded.value, updated_at = now();
 update businesses set own_fleet = true, delivery_by = 'local',
   city_id = (select id from cities where lower(name) = 'chone') where slug = ${literal(SLUG)};
 
-insert into couriers (phone, name, vehicle, fleet_business_id)
-select '000000000000', 'Motorizado de Pruebas', 'moto', id from businesses where slug = ${literal(SLUG)}
-on conflict (phone) do nothing;
+insert into couriers (phone, email, name, vehicle, fleet_business_id)
+select '000000000000', 'repartidor@umbani.test', 'Motorizado de Pruebas', 'moto', id from businesses where slug = ${literal(SLUG)}
+on conflict (phone) do update set email = excluded.email;
 `)
 
   // 🏪 EL LOCAL DE PRUEBAS, COMO UNO DE VERDAD (2026-10-01). Con lo que dejaba

@@ -1,8 +1,10 @@
 # App del motorizado — pantalla por pantalla
 
 Misma sesión que la app del cliente (ver [API-UMBANI.md](API-UMBANI.md) §1a:
-iniciar sesión con WhatsApp). La diferencia: estas rutas exigen que ese
-teléfono sea de un **motorizado activo**. Si no lo es → `403`.
+entrar con el CORREO). La diferencia: estas rutas exigen que ese correo sea el
+de un **motorizado activo** —el que escribió quien lo dio de alta: su local, su
+cooperativa o Umbani—. Si no lo es → `403`. No necesita el paso del número: el
+suyo lo registró quien lo dio de alta.
 
 > 🌐 **La app web de repartidores es la referencia viva** (2026-10-05): abre
 > `https://umbani-pruebas.up.railway.app/r` en el móvil mientras construyes.

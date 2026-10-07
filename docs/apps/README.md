@@ -38,11 +38,10 @@ Producción tiene clientes reales y **nunca** se usa para probar.
 
 - **El local de prueba** es una pizzería con slug `demo`, abierta las 24 horas,
   con efectivo, transferencia y pago al retirar.
-- **Iniciar sesión.** El servidor de pruebas no tiene WhatsApp de verdad, así que el código se manda
-  desde el **Simulador** del superadmin de pruebas
-  (`/app-admin` → Simulador → `Mi código de Umbani: XXXXXX`). Ver API-UMBANI.md §1a.
-- **El repartidor de prueba** tiene el mismo teléfono que el simulador
-  (`000000000000`): el mismo código abre la app del motorizado.
+- **Iniciar sesión** (2026-10-06: con CORREO, no con WhatsApp). El servidor de pruebas no manda
+  correos: el código de 6 números vuelve en la respuesta (`codigoDePruebas`). Cualquier correo vale
+  para un cliente de prueba. Ver API-UMBANI.md §1a.
+- **El repartidor de prueba** entra con `repartidor@umbani.test` (es el de la flota del local `demo`).
 - **Las apps web de referencia** hacen cada recorrido con esta misma API, en
   el servidor de pruebas: **`/u`** (clientes) y **`/r`** (repartidores). Si
   dudas de cómo se usa una ruta, mira cómo lo hacen ellas

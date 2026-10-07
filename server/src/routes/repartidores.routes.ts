@@ -3,6 +3,8 @@ import { createRouter } from '../middleware/async'
 import { tieneFlotaPropia } from '../lib/flota-propia'
 import { getClientBusinessId } from '../lib/request'
 import { telefonoDelRepartidor } from '../lib/telefono-del-repartidor'
+import { ERROR_SIN_CORREO, MENSAJE_CORREO_REPETIDO, datoRepetido } from '../lib/alta-del-repartidor'
+import { correoNormalizado } from '../lib/correo-normalizado'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // LOS REPARTIDORES DEL LOCAL (PANEL DEL DUEÑO, 2026-10-02)
@@ -73,20 +75,23 @@ router.post('/api/client/repartidores', ...puerta, async (req, res) => {
   const body = (req.body || {}) as Record<string, unknown>
   const phone = telefonoDelRepartidor(body.telefono)
   const name = String(body.nombre || '').trim()
+  const email = correoNormalizado(body.correo)
   if (!phone) return res.status(400).json({ error: 'Teléfono no válido' })
+  if (!email) return res.status(400).json({ error: ERROR_SIN_CORREO })
   if (name.length < 2 || name.length > 80) return res.status(400).json({ error: 'Escribe el nombre' })
   try {
     const creado = await db.createCourier({
-      phone, name, vehicle: String(body.vehiculo || '').trim().slice(0, 60) || null,
+      phone, email, name, vehicle: String(body.vehiculo || '').trim().slice(0, 60) || null,
       // ⚠️ Del JWT, NUNCA del cuerpo: si viniera de la petición, un local
       // podría meter repartidores en la flota de otro.
       fleetBusinessId: getClientBusinessId(req),
     })
-    return res.status(201).json({ id: creado.id, nombre: creado.name, telefono: creado.phone, vehiculo: creado.vehicle, activo: creado.active })
+    return res.status(201).json({ id: creado.id, nombre: creado.name, telefono: creado.phone, correo: creado.email, vehiculo: creado.vehicle, activo: creado.active })
   } catch (error) {
-    // El mismo texto si el número es de otro local o de Umbani: no se dice de quién.
-    if ((error as { code?: string }).code === '23505') {
-      return res.status(409).json({ error: 'Ese teléfono ya está registrado como repartidor' })
+    // El mismo texto si el dato es de otro local o de Umbani: no se dice de quién.
+    const repetido = datoRepetido(error)
+    if (repetido) {
+      return res.status(409).json({ error: repetido === 'correo' ? MENSAJE_CORREO_REPETIDO : 'Ese teléfono ya está registrado como repartidor' })
     }
     throw error
   }

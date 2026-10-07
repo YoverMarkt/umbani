@@ -1,15 +1,15 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import {
   RiArrowDownSLine, RiHistoryLine, RiMapPin2Line, RiStore2Line,
 } from '@remixicon/react'
 import { Aviso, Boton, EstadoVacio, LISTA, ROTULO } from '../components/ui'
 import { InstalarApp } from '../components/InstalarApp'
-import { Entrar, Marco, Cabecera } from './Entrar'
+import { CAMPO, Entrar, Marco, Cabecera } from './Entrar'
 import { COMO_VA } from '../lib/como-va'
 import { money, rangoDeEspera } from '../lib/format'
 import {
   abrirLocal, ciudadAqui, ciudadGuardada, ciudades as listaDeCiudades, ErrorDeLaApp, guardarCiudad,
-  mensaje, menuDeLaCiudad, misPedidos, salir, tokenDeLaApp,
+  mensaje, menuDeLaCiudad, misPedidos, ponerMiTelefono, salir, tokenDeLaApp,
   type CategoriaDelMenu, type Ciudad, type LocalDelMenu, type PedidoDeLaApp,
 } from './api'
 
@@ -26,7 +26,7 @@ import {
 // a un local, que es cuando hace falta (la tienda necesita saber quién compra).
 // Sin router, como la tienda: un estado y cuatro pantallas.
 
-type Pantalla = 'ubicacion' | 'inicio' | 'entrar' | 'pedidos'
+type Pantalla = 'ubicacion' | 'inicio' | 'entrar' | 'telefono' | 'pedidos'
 
 
 export default function UmbaniApp() {
@@ -53,6 +53,13 @@ export default function UmbaniApp() {
       if (e instanceof ErrorDeLaApp && e.status === 401) {
         setPendiente(local)
         setPantalla('entrar')
+        return
+      }
+      // Entró con correo y aún no dijo a qué número le llaman: se le pregunta
+      // una vez, y sigue al local que eligió.
+      if (e instanceof ErrorDeLaApp && e.falta === 'telefono') {
+        setPendiente(local)
+        setPantalla('telefono')
         return
       }
       setError(mensaje(e))
@@ -82,12 +89,26 @@ export default function UmbaniApp() {
   if (pantalla === 'entrar') {
     return (
       <Entrar
-        explicacion={pendiente ? <>Para pedir en <b>{pendiente.nombre}</b> necesitamos saber quién eres. Es un mensaje y listo.</> : null}
+        explicacion={pendiente ? <>Para pedir en <b>{pendiente.nombre}</b> necesitamos saber quién eres.</> : null}
         onVolver={() => { setPendiente(null); setPantalla('inicio') }}
         onDentro={() => {
           void guardarCiudad(ciudad)
           if (pendiente) void entrarAlLocal(pendiente)
           else setPantalla('pedidos')
+          setPendiente(null)
+        }}
+      />
+    )
+  }
+
+  if (pantalla === 'telefono') {
+    return (
+      <TuNumero
+        local={pendiente?.nombre ?? null}
+        onVolver={() => { setPendiente(null); setPantalla('inicio') }}
+        onListo={() => {
+          if (pendiente) void entrarAlLocal(pendiente)
+          else setPantalla('inicio')
           setPendiente(null)
         }}
       />
@@ -115,6 +136,57 @@ export default function UmbaniApp() {
   )
 }
 
+
+// ── El número de la cuenta ───────────────────────────────────────────────────
+// Quien entra con correo dice UNA vez a qué número le llama el repartidor. Es
+// suyo en exclusiva: de él cuelgan sus pedidos (`PUT /api/v1/yo/telefono`).
+
+function TuNumero({ local, onVolver, onListo }: { local: string | null; onVolver: () => void; onListo: () => void }) {
+  const [telefono, setTelefono] = useState('')
+  const [guardando, setGuardando] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const guardar = async (evento: FormEvent) => {
+    evento.preventDefault()
+    setError(null)
+    setGuardando(true)
+    try {
+      await ponerMiTelefono(telefono)
+      onListo()
+    } catch (e) {
+      setError(mensaje(e))
+      setGuardando(false)
+    }
+  }
+
+  return (
+    <Marco>
+      <Cabecera titulo="Tu número" onVolver={onVolver} />
+      {error && <div className="mb-4"><Aviso tono="alerta" titulo="No pudimos guardarlo">{error}</Aviso></div>}
+      <form onSubmit={evento => void guardar(evento)} className="space-y-4">
+        <p className="texto-cuerpo text-[15px]">
+          Es al que te llama el repartidor{local ? <> cuando lleve tu pedido de <b>{local}</b></> : null}. Te lo
+          pedimos una sola vez.
+        </p>
+        <label className="block">
+          <span className="mb-1.5 block text-[14px] font-bold">Tu celular</span>
+          <input
+            type="tel"
+            inputMode="tel"
+            autoComplete="tel"
+            value={telefono}
+            onChange={evento => setTelefono(evento.target.value)}
+            placeholder="0991234567"
+            className={CAMPO}
+          />
+        </label>
+        <Boton type="submit" disabled={guardando || telefono.replace(/\D/g, '').length < 9}>
+          {guardando ? 'Guardando…' : 'Guardar y seguir'}
+        </Boton>
+      </form>
+    </Marco>
+  )
+}
 
 // ── 1. ¿Dónde estás? ─────────────────────────────────────────────────────────
 // Primero el GPS, como las grandes: no se pregunta, se enseña lo de donde
@@ -320,7 +392,7 @@ function Pedidos({ onVolver, onEntrar, onAbrir }: {
       {!conSesion
         ? (
           <div className="space-y-3">
-            <p className="texto-cuerpo text-[15px]">Entra con tu WhatsApp para ver tus pedidos de todos los locales.</p>
+            <p className="texto-cuerpo text-[15px]">Entra con tu correo para ver tus pedidos de todos los locales.</p>
             <Boton onClick={onEntrar}>Entrar</Boton>
           </div>
         )

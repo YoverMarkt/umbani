@@ -66,10 +66,13 @@ test('entra con su correo, ve a sus repartidores y registra uno nuevo', async ({
   await expect(registrar).toBeDisabled() // sin cédula ni placa
   await ventana.getByLabel('Cédula o pasaporte').fill('1312345679')
   await ventana.getByLabel('Placa').fill('mb124a')
+  // Sin correo no podría entrar a su app (2026-10-06): no se deja registrar.
+  await expect(registrar).toBeDisabled()
+  await ventana.getByLabel('Correo').fill('carla@correo.com')
   await registrar.click()
   await expect.poll(() => registro.altas.length).toBe(1)
   await expect(ventana).toBeHidden()
-  expect(registro.altas[0]).toMatchObject({ nombre: 'Carla Vera', telefono: '099 000 0555', cedula: '1312345679', placa: 'mb124a', vehiculo: 'Moto' })
+  expect(registro.altas[0]).toMatchObject({ nombre: 'Carla Vera', telefono: '099 000 0555', correo: 'carla@correo.com', cedula: '1312345679', placa: 'mb124a', vehiculo: 'Moto' })
 })
 
 test('sus carreras: la semana en curso, una cerrada dicha con palabras, y la descarga lleva su sesión', async ({ page }) => {

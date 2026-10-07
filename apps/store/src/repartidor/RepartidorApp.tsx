@@ -39,7 +39,7 @@ export default function RepartidorApp() {
   const [perfil, setPerfil] = useState<Yo | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  /** 401 = la sesión venció; 403 = ese número no es (o dejó de ser) repartidor. */
+  /** 401 = la sesión venció; 403 = ese correo no es (o dejó de ser) de un repartidor. */
   const alFallar = useCallback((e: unknown): string | null => {
     if (e instanceof ErrorDeLaApp && e.status === 401) { setPantalla('entrar'); return null }
     if (e instanceof ErrorDeLaApp && e.status === 403) { setPantalla('no-es'); return null }
@@ -58,13 +58,13 @@ export default function RepartidorApp() {
 
   useEffect(() => { if (pantalla === 'cargando') void cargarPerfil() }, [pantalla, cargarPerfil])
 
-  const otroNumero = () => { salir(); setPerfil(null); setPantalla('entrar') }
+  const otraCuenta = () => { salir(); setPerfil(null); setPantalla('entrar') }
 
   if (pantalla === 'entrar') {
     return (
       <Entrar
         titulo="Entra como repartidor"
-        explicacion="Con el WhatsApp con el que te registraron en Umbani."
+        explicacion="Con el correo con el que te registraron en Umbani."
         onDentro={() => setPantalla('cargando')}
       />
     )
@@ -73,10 +73,10 @@ export default function RepartidorApp() {
   if (pantalla === 'no-es') {
     return (
       <Marco>
-        <EstadoVacio icono={<RiEBikeLine size={28} />} titulo="Este número no es de un repartidor">
-          Pide a Umbani, o a tu local, que te registren con este WhatsApp. O entra con otro número.
+        <EstadoVacio icono={<RiEBikeLine size={28} />} titulo="Este correo no es de un repartidor">
+          Pide a Umbani, a tu cooperativa o a tu local que te registren con este correo. O entra con otro.
         </EstadoVacio>
-        <Boton variante="linea" onClick={otroNumero}>Entrar con otro número</Boton>
+        <Boton variante="linea" onClick={otraCuenta}>Entrar con otro correo</Boton>
       </Marco>
     )
   }
@@ -105,7 +105,7 @@ export default function RepartidorApp() {
       perfil={perfil}
       onPerfil={cargarPerfil}
       onSemana={() => setPantalla('semana')}
-      onSalir={otroNumero}
+      onSalir={otraCuenta}
       alFallar={alFallar}
     />
   )

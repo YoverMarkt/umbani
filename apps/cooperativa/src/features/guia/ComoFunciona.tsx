@@ -27,10 +27,10 @@ export default function ComoFunciona() {
       </div>
 
       <Bloque titulo="1. Tus repartidores">
-        <p>Los registras en «Repartidores» con su nombre, su WhatsApp, su cédula, su placa y su vehículo.</p>
+        <p>Los registras en «Repartidores» con su nombre, su WhatsApp, su correo, su cédula, su placa y su vehículo.</p>
         <p>
-          Entran a la app de Umbani con su WhatsApp: la app les da un código, lo mandan a Umbani y entran. Sin
-          contraseñas.
+          Entran a la app de Umbani con su correo: les llega un código de 6 números, lo escriben y entran. Sin
+          contraseñas. Su WhatsApp es para que el local o el cliente puedan llamarlo.
         </p>
         <p>
           Solo ven los pedidos de los locales que reparte tu cooperativa, en tu ciudad. Para recibir pedidos

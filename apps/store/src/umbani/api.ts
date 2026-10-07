@@ -55,10 +55,13 @@ export interface PedidoDeLaApp {
 
 export class ErrorDeLaApp extends Error {
   readonly status: number
-  constructor(status: number, message: string) {
+  /** Lo que el servidor dice que falta (`telefono`), para llevar a la pantalla que lo pide. */
+  readonly falta: string | null
+  constructor(status: number, message: string, falta: string | null = null) {
     super(message)
     this.name = 'ErrorDeLaApp'
     this.status = status
+    this.falta = falta
   }
 }
 
@@ -120,26 +123,33 @@ export async function pedir<T>(ruta: string, opciones: {
   } catch {
     throw new ErrorDeLaApp(0, 'Sin conexión. Revisa tus datos o tu Wi-Fi e inténtalo de nuevo.')
   }
-  const datos = await respuesta.json().catch(() => ({})) as T & { error?: string }
+  const datos = await respuesta.json().catch(() => ({})) as T & { error?: string; falta?: string }
   // La sesión venció o se cerró (CERRAR SESIÓN por WhatsApp): se olvida.
   if (respuesta.status === 401 && opciones.conSesion) salir()
   if (!respuesta.ok) {
-    throw new ErrorDeLaApp(respuesta.status, datos?.error || 'Algo salió mal. Inténtalo de nuevo.')
+    throw new ErrorDeLaApp(respuesta.status, datos?.error || 'Algo salió mal. Inténtalo de nuevo.', datos?.falta ?? null)
   }
   return { status: respuesta.status, datos }
 }
 
-/** El código para entrar: el cliente lo MANDA por WhatsApp (recibir no cuesta). */
-export const pedirCodigo = async () =>
-  (await pedir<{ codigo: string; enlace: string; expiraEn: string }>('/api/v1/auth/whatsapp', { metodo: 'POST' })).datos
+// ── Entrar con el correo (2026-10-06) ─────────────────────────────────────
+// Las apps ya no entran por WhatsApp. La puerta de WhatsApp sigue en el
+// servidor, en espera, pero aquí no se usa.
 
-/** `pendiente` mientras el mensaje no llega; el token cuando llegó. 410 = venció. */
-export async function verificarCodigo(codigo: string): Promise<{ token?: string; pendiente?: boolean }> {
-  const { status, datos } = await pedir<{ token?: string; pendiente?: boolean }>(
-    '/api/v1/auth/whatsapp/verificar', { metodo: 'POST', cuerpo: { codigo } },
-  )
-  return status === 202 ? { pendiente: true } : datos
-}
+/** El código llega al correo. En el servidor de PRUEBAS, sin proveedor de correo, vuelve aquí. */
+export const pedirCodigoPorCorreo = async (correo: string) => (await pedir<{
+  enviado: boolean
+  expiraEn: string
+  codigoDePruebas?: string
+}>('/api/v1/auth/correo', { metodo: 'POST', cuerpo: { correo } })).datos
+
+/** 401 = código incorrecto (gasta un intento); 410 = ya no vale, hay que pedir otro. */
+export const canjearCodigoDeCorreo = async (correo: string, codigo: string) =>
+  (await pedir<{ token: string; correo: string }>('/api/v1/auth/correo/verificar', { metodo: 'POST', cuerpo: { correo, codigo } })).datos
+
+/** El número al que le llama el repartidor: una vez, antes del primer pedido. */
+export const ponerMiTelefono = async (telefono: string) =>
+  (await pedir<{ telefono: string }>('/api/v1/yo/telefono', { metodo: 'PUT', cuerpo: { telefono }, conSesion: true })).datos
 
 /** La ciudad del GPS. Fuera de todas, la más cercana (y queda anotado). */
 export const ciudadAqui = async (lat: number, lng: number) => (await pedir<{

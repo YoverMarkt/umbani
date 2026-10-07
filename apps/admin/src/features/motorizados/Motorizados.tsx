@@ -55,7 +55,7 @@ export default function Motorizados() {
   const locales = useQuery({ queryKey: ['adm-clients-min'], queryFn: getClients })
   // El de Umbani reparte en UNA ciudad (2026-10-05): solo ve los pedidos de ella.
   const ciudades = useQuery({ queryKey: ['ciudades'], queryFn: getCiudades })
-  const [f, setF] = useState({ nombre: '', telefono: '', vehiculo: '', flota: UMBANI, tope: '150', ciudad: '' })
+  const [f, setF] = useState({ nombre: '', telefono: '', correo: '', vehiculo: '', flota: UMBANI, tope: '150', ciudad: '' })
   const ciudadElegida = f.ciudad || ciudades.data?.find(c => c.active)?.id || ''
   const [refs, setRefs] = useState<Record<string, string>>({})
   const refrescar = () => qc.invalidateQueries({ queryKey: ['adm-motorizados'] })
@@ -87,11 +87,11 @@ export default function Motorizados() {
 
   const crear = useMutation({
     mutationFn: () => api('/api/admin/motorizados', { method: 'POST', body: JSON.stringify({
-      nombre: f.nombre, telefono: f.telefono, vehiculo: f.vehiculo,
+      nombre: f.nombre, telefono: f.telefono, correo: f.correo, vehiculo: f.vehiculo,
       flotaLocalId: f.flota === UMBANI ? null : f.flota, topeEfectivo: f.tope,
       ciudadId: f.flota === UMBANI ? ciudadElegida : null,
     }) }),
-    onSuccess: () => { toast.success('Motorizado registrado'); setF({ ...f, nombre: '', telefono: '', vehiculo: '' }); refrescar() },
+    onSuccess: () => { toast.success('Motorizado registrado. Entra a la app con su correo.'); setF({ ...f, nombre: '', telefono: '', correo: '', vehiculo: '' }); refrescar() },
     onError: (e: Error) => toast.error(e.message),
   })
   const activar = useMutation({
@@ -119,9 +119,11 @@ export default function Motorizados() {
 
       <Card className="p-4">
         <h2 className="mb-3 text-sm font-semibold text-foreground">Registrar un motorizado</h2>
-        <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-7">
           <div><Label htmlFor="moto-nombre">Nombre</Label><Input id="moto-nombre" value={f.nombre} onChange={e => setF({ ...f, nombre: e.target.value })} /></div>
           <div><Label htmlFor="moto-tel">Teléfono (WhatsApp)</Label><Input id="moto-tel" inputMode="tel" value={f.telefono} onChange={e => setF({ ...f, telefono: e.target.value })} placeholder="593991234567" /></div>
+          {/* Con él entra a la app del repartidor (2026-10-06): ya no por WhatsApp. */}
+          <div><Label htmlFor="moto-correo">Correo (entra con él)</Label><Input id="moto-correo" type="email" inputMode="email" autoCapitalize="none" value={f.correo} onChange={e => setF({ ...f, correo: e.target.value })} placeholder="nombre@correo.com" /></div>
           <div><Label htmlFor="moto-veh">Vehículo</Label><Input id="moto-veh" value={f.vehiculo} onChange={e => setF({ ...f, vehiculo: e.target.value })} placeholder="Moto ABC-123" /></div>
           <div>
             <Label htmlFor="moto-flota">Flota</Label>
@@ -146,7 +148,7 @@ export default function Motorizados() {
           )}
           <div><Label htmlFor="moto-tope">Tope de efectivo (USD)</Label><Input id="moto-tope" inputMode="decimal" value={f.tope} onChange={e => setF({ ...f, tope: e.target.value })} /></div>
         </div>
-        <Button className="mt-3" disabled={crear.isPending || f.nombre.trim().length < 2 || f.telefono.trim().length < 8 || (f.flota === UMBANI && !ciudadElegida)} onClick={() => crear.mutate()}>
+        <Button className="mt-3" disabled={crear.isPending || f.nombre.trim().length < 2 || f.telefono.trim().length < 8 || !f.correo.includes('@') || (f.flota === UMBANI && !ciudadElegida)} onClick={() => crear.mutate()}>
           Registrar
         </Button>
       </Card>

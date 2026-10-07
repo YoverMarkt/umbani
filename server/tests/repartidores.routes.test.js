@@ -104,34 +104,44 @@ describe('solo el dueño, y solo su negocio', () => {
   it('el repartidor nuevo entra en la flota del negocio del JWT, aunque el cuerpo diga otra', async () => {
     const crear = vi.spyOn(db, 'createCourier').mockResolvedValue({ id: 'r2', name: 'Luis', phone: '593992222222', vehicle: null, active: true })
     const r = await correr(router, 'post', '/api/client/repartidores', {
-      claims: DUENO, body: { nombre: 'Luis', telefono: '593 99 222 2222', fleetBusinessId: 'OTRO', flotaLocalId: 'OTRO' },
+      claims: DUENO, body: { nombre: 'Luis', telefono: '593 99 222 2222', correo: 'Luis@Correo.com', fleetBusinessId: 'OTRO', flotaLocalId: 'OTRO' },
     })
     expect(r.status).toBe(201)
-    expect(crear).toHaveBeenCalledWith(expect.objectContaining({ fleetBusinessId: 'b1', phone: '593992222222' }))
+    expect(crear).toHaveBeenCalledWith(expect.objectContaining({ fleetBusinessId: 'b1', phone: '593992222222', email: 'luis@correo.com' }))
   })
 
   // Como lo verá WhatsApp (2026-10-06): con «0991234567» guardado tal cual, el
   // repartidor nunca habría podido entrar a su app.
   it('un celular escrito a la manera de Ecuador se guarda con el código del país', async () => {
     const crear = vi.spyOn(db, 'createCourier').mockResolvedValue({ id: 'r3', name: 'Rosa', phone: '593993333333', vehicle: null, active: true })
-    const r = await correr(router, 'post', '/api/client/repartidores', { claims: DUENO, body: { nombre: 'Rosa', telefono: '099 333 3333' } })
+    const r = await correr(router, 'post', '/api/client/repartidores', { claims: DUENO, body: { nombre: 'Rosa', telefono: '099 333 3333', correo: 'rosa@correo.com' } })
     expect(r.status).toBe(201)
     expect(crear).toHaveBeenCalledWith(expect.objectContaining({ phone: '593993333333' }))
   })
 
   it('un teléfono ya registrado (aquí o en otro local) responde lo mismo, sin decir de quién', async () => {
     vi.spyOn(db, 'createCourier').mockRejectedValue(Object.assign(new Error('dup'), { code: '23505' }))
-    const r = await correr(router, 'post', '/api/client/repartidores', { claims: DUENO, body: { nombre: 'Luis', telefono: '593992222222' } })
+    const r = await correr(router, 'post', '/api/client/repartidores', { claims: DUENO, body: { nombre: 'Luis', telefono: '593992222222', correo: 'luis@correo.com' } })
     expect(r.status).toBe(409)
     expect(r.body.error).toBe('Ese teléfono ya está registrado como repartidor')
+  })
+
+  it('un correo ya registrado lo dice con su propio texto: es otro dato el que sobra', async () => {
+    vi.spyOn(db, 'createCourier').mockRejectedValue(Object.assign(
+      new Error('duplicate key value violates unique constraint "couriers_email_unico"'), { code: '23505' }))
+    const r = await correr(router, 'post', '/api/client/repartidores', { claims: DUENO, body: { nombre: 'Luis', telefono: '593992222222', correo: 'luis@correo.com' } })
+    expect(r).toMatchObject({ status: 409, body: { error: 'Ese correo ya es de otro repartidor' } })
   })
 
   it('datos malos no llegan a la base', async () => {
     const crear = vi.spyOn(db, 'createCourier')
     const sinNombre = await correr(router, 'post', '/api/client/repartidores', { claims: DUENO, body: { nombre: 'A', telefono: '593992222222' } })
     const sinTelefono = await correr(router, 'post', '/api/client/repartidores', { claims: DUENO, body: { nombre: 'Luis', telefono: '123' } })
+    // Sin correo no podría entrar a su app (2026-10-06).
+    const sinCorreo = await correr(router, 'post', '/api/client/repartidores', { claims: DUENO, body: { nombre: 'Luis', telefono: '593992222222' } })
     expect(sinNombre.status).toBe(400)
     expect(sinTelefono.status).toBe(400)
+    expect(sinCorreo.status).toBe(400)
     expect(crear).not.toHaveBeenCalled()
   })
 

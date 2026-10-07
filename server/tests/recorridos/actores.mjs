@@ -172,6 +172,35 @@ export async function clientePorLaApp() {
   return { ...clienteDeTienda(token, cabeceras, telefono), tokenApp }
 }
 
+/** El último código que le llegó a ese correo (el «buzón» es el Resend falso). */
+export async function codigoQueLlegoA(correo) {
+  const { correos } = await control('estado')
+  const ultimo = [...(correos || [])].reverse().find(c => c.para === correo)
+  const codigo = ultimo?.texto.match(/\b(\d{6})\b/)?.[1]
+  if (!codigo) throw new Error(`No le llegó ningún código a ${correo}`)
+  return codigo
+}
+
+/** Entra con el correo como la persona: pide el código, lo lee de su correo y lo canjea. */
+export async function sesionPorCorreo(correo) {
+  await exigir(201, http('POST', '/api/v1/auth/correo', { cuerpo: { correo } }))
+  const codigo = await codigoQueLlegoA(correo)
+  const { token } = await exigir(200, http('POST', '/api/v1/auth/correo/verificar', { cuerpo: { correo, codigo } }))
+  return token
+}
+
+/**
+ * El cliente de la APP desde el 2026-10-06: entra con su CORREO, dice una vez a
+ * qué número le llama el repartidor y abre la tienda del local con su sesión.
+ */
+export async function clientePorCorreo(correo, telefono) {
+  const tokenApp = await sesionPorCorreo(correo)
+  const { telefono: suyo } = await exigir(200, http('PUT', '/api/v1/yo/telefono', { token: tokenApp, cuerpo: { telefono } }))
+  const cabeceras = dispositivo()
+  const { token } = await exigir(201, http('POST', `/api/v1/locales/${SLUG()}/sesion`, { token: tokenApp, cabeceras }))
+  return { ...clienteDeTienda(token, cabeceras, suyo), tokenApp }
+}
+
 // ── El dinero del local, configurado desde los paneles ──────────────────────
 
 /**
@@ -265,8 +294,8 @@ export function sesionDeLaAppPara(telefono) {
   return require('../../dist/services/sesion-app').firmarSesionApp(telefono)
 }
 
-export function comoMotorizado(telefono) {
-  const token = sesionDeLaAppPara(telefono)
+/** El motorizado con una sesión ya hecha: la de su teléfono (WhatsApp) o la de su correo. */
+export function comoMotorizado(telefono, { token = sesionDeLaAppPara(telefono) } = {}) {
   const pedir = (metodo, ruta, cuerpo) => http(metodo, `/api/v1/motorizado${ruta}`, { token, cuerpo })
   return {
     pedir,
