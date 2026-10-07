@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
+import { fuenteDeLaTienda } from './fuente-de-la-tienda.mjs'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // LAS DEFENSAS SON PARA TODOS LOS LOCALES
@@ -62,7 +63,7 @@ describe('los dos caminos crean el pedido igual', () => {
     // Si apareciera otra, la mitad de las defensas dejarían de alcanzarla sin
     // que ninguna prueba fallara: todas cuelgan de `source = 'storefront'`,
     // que esta RPC fija como literal.
-    const tienda = readFileSync('src/routes/storefront.routes.ts', 'utf8')
+    const tienda = fuenteDeLaTienda()
     const chat = readFileSync('src/services/inbound-webhook.ts', 'utf8')
     const repo = readFileSync('src/db/repositories/storefront.ts', 'utf8')
 

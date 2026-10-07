@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createRequire } from 'node:module'
+import { fuenteDeLaTienda } from './fuente-de-la-tienda.mjs'
 
 const require = createRequire(import.meta.url)
 const {
@@ -158,7 +159,7 @@ describe('el aviso está CONECTADO, no solo construido', () => {
   const leer = ruta => readFileSync(fileURLToPath(new URL(ruta, import.meta.url)), 'utf8')
 
   it('la MINI APP avisa al crear el pedido', () => {
-    const fuente = leer('../src/routes/storefront.routes.ts')
+    const fuente = fuenteDeLaTienda()
     expect(fuente).toMatch(/import \{ avisarAlDuenoDelPedido \}/)
     expect(fuente).toMatch(/avisarAlDuenoDelPedido\(businessId,/)
   })
@@ -173,7 +174,7 @@ describe('el aviso está CONECTADO, no solo construido', () => {
   it('se llama SIN await: el pedido no espera a WhatsApp', () => {
     // El pedido ya está creado y el cliente espera su confirmación. Un
     // proveedor externo lento no puede retrasar la pantalla de «recibido».
-    expect(leer('../src/routes/storefront.routes.ts')).toMatch(/void avisarAlDuenoDelPedido\(/)
+    expect(fuenteDeLaTienda()).toMatch(/void avisarAlDuenoDelPedido\(/)
   })
 
   it('el interruptor llega al panel del dueño', () => {

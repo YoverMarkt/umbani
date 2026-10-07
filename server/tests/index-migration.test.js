@@ -1,13 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import fs from 'node:fs'
+import path from 'node:path'
 
-function readTypeScriptTree(directory) {
+function readTypeScriptFiles(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
-    const path = `${directory}/${entry.name}`
-    if (entry.isDirectory()) return readTypeScriptTree(path)
-    return entry.name.endsWith('.ts') ? [fs.readFileSync(path, 'utf8')] : []
+    const ruta = `${directory}/${entry.name}`
+    if (entry.isDirectory()) return readTypeScriptFiles(ruta)
+    return entry.name.endsWith('.ts') ? [ruta] : []
   })
 }
+
+/** Los `require()` de un archivo que salen de `src/`. */
+const requiresFueraDeSrc = (archivo, fuente, src) => [...fuente.matchAll(/require\(['"](\.{1,2}\/[^'"]+)['"]\)/g)]
+  .map(([, destino]) => destino)
+  .filter(destino => !path.resolve(path.dirname(archivo), destino).startsWith(`${src}/`))
 
 describe('entrypoint TypeScript', () => {
   it('compone el servidor desde src y arranca directamente desde dist', () => {
@@ -27,10 +33,24 @@ describe('entrypoint TypeScript', () => {
   })
 
   it('resuelve módulos internos sin volver a las fachadas CommonJS raíz', () => {
-    const sourceDirectory = new URL('../src', import.meta.url).pathname
-    const sources = readTypeScriptTree(sourceDirectory).join('\n')
+    // Las fachadas vivían en la raíz del servidor: lo prohibido es SALIR de
+    // `src/`. Hasta el 2026-10-07 se miraba que nadie escribiera `../../`, que
+    // lo cazaba igual… y prohibía también subir dos carpetas DENTRO de `src/`,
+    // que es legítimo desde que la tienda tiene sus secciones en `routes/tienda/`.
+    const sourceDirectory = path.resolve(new URL('../src', import.meta.url).pathname)
+    const fuera = readTypeScriptFiles(sourceDirectory).flatMap(archivo => (
+      requiresFueraDeSrc(archivo, fs.readFileSync(archivo, 'utf8'), sourceDirectory).map(d => `${archivo} → ${d}`)
+    ))
 
-    expect(sources).not.toMatch(/require\(['"]\.\.\/\.\.\//)
+    expect(fuera).toEqual([])
+  })
+
+  it('caza de verdad un require que sale de src/', () => {
+    // Un guardián que nunca ha visto lo que persigue no sirve de nada.
+    const src = '/proyecto/server/src'
+    expect(requiresFueraDeSrc(`${src}/routes/x.ts`, "require('../../db')", src)).toEqual(['../../db'])
+    expect(requiresFueraDeSrc(`${src}/routes/tienda/x.ts`, "require('../../db')", src)).toEqual([])
+    expect(requiresFueraDeSrc(`${src}/routes/x.ts`, "require('../db')", src)).toEqual([])
   })
 
   it('no conserva fachadas JavaScript fuera de la configuración de ESLint', () => {

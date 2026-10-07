@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
+import { fuenteDeLaTienda } from './fuente-de-la-tienda.mjs'
 import { fileURLToPath } from 'node:url'
 import crypto from 'node:crypto'
 import {
@@ -145,7 +146,7 @@ describe('el registro va DESPUÉS de adjuntar, y sin await', () => {
   })
 
   it('y en la mini app', () => {
-    const fuente = leer('../src/routes/storefront.routes.ts')
+    const fuente = fuenteDeLaTienda()
     // Sigue yendo sin bloquear la respuesta, ahora dentro de un bloque que
     // además analiza la imagen antes de registrarla.
     expect(fuente).toMatch(/void \(async \(\) => \{/)
@@ -167,7 +168,7 @@ describe('el registro va DESPUÉS de adjuntar, y sin await', () => {
   // no es la lógica —que funciona— sino que nadie la llame: el fallo de
   // «construido y desconectado» que este proyecto ha pagado nueve veces.
   it('la mini app ANALIZA la imagen y le pasa lo leído al registro', () => {
-    const fuente = leer('../src/routes/storefront.routes.ts')
+    const fuente = fuenteDeLaTienda()
     const analiza = fuente.indexOf('vision.analizarComprobante')
     const registra = fuente.indexOf('ingest.registrarComprobante')
     expect(analiza, 'la ruta no llama a la visión').toBeGreaterThan(-1)
@@ -182,7 +183,7 @@ describe('el registro va DESPUÉS de adjuntar, y sin await', () => {
   })
 
   it('y nada de eso puede tumbar la subida: falla ABIERTO', () => {
-    const fuente = leer('../src/routes/storefront.routes.ts')
+    const fuente = fuenteDeLaTienda()
     // La visión y la lectura del pedido se tragan su error por separado, y el
     // bloque entero tiene su propio catch: el comprobante ya está adjunto.
     expect(fuente).toMatch(/vision\.analizarComprobante\([^)]*\)\s*\n?\s*\.catch/)
