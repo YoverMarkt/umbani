@@ -138,7 +138,7 @@ components:
           description: Solo en /api/v1/pedidos (en la tienda ya se sabe de qué local es)
           properties:
             nombre: { type: string }
-            slug: { type: string, description: Para abrir su tienda (POST /api/v1/locales/{slug}/sesion) }
+            slug: { type: string, description: 'Para abrir su tienda (POST /api/v1/locales/{slug}/sesion)' }
 
 paths:
   /api/v1/auth/whatsapp:
@@ -555,7 +555,7 @@ paths:
       parameters: [{ $ref: '#/components/parameters/slug' }, { $ref: '#/components/parameters/id' }]
       responses:
         '201': { description: '{ ok: true, sugeridoCents }' }
-        '400': { description: Datos inválidos (ver /api/v1/pedidos/{id}/reclamo) }
+        '400': { description: 'Datos inválidos (ver /api/v1/pedidos/{id}/reclamo)' }
         '404': { description: No es un pedido de este local y de este teléfono }
         '409': { description: 'Todavía no se entregó, ya reclamó, o pasaron más de 48 horas' }
 

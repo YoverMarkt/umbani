@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createRequire } from 'node:module'
 import fs from 'node:fs'
+import { parseAllDocuments } from 'yaml'
 
 const require = createRequire(import.meta.url)
 
@@ -36,6 +37,15 @@ const FUERA_DEL_CONTRATO = {
 }
 
 describe('docs/apps/openapi.yaml', () => {
+  it('es YAML válido: lo leen las herramientas con que se hace la app Flutter', () => {
+    // ⚠️ Estuvo roto sin que nada lo dijera (encontrado el 2026-10-07): dos
+    // `{slug}` sin comillas dentro de un mapa en línea, y 2.210 errores en
+    // cascada. Las pruebas de abajo lo leen con expresiones regulares y pasaban
+    // igual; un generador de OpenAPI no habría podido ni abrirlo.
+    const errores = parseAllDocuments(contrato).flatMap(d => d.errors).map(e => `línea ${e.linePos?.[0]?.line}: ${e.message}`)
+    expect(errores.slice(0, 5), `openapi.yaml no es YAML válido:\n${errores.slice(0, 5).join('\n')}`).toEqual([])
+  })
+
   it('cada ruta que usa la app está documentada con su método', () => {
     const documentadas = rutasDelContrato()
     const faltan = []
