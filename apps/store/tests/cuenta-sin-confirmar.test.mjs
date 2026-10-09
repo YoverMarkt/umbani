@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
+import { fuenteDeLaPantalla } from './fuente-de-la-pantalla.mjs'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // «MIS PEDIDOS» CON UN ENLACE SIN CONFIRMAR PIDE EL NÚMERO, NO FALLA
@@ -27,7 +28,7 @@ describe('la cuenta usa la misma puerta que el resto de la tienda', () => {
   })
 
   it('la tienda le pasa esa puerta a la cuenta', () => {
-    const tienda = leer('../src/screens/FoodStore.tsx')
+    const tienda = fuenteDeLaPantalla()
     const cuenta = tienda.slice(tienda.indexOf('<Account'), tienda.indexOf('/>', tienda.indexOf('<Account')))
     expect(cuenta).toContain('onFalloEnlace={onFalloEnlace}')
   })
@@ -45,7 +46,7 @@ describe('después de confirmar el número, los pedidos se vuelven a pedir', () 
     // …y mientras falta confirmar lo DICE, en vez de un «Cargando…» eterno.
     expect(cuenta).toMatch(/if \(await onFalloEnlace\(fallo\)\) \{\s*setFaltaConfirmar\(true\)/)
     expect(cuenta).toContain('Confirmar mi número')
-    const tienda = leer('../src/screens/FoodStore.tsx')
+    const tienda = fuenteDeLaPantalla()
     const cuentaEnTienda = tienda.slice(tienda.indexOf('<Account'), tienda.indexOf('/>', tienda.indexOf('<Account')))
     expect(cuentaEnTienda).toContain('sesionesNuevas={sesionesNuevas}')
   })
@@ -53,7 +54,7 @@ describe('después de confirmar el número, los pedidos se vuelven a pedir', () 
 
 describe('la barra de categorías sigue al scroll también al volver', () => {
   it('el vigilante se vuelve a armar cuando la carta reaparece', () => {
-    const tienda = leer('../src/screens/FoodStore.tsx')
+    const tienda = fuenteDeLaPantalla()
     expect(tienda).toMatch(/const cartaALaVista = !enCuenta && !\(pagoPendiente && abrirPago\) && !recienHecho/)
     // `resultados` salió de aquí el 2026-09-26: la búsqueda tiene su propia
     // pantalla y ya no sustituye a la carta. Lo que importa sigue siendo que
@@ -64,7 +65,7 @@ describe('la barra de categorías sigue al scroll también al volver', () => {
 
 describe('«Falta tu comprobante» no espera a recargar', () => {
   it('se vuelve a mirar al salir del pedido recibido y de la pantalla de pago', () => {
-    const tienda = leer('../src/screens/FoodStore.tsx')
+    const tienda = fuenteDeLaPantalla()
     expect(tienda).toContain('onVolver={() => { setRecienHecho(null); revisarPagoPendiente() }}')
     expect(tienda).toContain('onVolver={() => { setAbrirPago(false); revisarPagoPendiente() }}')
     // Y se apaga cuando ya no debe nada, no solo se enciende.

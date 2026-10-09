@@ -573,8 +573,14 @@ describe('el camino real: lo nuevo está conectado', () => {
     const api = fs.readFileSync('../apps/store/src/lib/api.ts', 'utf8')
     const salto = api.slice(api.indexOf('export const irAPayPhone'))
     expect(salto).toMatch(/referrerPolicy = 'origin'/)
-    for (const pantalla of ['FoodStore.tsx', 'PagoConTarjeta.tsx']) {
-      const fuente = fs.readFileSync(`../apps/store/src/screens/${pantalla}`, 'utf8')
+    // La tienda se lee ENTERA: desde el 2026-10-08 cuatro de sus bloques viven
+    // en `components/`, y un «no contiene» sobre FoodStore solo pasaría en vacío.
+    const pantallaDeLaTienda = ['screens/FoodStore.tsx', 'components/HeroeDeLaTienda.tsx',
+      'components/ServicioDeLaTienda.tsx', 'components/TarjetaDeProducto.tsx', 'components/PieDeLaTienda.tsx']
+      .map(parte => fs.readFileSync(`../apps/store/src/${parte}`, 'utf8')).join('\n')
+    const pantallas = { 'FoodStore.tsx': pantallaDeLaTienda,
+      'PagoConTarjeta.tsx': fs.readFileSync('../apps/store/src/screens/PagoConTarjeta.tsx', 'utf8') }
+    for (const [pantalla, fuente] of Object.entries(pantallas)) {
       expect(fuente, pantalla).toMatch(/irAPayPhone\(url\)/)
       expect(fuente, pantalla).not.toMatch(/location\.assign\(url\)/)
     }
