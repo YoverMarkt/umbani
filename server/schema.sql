@@ -11309,7 +11309,7 @@ alter table public.payment_methods enable row level security;
 insert into public.payment_methods (code, label, help_text, is_prepaid, requires_proof, available, sort)
 values
   ('transferencia',   'Transferencia bancaria',
-   'Transfiere y manda la captura por el mismo chat de WhatsApp.', true, true, true, 10),
+   'Al confirmar ves la cuenta. Transfiere y sube la captura aquí, en la app.', true, true, true, 10),
   ('efectivo',        'Efectivo al recibir',
    'Paga en efectivo cuando te lo entreguen.',             false, false, true,  20),
   ('pago_al_retirar', 'Pago al retirar',
