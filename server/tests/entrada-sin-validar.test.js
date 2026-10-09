@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createRequire } from 'node:module'
 import jwt from 'jsonwebtoken'
-import profileRouter from '../dist/routes/business-profile.routes.js'
 import scheduleRouter from '../dist/routes/schedule.routes.js'
 
 const require = createRequire(import.meta.url)
