@@ -96,4 +96,23 @@ describe('configuración de entorno', () => {
       META_GRAPH_API_VERSION: 'v25.0',
     })).invalid).not.toContain('META_GRAPH_API_VERSION (formato vN.0)')
   })
+
+  // El captcha al pedir el código (2026-10-09): con una sola clave nadie
+  // entraría, y las de PRUEBA de Cloudflare dejan pasar a cualquiera.
+  it('Turnstile en producción: las dos claves juntas, y nunca las de prueba', () => {
+    const produccion = (claves) => inspectEnvironment(validEnvironment({
+      NODE_ENV: 'production', BASE_URL: 'https://example.com', ...claves,
+    })).invalid
+    expect(produccion({ TURNSTILE_SITE_KEY: '0x4AAAAAAAsitio' }))
+      .toContain('TURNSTILE_SITE_KEY y TURNSTILE_SECRET_KEY deben configurarse juntos')
+    expect(produccion({ TURNSTILE_SECRET_KEY: '0x4AAAAAAAsecreto' }))
+      .toContain('TURNSTILE_SITE_KEY y TURNSTILE_SECRET_KEY deben configurarse juntos')
+    const deVerdad = produccion({ TURNSTILE_SITE_KEY: '0x4AAAAAAAsitio', TURNSTILE_SECRET_KEY: '0x4AAAAAAAsecreto' })
+    expect(deVerdad.filter(error => error.includes('TURNSTILE'))).toEqual([])
+    const dePrueba = { TURNSTILE_SITE_KEY: '1x00000000000000000000BB', TURNSTILE_SECRET_KEY: '1x0000000000000000000000000000000AA' }
+    expect(produccion(dePrueba).some(error => error.includes('claves de PRUEBA'))).toBe(true)
+    // En el staging son justo las que tocan: hacen correr el camino de verdad.
+    expect(produccion({ ...dePrueba, UMBANI_ENTORNO: 'staging' }).filter(error => error.includes('TURNSTILE'))).toEqual([])
+  })
 })
+

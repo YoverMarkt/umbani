@@ -136,12 +136,19 @@ export async function pedir<T>(ruta: string, opciones: {
 // Las apps ya no entran por WhatsApp. La puerta de WhatsApp sigue en el
 // servidor, en espera, pero aquí no se usa.
 
-/** El código llega al correo. En el servidor de PRUEBAS, sin proveedor de correo, vuelve aquí. */
-export const pedirCodigoPorCorreo = async (correo: string) => (await pedir<{
+/** Lo que necesita la pantalla de entrar: la clave del captcha, si el servidor lo tiene encendido. */
+export const configDeEntrada = async () =>
+  (await pedir<{ turnstile: { claveDeSitio: string } | null }>('/api/v1/auth/config')).datos
+
+/**
+ * El código llega al correo. En el servidor de PRUEBAS, sin proveedor de correo, vuelve aquí.
+ * Con el captcha encendido va con su ficha (`lib/turnstile.ts`); sin ella, 403 `falta: 'turnstile'`.
+ */
+export const pedirCodigoPorCorreo = async (correo: string, turnstile?: string) => (await pedir<{
   enviado: boolean
   expiraEn: string
   codigoDePruebas?: string
-}>('/api/v1/auth/correo', { metodo: 'POST', cuerpo: { correo } })).datos
+}>('/api/v1/auth/correo', { metodo: 'POST', cuerpo: { correo, ...(turnstile ? { turnstile } : {}) } })).datos
 
 /** 401 = código incorrecto (gasta un intento); 410 = ya no vale, hay que pedir otro. */
 export const canjearCodigoDeCorreo = async (correo: string, codigo: string) =>

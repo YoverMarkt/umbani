@@ -1,4 +1,5 @@
 import { validMetaGraphApiVersion } from './meta-graph'
+import { esClaveDePruebasDeTurnstile } from './turnstile'
 
 export interface EnvironmentStatus {
   production: boolean
@@ -118,6 +119,17 @@ export function inspectEnvironment(env: NodeJS.ProcessEnv): EnvironmentStatus {
   if (production && hasValue(env, 'TELEGRAM_WEBHOOK_SECRET')
     && (env.TELEGRAM_WEBHOOK_SECRET?.length || 0) < 32) {
     invalid.push('TELEGRAM_WEBHOOK_SECRET (mínimo 32 caracteres)')
+  }
+  // El captcha al pedir el código (`config/turnstile.ts`). Con una sola clave,
+  // o el servidor pediría una ficha que la app no puede dar —nadie entraría—
+  // o la app pintaría un widget que nadie comprueba.
+  if (production && hasValue(env, 'TURNSTILE_SITE_KEY') !== hasValue(env, 'TURNSTILE_SECRET_KEY')) {
+    invalid.push('TURNSTILE_SITE_KEY y TURNSTILE_SECRET_KEY deben configurarse juntos')
+  }
+  // Las de PRUEBA de Cloudflare dejan pasar a cualquiera: solo en el staging.
+  if (production && !esStaging(env)
+    && [env.TURNSTILE_SITE_KEY, env.TURNSTILE_SECRET_KEY].some(esClaveDePruebasDeTurnstile)) {
+    invalid.push('TURNSTILE_SITE_KEY / TURNSTILE_SECRET_KEY (son las claves de PRUEBA de Cloudflare: no protegen nada)')
   }
 
   const recommended = production

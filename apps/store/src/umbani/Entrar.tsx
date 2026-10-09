@@ -1,7 +1,10 @@
-import { useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { RiArrowLeftSLine } from '@remixicon/react'
 import { Aviso, Boton } from '../components/ui'
-import { canjearCodigoDeCorreo, guardarToken, mensaje, pedirCodigoPorCorreo } from './api'
+import { NO_COMPROBADO, prepararFichaHumana, type FichaHumana } from '../lib/turnstile'
+import {
+  canjearCodigoDeCorreo, configDeEntrada, ErrorDeLaApp, guardarToken, mensaje, pedirCodigoPorCorreo,
+} from './api'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // LO COMÚN DE LAS APPS WEB: el marco, la cabecera y ENTRAR CON EL CORREO
@@ -47,6 +50,9 @@ export function Cabecera({ titulo, onVolver }: { titulo: string; onVolver?: () =
 // Dos pasos: el correo, y el código de 6 números que llega a él. Sin
 // contraseñas. En el servidor de PRUEBAS no se mandan correos: el código
 // vuelve en la respuesta y se enseña aquí (en producción eso no existe).
+//
+// Y si el servidor tiene encendido el captcha (2026-10-09), cada petición de
+// código va con su ficha de persona (`lib/turnstile.ts`). Apagado, nada cambia.
 
 export function Entrar({ explicacion, onVolver, onDentro, titulo = 'Entra con tu correo' }: {
   explicacion?: ReactNode
@@ -61,16 +67,61 @@ export function Entrar({ explicacion, onVolver, onDentro, titulo = 'Entra con tu
   const [ocupado, setOcupado] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // El captcha: su clave la da el servidor, y su sitio está fuera de los dos
+  // pasos para que «Mandarme otro código» también tenga ficha.
+  const [claveDeSitio, setClaveDeSitio] = useState<string | null>(null)
+  const [comprobando, setComprobando] = useState(false)
+  // Sube tras un fallo del captcha: vuelve a leer la config y a montar el widget.
+  const [intentoDelCaptcha, setIntentoDelCaptcha] = useState(0)
+  const lugarDelCaptcha = useRef<HTMLDivElement>(null)
+  const humano = useRef<FichaHumana | null>(null)
+
+  useEffect(() => {
+    let vigente = true
+    configDeEntrada()
+      .then(config => { if (vigente) setClaveDeSitio(config.turnstile?.claveDeSitio ?? null) })
+      .catch(() => { /* sin config se pide sin ficha; si el servidor la exige, lo dice */ })
+    return () => { vigente = false }
+  }, [intentoDelCaptcha])
+
+  useEffect(() => {
+    const lugar = lugarDelCaptcha.current
+    if (!claveDeSitio || !lugar) return
+    let vigente = true
+    prepararFichaHumana(lugar, claveDeSitio)
+      .then(ficha => { if (vigente) humano.current = ficha; else ficha.quitar() })
+      .catch(() => { /* sin widget: se le avisa al pedir el código */ })
+    return () => {
+      vigente = false
+      humano.current?.quitar()
+      humano.current = null
+    }
+  }, [claveDeSitio, intentoDelCaptcha])
+
   const pedirCodigo = async (evento?: FormEvent) => {
     evento?.preventDefault()
     setError(null)
     setOcupado(true)
     try {
-      const r = await pedirCodigoPorCorreo(correo.trim())
+      let ficha: string | undefined
+      if (claveDeSitio) {
+        if (!humano.current) throw new Error(NO_COMPROBADO)
+        setComprobando(true)
+        try {
+          ficha = await humano.current.obtener()
+        } finally {
+          setComprobando(false)
+        }
+      }
+      const r = await pedirCodigoPorCorreo(correo.trim(), ficha)
       setDePruebas(r.codigoDePruebas ?? null)
       setCodigo('')
       setPaso('codigo')
     } catch (e) {
+      // El captcha falló o el servidor lo encendió después: se monta de nuevo.
+      if (e instanceof ErrorDeLaApp ? e.falta === 'turnstile' : mensaje(e) === NO_COMPROBADO) {
+        setIntentoDelCaptcha(n => n + 1)
+      }
       setError(mensaje(e))
     } finally {
       setOcupado(false)
@@ -119,7 +170,7 @@ export function Entrar({ explicacion, onVolver, onDentro, titulo = 'Entra con tu
               />
             </label>
             <Boton type="submit" disabled={ocupado || !correo.includes('@')}>
-              {ocupado ? 'Enviando…' : 'Enviarme el código'}
+              {comprobando ? 'Comprobando…' : ocupado ? 'Enviando…' : 'Enviarme el código'}
             </Boton>
           </form>
         )
@@ -150,6 +201,8 @@ export function Entrar({ explicacion, onVolver, onDentro, titulo = 'Entra con tu
             <Boton variante="linea" onClick={() => void pedirCodigo()} disabled={ocupado}>Mandarme otro código</Boton>
           </form>
         )}
+      {/* Casi siempre vacío: el captcha solo se deja ver cuando Cloudflare duda. */}
+      <div ref={lugarDelCaptcha} className="mt-4 flex justify-center" />
     </Marco>
   )
 }

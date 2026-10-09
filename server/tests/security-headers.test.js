@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import security from '../dist/middleware/security-headers.js'
 
 const originalNodeEnv = process.env.NODE_ENV
@@ -8,11 +8,11 @@ afterEach(() => {
   else process.env.NODE_ENV = originalNodeEnv
 })
 
-function run() {
+function run(req = {}) {
   const headers = new Map()
   const response = { setHeader: (name, value) => headers.set(name, value) }
   let nextCalled = false
-  security.securityHeaders({}, response, () => { nextCalled = true })
+  security.securityHeaders(req, response, () => { nextCalled = true })
   return { headers, nextCalled }
 }
 
@@ -59,4 +59,42 @@ describe('cabeceras HTTP de seguridad', () => {
     process.env.NODE_ENV = 'development'
     expect(run().headers.has('Strict-Transport-Security')).toBe(false)
   })
+
+  // El captcha al pedir el código (2026-10-09): su guion y su marco vienen de
+  // Cloudflare. Se abren solo con él encendido y solo en /u y /r.
+  describe('el captcha (Turnstile)', () => {
+    const CLAVES = { TURNSTILE_SITE_KEY: '0x4AAAAAAAsitio', TURNSTILE_SECRET_KEY: '0x4AAAAAAAsecreto' }
+    const antes = {}
+    beforeEach(() => {
+      for (const clave of Object.keys(CLAVES)) antes[clave] = process.env[clave]
+    })
+    afterEach(() => {
+      for (const [clave, valor] of Object.entries(antes)) {
+        if (valor === undefined) delete process.env[clave]
+        else process.env[clave] = valor
+      }
+    })
+    const cloudflare = 'https://challenges.cloudflare.com'
+
+    it('apagado, ninguna página puede cargar nada de Cloudflare', () => {
+      for (const clave of Object.keys(CLAVES)) delete process.env[clave]
+      for (const path of ['/u', '/r', '/app']) {
+        expect(run({ path }).headers.get('Content-Security-Policy'), path).not.toContain(cloudflare)
+      }
+    })
+
+    it('encendido, solo las apps que piden el código abren su guion y su marco', () => {
+      Object.assign(process.env, CLAVES)
+      for (const path of ['/u', '/u/', '/r', '/r/pedidos']) {
+        const csp = run({ path }).headers.get('Content-Security-Policy')
+        expect(csp, path).toContain(`script-src 'self' ${cloudflare}`)
+        expect(csp, path).toContain(`frame-src ${cloudflare}`)
+      }
+      // Los paneles, la tienda y la API siguen cerrados a guiones de fuera.
+      for (const path of ['/app', '/app-admin', '/cooperativa', '/t/la-abuelita', '/api/v1/auth/correo', '/umbani']) {
+        expect(run({ path }).headers.get('Content-Security-Policy'), path).not.toContain(cloudflare)
+      }
+    })
+  })
 })
+

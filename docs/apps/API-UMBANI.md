@@ -47,6 +47,16 @@ el `token`, porque el resto de la app no cambiará — todas las rutas solo mira
    quiere decir que no se pudo comprobar la sesión: reintenta en unos segundos,
    no la borres.
 
+🤖 **El captcha (Cloudflare Turnstile, 2026-10-09).** Antes del paso 1, llama
+a `GET /api/v1/auth/config`. Si trae `turnstile: { claveDeSitio }`, el paso 1
+exige además `turnstile`: la ficha que da el widget de Turnstile pintado con
+esa clave y la acción `entrar-correo` (en Flutter, dentro de un WebView). Cada
+ficha vale **una vez** y 5 minutos: una nueva por cada petición, también al
+«mandarme otro código». Sin ficha, o si Cloudflare no la da por buena, `403
+{ falta: 'turnstile' }`. Con `turnstile: null` no hay captcha. Hoy está
+apagado en producción (se enciende con el dominio); el servidor de pruebas
+lleva las claves de PRUEBA de Cloudflare, que pasan siempre.
+
 🧪 **En PRUEBAS no se mandan correos** (el proveedor de correo es de las
 credenciales que llegan al final): el paso 1 devuelve además
 `codigoDePruebas` con el código, para poder probar. En producción ese campo no
