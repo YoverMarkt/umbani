@@ -644,7 +644,12 @@ describe('la migración protege lo que importa', () => {
 
 // ───────────────────────────────────────────────────────────────────────────
 describe('el panel del dueño', () => {
-  const panel = leer('../../apps/client/src/features/orders/Orders.tsx')
+  // Pedidos ENTERO: desde el 2026-10-08 la página, la tarjeta del pedido y el
+  // análisis viven en archivos aparte (ningún archivo pasa de 1.000 líneas).
+  // Leyendo solo `Orders.tsx`, la prueba del aviso pasaba en VACÍO: no
+  // encontraba el aviso y comprobaba un trozo vacío.
+  const panel = ['AnalisisDelComprobante.tsx', 'Orders.tsx', 'TarjetaPedido.tsx', 'formato.ts']
+    .map(archivo => leer(`../../apps/client/src/features/orders/${archivo}`)).join('\n')
 
   // ⚠️ El aviso va SIEMPRE. Es la diferencia entre una herramienta que ayuda
   // a decidir y una que decide por el dueño.
@@ -655,8 +660,9 @@ describe('el panel del dueño', () => {
 
   it('el aviso NO está dentro de una condición del riesgo', () => {
     // Si colgara del score, un comprobante «limpio» se aprobaría sin leerlo.
-    const bloque = panel.slice(panel.indexOf('TriangleAlert className'))
-    expect(bloque.slice(0, 400)).not.toMatch(/risk_level|risk_score/)
+    const aviso = panel.indexOf('TriangleAlert className')
+    expect(aviso, 'no encuentro el aviso: esta prueba miraría la nada').toBeGreaterThan(-1)
+    expect(panel.slice(aviso, aviso + 400)).not.toMatch(/risk_level|risk_score/)
   })
 
   // ⚠️ El panel recarga sus pedidos cada 12 s. Colgar el análisis de ese
