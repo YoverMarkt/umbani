@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
-  centavos, cerrarSql, clientePorWhatsApp, configurarElDinero, entrarComoLocal, esperarHasta, exigir,
+  centavos, cerrarSql, clientePorWhatsApp, configurarElDinero, entrarComoLocal, exigir,
   lineaDelLibro, llevarHastaEntregar, payphone, productosSimples, recogerLaMesa, sql,
 } from './actores.mjs'
 
@@ -137,13 +137,17 @@ describe('un pedido en EFECTIVO, de punta a punta', () => {
     expect(linea.provider_fee_cents).toBe(0)
   })
 
-  it('el cliente se enteró por WhatsApp: en preparación, en camino y entregado', async () => {
-    const suyos = await esperarHasta(async () => {
-      const { mensajes } = await payphone.estado()
-      const deEste = mensajes.filter(m => m.to.replace(/\D/g, '') === '000000000000' && m.texto.includes(`#${pedido.order_number}`))
-      return deEste.length >= 3 ? deEste : null
-    }, { segundos: 30, que: 'que salieran los tres avisos al cliente' })
-    expect(suyos.some(m => /confirmado|preparando/i.test(m.texto))).toBe(true)
+  // Hasta el 2026-10-09 aquí se esperaban tres avisos por WhatsApp. Umbani es
+  // solo app: el cliente sigue su pedido en la app y no le sale ni uno.
+  it('al cliente ya NO le escribe por WhatsApp: el pedido se sigue en la app', async () => {
+    const visto = await cliente.pedido(pedido.id)
+    expect((visto.order || visto).status).toBe('completado')
+    // Los avisos salían SIN esperar, justo después de cada cambio de estado: se
+    // da un margen para que, si saliera alguno, estuviera ya en el buzón falso.
+    await new Promise(listo => setTimeout(listo, 1500))
+    const { mensajes } = await payphone.estado()
+    const deEste = mensajes.filter(m => m.to.replace(/\D/g, '') === '000000000000' && m.texto.includes(`#${pedido.order_number}`))
+    expect(deEste).toEqual([])
   })
 })
 
