@@ -205,7 +205,7 @@ async function unContadorPorCliente() {
     `RateLimit-Remaining en ocho peticiones seguidas: ${restantes.join(', ')}`,
     deUnoEnUno
       ? 'Baja de uno en uno: el freno cuenta a ESTE cliente.'
-      : '⚠️ Se repite o sube: hay varios contadores para una sola IP — el freno cuenta por nodo (ver config/ip-del-cliente.ts).',
+      : '⚠️ Se repite o sube: hay varios contadores para una sola IP — el freno cuenta por nodo (ver middleware/ip-del-cliente.ts).',
   ])
 }
 

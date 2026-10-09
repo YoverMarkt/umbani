@@ -742,7 +742,7 @@ cuerpo de 3 MB; cabeceras a cuentagotas; y muchas conexiones a la vez.
 
 - ❌→✅ **Los frenos contaban por nodo de Railway, no por cliente.** Una sola IP
   vio dos contadores en `RateLimit-Remaining` (89, 88, 87, 89, 88…); en
-  producción, al menos cuatro. Arreglado en `config/ip-del-cliente.ts` (PR #448)
+  producción, al menos cuatro. Arreglado en `middleware/ip-del-cliente.ts` (PR #448)
   y vigilado desde entonces por el escenario «Un contador por cliente». Ver
   [DECISIONES.md](DECISIONES.md#la-ip-del-cliente-detrás-de-railway).
 - La vitrina: 300 peticiones en 4 s, el freno contesta en p95 ~300 ms y la
