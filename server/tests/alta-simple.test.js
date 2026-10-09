@@ -84,13 +84,6 @@ const sinComentarios = (fuente) => fuente
 describe('lo que el alta deja de preguntar', () => {
   const modal = leer('../../apps/admin/src/features/clients/ClientModal.tsx')
 
-  /** El bloque solo se pinta al editar si está envuelto en `{id && (`. */
-  const soloAlEditar = (marca) => {
-    const desde = modal.lastIndexOf('{id && (', modal.indexOf(marca))
-    const hasta = modal.indexOf(marca)
-    return desde !== -1 && hasta > desde
-  }
-
   // ⚠️ ESTA PRUEBA SE ENDURECIÓ EL 2026-09-03, y antes exigía menos: que el
   // bloque «Canal de WhatsApp» apareciera SOLO al editar. Los siete campos
   // —proveedor, número, 3 de YCloud, 2 de Meta, Telegram— ya se habían

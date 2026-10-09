@@ -29,11 +29,6 @@ const { textoDelAviso } = require('../dist/services/order-notify')
 // (legítimo, hay negocios que lo tienen); `phone` es un dato de CONTACTO del
 // dueño, el mismo con el que pide sus reportes.
 
-const transferencia = {
-  code: 'transferencia', label: 'Transferencia bancaria',
-  help_text: null, is_prepaid: true, requires_proof: true,
-}
-
 // ⚠️ El checkout DENTRO del chat se retiró el 2026-09-15 con el pedido por
 // chat, y con él sus dos pruebas de aquí: ya no hay una pantalla del chat que
 // pueda mandar al cliente a otro número. Lo que queda —la mini app y el aviso

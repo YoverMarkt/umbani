@@ -43,5 +43,5 @@ export function enSegundoPlano<T>(tarea: Promise<T>): Promise<T> {
  * MIENTRAS se espera (un registro puede encadenar otro).
  */
 export async function esperarSegundoPlano(): Promise<void> {
-  while (enVuelo.size) await Promise.allSettled([...enVuelo])
+  while (enVuelo.size) await Promise.allSettled(enVuelo)
 }
