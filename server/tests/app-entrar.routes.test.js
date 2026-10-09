@@ -204,3 +204,83 @@ describe('el repartidor entra con su correo', () => {
     expect(porTelefono).not.toHaveBeenCalled()
   })
 })
+
+// ── El captcha al pedir el código (Turnstile, 2026-10-09) ──────────────────
+// Apagado sin sus dos claves; encendido, sin una ficha buena no se cuenta un
+// código ni sale un correo. Ver `src/services/turnstile.ts`.
+describe('el captcha al pedir el código', () => {
+  const CLAVES = { TURNSTILE_SITE_KEY: '0x4AAAAAAAsitio', TURNSTILE_SECRET_KEY: '0x4AAAAAAAsecreto' }
+  let antes
+  beforeEach(() => {
+    antes = { TURNSTILE_SITE_KEY: process.env.TURNSTILE_SITE_KEY, TURNSTILE_SECRET_KEY: process.env.TURNSTILE_SECRET_KEY }
+    delete process.env.TURNSTILE_SITE_KEY
+    delete process.env.TURNSTILE_SECRET_KEY
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    for (const [clave, valor] of Object.entries(antes)) {
+      if (valor === undefined) delete process.env[clave]
+      else process.env[clave] = valor
+    }
+  })
+  const encender = () => Object.assign(process.env, CLAVES)
+  /** Cloudflare de mentira: lo que conteste siteverify. */
+  const cloudflare = (cuerpo, ok = true) => {
+    const pedir = vi.fn(async () => ({ ok, json: async () => cuerpo }))
+    vi.stubGlobal('fetch', pedir)
+    return pedir
+  }
+
+  it('apagado: la pantalla no recibe clave y el código se pide como siempre', async () => {
+    expect((await correr(entrar, 'get', '/api/v1/auth/config')).body).toEqual({ turnstile: null })
+    process.env.UMBANI_ENTORNO = 'staging'
+    vi.spyOn(db, 'contarCodigosDeCorreo').mockResolvedValue(0)
+    vi.spyOn(db, 'guardarCodigoDeCorreo').mockResolvedValue()
+    const pedir = cloudflare({ success: true, action: 'entrar-correo' })
+    expect((await correr(entrar, 'post', '/api/v1/auth/correo', { body: { correo: CORREO } })).status).toBe(201)
+    expect(pedir).not.toHaveBeenCalled()
+  })
+
+  it('encendido: la pantalla recibe la clave de SITIO, nunca el secreto', async () => {
+    encender()
+    const r = await correr(entrar, 'get', '/api/v1/auth/config')
+    expect(r.body).toEqual({ turnstile: { claveDeSitio: CLAVES.TURNSTILE_SITE_KEY } })
+    expect(JSON.stringify(r.body)).not.toContain(CLAVES.TURNSTILE_SECRET_KEY)
+  })
+
+  it('encendido y sin ficha: 403 y no se cuenta ni se guarda ningún código', async () => {
+    encender()
+    const contar = vi.spyOn(db, 'contarCodigosDeCorreo')
+    const guardar = vi.spyOn(db, 'guardarCodigoDeCorreo')
+    cloudflare({ success: true, action: 'entrar-correo' })
+    const r = await correr(entrar, 'post', '/api/v1/auth/correo', { body: { correo: CORREO } })
+    expect(r).toMatchObject({ status: 403, body: { falta: 'turnstile' } })
+    expect(contar).not.toHaveBeenCalled()
+    expect(guardar).not.toHaveBeenCalled()
+  })
+
+  it('encendido y con una ficha que Cloudflare da por buena: sigue como siempre', async () => {
+    encender()
+    process.env.UMBANI_ENTORNO = 'staging'
+    vi.spyOn(db, 'contarCodigosDeCorreo').mockResolvedValue(0)
+    const guardar = vi.spyOn(db, 'guardarCodigoDeCorreo').mockResolvedValue()
+    const pedir = cloudflare({ success: true, action: 'entrar-correo' })
+    const r = await correr(entrar, 'post', '/api/v1/auth/correo', { body: { correo: CORREO, turnstile: 'ficha-buena' } })
+    expect(r.status).toBe(201)
+    expect(guardar).toHaveBeenCalledTimes(1)
+    // Con la IP del cliente: Cloudflare la cruza con la de quien resolvió el widget.
+    expect(JSON.parse(pedir.mock.calls[0][1].body)).toMatchObject({ response: 'ficha-buena', remoteip: '1.1.1.1' })
+  })
+
+  it('encendido y Cloudflare caído: 503, queda en el registro, y no sale ningún correo', async () => {
+    encender()
+    const guardar = vi.spyOn(db, 'guardarCodigoDeCorreo')
+    require('../dist/services/error-log').resetErrorLogThrottle()
+    const registro = vi.spyOn(db, 'recordPlatformError').mockResolvedValue()
+    cloudflare({}, false)
+    const r = await correr(entrar, 'post', '/api/v1/auth/correo', { body: { correo: CORREO, turnstile: 'ficha' } })
+    expect(r.status).toBe(503)
+    expect(guardar).not.toHaveBeenCalled()
+    await vi.waitFor(() => expect(registro).toHaveBeenCalledWith(expect.objectContaining({ code: 'turnstile_caido' })))
+  })
+})

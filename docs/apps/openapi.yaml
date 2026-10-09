@@ -141,6 +141,26 @@ components:
             slug: { type: string, description: 'Para abrir su tienda (POST /api/v1/locales/{slug}/sesion)' }
 
 paths:
+  /api/v1/auth/config:
+    get:
+      summary: Lo que necesita la pantalla de entrar (hoy, si hay captcha)
+      description: |
+        Si el servidor tiene encendido el captcha de Cloudflare (Turnstile, 2026-10-09), su clave
+        de SITIO (pública). Entonces `POST /api/v1/auth/correo` exige `turnstile`: la ficha que da
+        el widget, con la acción `entrar-correo`. Con `null`, no hay captcha y no se manda nada.
+        Se enciende con el dominio; hasta entonces es `null` en producción (en el servidor de
+        pruebas lleva las claves de PRUEBA de Cloudflare, que pasan siempre).
+      responses:
+        '200':
+          description: La configuración
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  turnstile:
+                    type: [object, 'null']
+                    properties: { claveDeSitio: { type: string } }
   /api/v1/auth/correo:
     post:
       summary: Pide un código de 6 dígitos que llega al correo (la puerta de las apps)
@@ -149,10 +169,17 @@ paths:
         Vale 10 minutos, 5 intentos y solo el ÚLTIMO pedido. Como mucho 5 códigos por hora y correo.
         En el servidor de PRUEBAS, mientras no haya proveedor de correo, el código vuelve en
         `codigoDePruebas` para poder probar; en producción eso no existe nunca.
+        Si `GET /api/v1/auth/config` trae `turnstile`, va con la ficha del captcha (una por
+        petición: vale una vez y 5 minutos).
       requestBody:
         content:
           application/json:
-            schema: { type: object, required: [correo], properties: { correo: { type: string, format: email } } }
+            schema:
+              type: object
+              required: [correo]
+              properties:
+                correo: { type: string, format: email }
+                turnstile: { type: string, description: 'La ficha del widget de Turnstile, solo si /api/v1/auth/config trae su clave' }
       responses:
         '201':
           description: Código mandado
@@ -165,13 +192,15 @@ paths:
                   expiraEn: { type: string, format: date-time }
                   codigoDePruebas: { type: string, example: '012345', description: SOLO en el servidor de pruebas sin proveedor de correo }
         '400': { description: Correo no válido }
+        '403': { description: "Con el captcha encendido: falta la ficha o Cloudflare no la dio por buena (`falta: 'turnstile'`). Pedir una nueva y reintentar." }
         '429': { description: Ya pidió 5 en la última hora }
         '502': { description: El proveedor de correo falló; reintentar en un momento }
         '503':
           description: |
-            Dos casos, los dos con `error` para mostrar: entrar con correo todavía no está disponible
-            en este servidor, o se llenó el tope de códigos de TODA la plataforma (un bot pidiendo
-            códigos). En el segundo llega `Retry-After` con los segundos que hay que esperar.
+            Tres casos, todos con `error` para mostrar: entrar con correo todavía no está disponible
+            en este servidor, se llenó el tope de códigos de TODA la plataforma (un bot pidiendo
+            códigos), o Cloudflare no contestó al comprobar el captcha. En el segundo llega
+            `Retry-After` con los segundos que hay que esperar.
           headers:
             Retry-After: { schema: { type: integer, example: 600 }, description: Solo cuando se llenó el tope }
   /api/v1/auth/correo/verificar:

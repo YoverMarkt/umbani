@@ -1,23 +1,35 @@
 import type { RequestHandler } from 'express'
+import { leerConfiguracionTurnstile } from '../config/turnstile'
 
-const CONTENT_SECURITY_POLICY = [
-  "default-src 'self'",
-  "base-uri 'self'",
-  "frame-ancestors 'none'",
-  "form-action 'self'",
-  "script-src 'self'",
-  "style-src 'self' 'unsafe-inline'",
-  "font-src 'self' data:",
-  "img-src 'self' data: https:",
-  // blob: solo en media: el panel genera el WAV de la alarma en memoria
-  // (apps/client/src/lib/alarm.ts); sin blob: el navegador lo bloquea con
-  // NotSupportedError y la alarma de pendientes queda muda.
-  "media-src 'self' data: https: blob:",
-  "connect-src 'self'",
-].join('; ')
+// El captcha al pedir el código (`config/turnstile.ts`): su guion y su marco
+// vienen de Cloudflare. Se abren SOLO cuando está encendido y SOLO en las dos
+// apps que piden el código (`/u` clientes, `/r` repartidores): los paneles y
+// la tienda siguen sin poder cargar un guion de fuera.
+const TURNSTILE = 'https://challenges.cloudflare.com'
+const PAGINAS_QUE_PIDEN_EL_CODIGO = /^\/(u|r)(\/|$)/
 
-export const securityHeaders: RequestHandler = (_req, res, next) => {
-  res.setHeader('Content-Security-Policy', CONTENT_SECURITY_POLICY)
+function politica(conTurnstile: boolean): string {
+  return [
+    "default-src 'self'",
+    "base-uri 'self'",
+    "frame-ancestors 'none'",
+    "form-action 'self'",
+    conTurnstile ? `script-src 'self' ${TURNSTILE}` : "script-src 'self'",
+    ...(conTurnstile ? [`frame-src ${TURNSTILE}`] : []),
+    "style-src 'self' 'unsafe-inline'",
+    "font-src 'self' data:",
+    "img-src 'self' data: https:",
+    // blob: solo en media: el panel genera el WAV de la alarma en memoria
+    // (apps/client/src/lib/alarm.ts); sin blob: el navegador lo bloquea con
+    // NotSupportedError y la alarma de pendientes queda muda.
+    "media-src 'self' data: https: blob:",
+    "connect-src 'self'",
+  ].join('; ')
+}
+
+export const securityHeaders: RequestHandler = (req, res, next) => {
+  const conTurnstile = Boolean(leerConfiguracionTurnstile()) && PAGINAS_QUE_PIDEN_EL_CODIGO.test(req.path ?? '')
+  res.setHeader('Content-Security-Policy', politica(conTurnstile))
   res.setHeader('Referrer-Policy', 'no-referrer')
   res.setHeader('X-Content-Type-Options', 'nosniff')
   res.setHeader('X-Frame-Options', 'DENY')

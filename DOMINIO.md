@@ -50,9 +50,17 @@ algo que hoy funciona.
 7. Una regla de límite (el plan gratis trae una) para `POST /api/v1/auth/correo`
    y `POST /api/client/login`.
 8. **Turnstile** (el CAPTCHA invisible de Cloudflare) al pedir el código por
-   correo: es la defensa de verdad contra bots que piden códigos. Se construye
-   con su clave de sitio y su secreto
+   correo: es la defensa de verdad contra bots que piden códigos
    ([DECISIONES.md](DECISIONES.md#las-defensas-contra-bots-y-ataques)).
+   ✅ **El código ya está hecho (2026-10-09)** y se enciende solo con las dos
+   claves. En Cloudflare → *Turnstile* → *Add widget*: nombre «Umbani entrar»,
+   dominios `<dominio>` y `pruebas.<dominio>`, modo *Managed*. Copiar las dos
+   claves a las variables de Railway de producción: `TURNSTILE_SITE_KEY` (la
+   de sitio) y `TURNSTILE_SECRET_KEY` (el secreto). ⚠️ Las dos juntas: con
+   una sola, producción no arranca (a propósito: pedir la ficha sin poder darla
+   dejaría a todos fuera). ⚠️ Las claves de PRUEBA (`1x0000…`) que usa el
+   staging no arrancan en producción: dejan pasar a cualquiera. Comprobar en
+   `/u` que se entra, y que `GET /api/v1/auth/config` trae la clave de sitio.
 
 ## 3. Cambiar la dirección de producción (en este orden)
 

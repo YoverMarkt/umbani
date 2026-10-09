@@ -2,6 +2,7 @@ import rateLimit from 'express-rate-limit'
 import { createRouter } from '../middleware/async'
 import { esStaging } from '../config/environment'
 import { leerConfiguracionCorreo } from '../config/correo'
+import { leerConfiguracionTurnstile } from '../config/turnstile'
 import { correoNormalizado } from '../lib/correo-normalizado'
 // La misma regla que el repartidor: el celular de Ecuador, en dígitos y con su código de país.
 import { telefonoDelRepartidor as telefonoDeCelular } from '../lib/telefono-del-repartidor'
@@ -12,6 +13,7 @@ import {
   CODIGOS_POR_HORA_EN_TOTAL, canjearCodigoDeCorreo, pedirCodigoPorCorreo, type DependenciasDelCorreo,
 } from '../services/entrar-con-correo'
 import { authApp, correoDe, firmarSesionDeCorreo } from '../services/sesion-app'
+import { comprobarFichaHumana } from '../services/turnstile'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ENTRAR A LAS APPS CON CORREO, Y EL TELÉFONO DE LA CUENTA (2026-10-06)
@@ -70,11 +72,38 @@ const dependencias: DependenciasDelCorreo = {
 
 const cuerpo = (req: { body?: unknown }) => (req.body || {}) as Record<string, unknown>
 
+// ── 0. Lo que necesita la pantalla de entrar ────────────────────────────────
+// Si el captcha está encendido, su clave de SITIO (pública). Sin él, `null` y
+// la app no pinta nada. Se lee en cada petición: encenderlo en Railway no
+// pide volver a construir la app.
+router.get('/api/v1/auth/config', cuentaLimiter, (_req, res) => {
+  const turnstile = leerConfiguracionTurnstile()
+  res.setHeader('Cache-Control', 'no-store')
+  res.json({ turnstile: turnstile ? { claveDeSitio: turnstile.claveDeSitio } : null })
+})
+
 // ── 1. Pedir el código ──────────────────────────────────────────────────────
 // La misma respuesta exista o no la cuenta: la cuenta nace al canjearlo.
 router.post('/api/v1/auth/correo', pedirLimiter, async (req, res) => {
   const correo = correoNormalizado(cuerpo(req).correo)
   if (!correo) return res.status(400).json({ error: 'Escribe un correo válido' })
+  // ⚠️ El captcha ANTES que nada que gaste: ni se cuenta un código ni sale un
+  // correo para quien no demuestra ser una persona. Ver `services/turnstile.ts`.
+  const turnstile = leerConfiguracionTurnstile()
+  if (turnstile) {
+    const veredicto = await comprobarFichaHumana(cuerpo(req).turnstile, req.ip, { secreto: turnstile.secreto })
+    if (veredicto === 'rechazado') {
+      return res.status(403).json({ error: 'No pudimos comprobar que eres una persona. Vuelve a intentarlo.', falta: 'turnstile' })
+    }
+    if (veredicto === 'caido') {
+      void recordError({
+        category: 'servidor',
+        code: 'turnstile_caido',
+        message: 'Cloudflare Turnstile no contestó al comprobar a quien pedía un código: nadie pudo entrar mientras tanto.',
+      })
+      return res.status(503).json({ error: 'No pudimos comprobar que eres una persona. Inténtalo en un momento.' })
+    }
+  }
   const r = await pedirCodigoPorCorreo(correo, dependencias)
   switch (r.estado) {
     case 'enviado': return res.status(201).json({ enviado: true, expiraEn: r.expiraEn })
