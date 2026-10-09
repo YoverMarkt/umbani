@@ -13,7 +13,7 @@ import express, {
 import rateLimit from 'express-rate-limit'
 import dotenv from 'dotenv'
 import { assertEnvironment, esStaging } from './config/environment'
-import { PROXIES_DE_CONFIANZA } from './config/ip-del-cliente'
+import { PROXIES_DE_CONFIANZA, clienteSegunRailway } from './middleware/ip-del-cliente'
 import { comprobarIdentidadDeLaBase } from './config/identidad-de-la-base'
 import { decidirTareasDeFondo, explicarDecision } from './config/tareas-de-fondo'
 import { asyncHandler } from './middleware/async'
@@ -162,9 +162,10 @@ let shuttingDown = false
 
 // Railway/producción corre detrás de un proxy. Express necesita la IP real
 // para que express-rate-limit no agrupe a todos los visitantes. ⚠️ Con `1`
-// SÍ los agrupaba: se quedaba con la IP de un nodo de Railway. Ver
-// `config/ip-del-cliente.ts`.
+// SÍ los agrupaba: se quedaba con la IP de un nodo del borde de Railway. Va
+// PRIMERO, antes que cualquier freno. Ver `middleware/ip-del-cliente.ts`.
 app.set('trust proxy', PROXIES_DE_CONFIANZA)
+app.use(clienteSegunRailway)
 app.disable('x-powered-by')
 app.use(securityHeaders)
 
