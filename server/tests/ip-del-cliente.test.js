@@ -2,83 +2,102 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import express from 'express'
 import rateLimit from 'express-rate-limit'
-import { PROXIES_DE_CONFIANZA } from '../dist/config/ip-del-cliente.js'
+import {
+  PROXIES_DE_CONFIANZA, crearClienteSegunRailway, vieneDelProxyDeRailway,
+} from '../dist/middleware/ip-del-cliente.js'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // LOS FRENOS CUENTAN POR CLIENTE, NO POR NODO DE RAILWAY (2026-10-08)
 // ═══════════════════════════════════════════════════════════════════════════
 //
-// El borde de Railway deja `X-Forwarded-For: <cliente>, <nodo 100.x>`. Con
-// `trust proxy 1`, `req.ip` era el NODO: una sola IP vio dos contadores en el
-// staging. Ver `src/config/ip-del-cliente.ts`.
+// La cadena que llega de verdad, medida con un diagnóstico en el staging:
+//   conexión ::ffff:100.64.0.x · X-Forwarded-For «<cliente>, 152.233.23.19x»
+//   (su borde, una CDN) · X-Real-IP «<cliente>»
+// Ver `src/middleware/ip-del-cliente.ts`.
 //
-// Express de verdad, en un puerto local: el socket de 127.0.0.1 hace de proxy
-// interno de Railway, y la cabecera, de lo que deja su borde.
+// Express de verdad, en un puerto local. La conexión llega de 127.0.0.1, así
+// que «viene de Railway» se finge donde hace falta; lo que decide si una
+// conexión ES de Railway se prueba aparte, con sus direcciones reales.
 
 const CLIENTE = '190.12.34.56'
-const NODO_A = '100.64.0.7'
-const NODO_B = '100.96.1.2'
+const CDN_A = '152.233.23.193'
+const CDN_B = '152.233.23.194'
+const deRailway = (cliente, nodo) => ({ 'x-forwarded-for': `${cliente}, ${nodo}`, 'x-real-ip': cliente })
 
 const servidores = []
-async function montar(confianza) {
+async function montar({ confianza = PROXIES_DE_CONFIANZA, middleware = null } = {}) {
   const app = express()
   app.set('trust proxy', confianza)
+  if (middleware) app.use(middleware)
   app.get('/ip', (req, res) => res.json({ ip: req.ip }))
   app.get('/frenado', rateLimit({ windowMs: 60_000, max: 50, standardHeaders: true, legacyHeaders: false }),
     (req, res) => res.json({ ip: req.ip }))
   const servidor = await new Promise(r => { const s = app.listen(0, '127.0.0.1', () => r(s)) })
   servidores.push(servidor)
   const base = `http://127.0.0.1:${servidor.address().port}`
-  return async (xff, ruta = '/ip') => {
-    const r = await fetch(`${base}${ruta}`, { headers: xff ? { 'x-forwarded-for': xff } : {} })
+  return async (cabeceras = {}, ruta = '/ip') => {
+    const r = await fetch(`${base}${ruta}`, { headers: cabeceras })
     return { ...(await r.json()), restantes: Number(r.headers.get('ratelimit-remaining')) }
   }
 }
 
-let ahora
-let antes
+let ahora // el servidor como queda: la lista + X-Real-IP, con la conexión fingida de Railway
+let real // el middleware de verdad, que mira la conexión (aquí, 127.0.0.1: no es Railway)
+let antes // `trust proxy 1`, lo que había
+let soloLista // el primer intento: la lista sin X-Real-IP (no bastó en el staging)
 beforeAll(async () => {
-  ahora = await montar(PROXIES_DE_CONFIANZA)
-  antes = await montar(1)
+  ahora = await montar({ middleware: crearClienteSegunRailway(() => true) })
+  real = await montar({ middleware: crearClienteSegunRailway() })
+  antes = await montar({ confianza: 1 })
+  soloLista = await montar()
 })
 afterAll(() => Promise.all(servidores.map(s => new Promise(r => s.close(r)))))
 
 describe('detrás de Railway, el cliente es el cliente', () => {
-  it('la IP es la del cliente, no la del nodo (con `1` salía el nodo)', async () => {
-    expect((await ahora(`${CLIENTE}, ${NODO_A}`)).ip).toBe(CLIENTE)
-    // El fallo, escrito para que no vuelva: así contaba producción.
-    expect((await antes(`${CLIENTE}, ${NODO_A}`)).ip).toBe(NODO_A)
+  it('la IP es la del cliente, no la del nodo del borde', async () => {
+    expect((await ahora(deRailway(CLIENTE, CDN_A))).ip).toBe(CLIENTE)
+    // El fallo, escrito para que no vuelva: así contaba producción…
+    expect((await antes(deRailway(CLIENTE, CDN_A))).ip).toBe(CDN_A)
+    // …y así se quedó el primer intento: el nodo de la CDN no es de 100.x.
+    expect((await soloLista(deRailway(CLIENTE, CDN_A))).ip).toBe(CDN_A)
   })
 
   it('pase por el nodo que pase, el cliente tiene UN contador', async () => {
     const restantes = []
-    for (const nodo of [NODO_A, NODO_B, NODO_A, NODO_B]) {
-      restantes.push((await ahora(`${CLIENTE}, ${nodo}`, '/frenado')).restantes)
+    for (const nodo of [CDN_A, CDN_B, CDN_A, CDN_B]) {
+      restantes.push((await ahora(deRailway(CLIENTE, nodo), '/frenado')).restantes)
     }
     expect(restantes).toEqual([49, 48, 47, 46])
 
     // Con `1`, dos contadores intercalados: lo que se midió en el staging.
     const antesRestantes = []
-    for (const nodo of [NODO_A, NODO_B, NODO_A, NODO_B]) {
-      antesRestantes.push((await antes(`${CLIENTE}, ${nodo}`, '/frenado')).restantes)
+    for (const nodo of [CDN_A, CDN_B, CDN_A, CDN_B]) {
+      antesRestantes.push((await antes(deRailway(CLIENTE, nodo), '/frenado')).restantes)
     }
     expect(antesRestantes).toEqual([49, 49, 48, 48])
   })
 
   it('y dos clientes que pasan por el mismo nodo NO comparten freno', async () => {
-    const uno = await ahora(`181.199.1.1, ${NODO_A}`, '/frenado')
-    const otro = await ahora(`181.199.2.2, ${NODO_A}`, '/frenado')
+    const uno = await ahora(deRailway('181.199.1.1', CDN_A), '/frenado')
+    const otro = await ahora(deRailway('181.199.2.2', CDN_A), '/frenado')
     expect([uno.restantes, otro.restantes]).toEqual([49, 49])
+  })
+
+  it('sin X-Real-IP, por la red de Railway la lista sigue sacando al cliente', async () => {
+    expect((await ahora({ 'x-forwarded-for': `${CLIENTE}, 100.64.0.7` })).ip).toBe(CLIENTE)
   })
 })
 
 describe('falla hacia lo seguro', () => {
-  it('una IP inventada delante del cliente no cuela (si el borde dejara de reescribir)', async () => {
-    expect((await ahora(`203.0.113.9, ${CLIENTE}, ${NODO_A}`)).ip).toBe(CLIENTE)
+  it('un X-Real-IP que NO llega por Railway no vale: no sirve para saltarse un freno', async () => {
+    // `real` mira la conexión de verdad (127.0.0.1): no es Railway.
+    expect((await real({ 'x-real-ip': '203.0.113.77' })).ip).toBe('127.0.0.1')
   })
 
-  it('si Railway cambiara de rango, se cuenta por nodo —lo de antes—, nunca por lo que diga el cliente', async () => {
-    expect((await ahora(`${CLIENTE}, 152.233.23.193`)).ip).toBe('152.233.23.193')
+  it('lo que no es una IP en X-Real-IP se ignora', async () => {
+    for (const basura of ['no-soy-una-ip', `${CLIENTE}, 1.2.3.4`, '']) {
+      expect((await ahora({ 'x-real-ip': basura })).ip, basura).toBe('127.0.0.1')
+    }
   })
 
   it('nunca confía en todo: con `true` mandaría la entrada que escribe quien ataca', () => {
@@ -88,20 +107,35 @@ describe('falla hacia lo seguro', () => {
   })
 })
 
-describe('lo de siempre sigue igual', () => {
-  it('los recorridos, cada archivo desde su red 10.x, siguen contando aparte', async () => {
-    expect((await ahora('10.4.5.6')).ip).toBe('10.4.5.6')
-  })
-
-  it('sin cabecera, la IP es la de la conexión', async () => {
-    expect((await ahora()).ip).toBe('127.0.0.1')
+describe('qué conexión es de Railway', () => {
+  it('su red (100.x), también escrita como IPv6, y nada más', () => {
+    for (const si of ['::ffff:100.64.0.1', '100.64.0.9', '100.0.0.1']) expect(vieneDelProxyDeRailway(si), si).toBe(true)
+    for (const no of ['127.0.0.1', '::1', '10.0.0.1', '152.233.23.193', '::ffff:10.0.0.1', '1000.1.1.1', '', undefined]) {
+      expect(vieneDelProxyDeRailway(no), String(no)).toBe(false)
+    }
   })
 })
 
-describe('guardián: el servidor de verdad usa esta lista', () => {
-  it('index.ts confía en PROXIES_DE_CONFIANZA, no en un número de saltos', () => {
-    const indexTs = readFileSync('src/index.ts', 'utf8')
+describe('lo de siempre sigue igual', () => {
+  it('los recorridos, cada archivo desde su red 10.x, siguen contando aparte', async () => {
+    expect((await real({ 'x-forwarded-for': '10.4.5.6' })).ip).toBe('10.4.5.6')
+  })
+
+  it('sin cabeceras, la IP es la de la conexión', async () => {
+    expect((await real()).ip).toBe('127.0.0.1')
+  })
+})
+
+describe('guardián: el servidor de verdad lo usa, y antes que nada', () => {
+  const indexTs = readFileSync('src/index.ts', 'utf8')
+
+  it('index.ts confía en la lista, no en un número de saltos', () => {
     expect(indexTs).toContain("app.set('trust proxy', PROXIES_DE_CONFIANZA)")
     expect(indexTs.match(/app\.set\('trust proxy'/g)).toHaveLength(1)
+  })
+
+  it('y el primer middleware es el que reduce la cadena: ningún freno cuenta antes', () => {
+    const primero = indexTs.match(/^app\.use\(([^)\n]*)/m)
+    expect(primero?.[1]).toBe('clienteSegunRailway')
   })
 })
