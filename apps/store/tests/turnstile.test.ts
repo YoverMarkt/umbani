@@ -121,3 +121,74 @@ describe('la llamada', () => {
     await expect(api.pedirCodigoPorCorreo('ana@correo.com')).rejects.toMatchObject({ status: 403, falta: 'turnstile' })
   })
 })
+
+describe('la pantalla de entrar: quien toca antes de tiempo ESPERA, no falla', () => {
+  // Probado en el navegador (2026-10-09): tocar «Enviarme el código» antes de
+  // que el widget estuviera montado daba «no pudimos comprobar que eres una
+  // persona» sin que nadie hubiera fallado.
+  const respuesta = (status: number, cuerpo: unknown) => ({ ok: status >= 200 && status < 300, status, json: async () => cuerpo })
+  const almacen = (): Storage => {
+    const datos = new Map<string, string>()
+    return {
+      getItem: (k: string) => datos.get(k) ?? null,
+      setItem: (k: string, v: string) => { datos.set(k, v) },
+      removeItem: (k: string) => { datos.delete(k) },
+      clear: () => datos.clear(),
+      key: (i: number) => [...datos.keys()][i] ?? null,
+      get length() { return datos.size },
+    } as Storage
+  }
+  let soltarConfig: (valor: unknown) => void
+  let fetchFalso: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', almacen())
+    vi.stubGlobal('sessionStorage', almacen())
+    vi.stubGlobal('window', { turnstile, location: { pathname: '/u', search: '' }, history: { replaceState: () => {} } })
+    // La config tarda: así se toca ANTES de que esté.
+    fetchFalso = vi.fn(() => new Promise((listo) => { soltarConfig = listo }))
+    vi.stubGlobal('fetch', fetchFalso)
+  })
+
+  it('pedir la ficha antes de que llegue la config espera, y la da', async () => {
+    const { humanoListo } = await import('../src/umbani/captcha')
+    const captcha = {}
+    const listo = humanoListo(captcha, {} as HTMLElement)
+    soltarConfig(respuesta(200, { turnstile: { claveDeSitio: '0x4AAAAAAAsitio' } }))
+    const humano = await listo
+    const ficha = humano!.obtener()
+    opciones.callback('ficha-1')
+    expect(await ficha).toBe('ficha-1')
+  })
+
+  it('el widget y la config se piden UNA vez aunque se toque dos veces', async () => {
+    const { humanoListo } = await import('../src/umbani/captcha')
+    const captcha = {}
+    const uno = humanoListo(captcha, {} as HTMLElement)
+    const dos = humanoListo(captcha, {} as HTMLElement)
+    soltarConfig(respuesta(200, { turnstile: { claveDeSitio: '0x4AAAAAAAsitio' } }))
+    expect(await uno).toBe(await dos)
+    expect(fetchFalso).toHaveBeenCalledTimes(1)
+    expect(turnstile.render).toHaveBeenCalledTimes(1)
+  })
+
+  it('sin captcha en el servidor: ni widget ni ficha', async () => {
+    const { humanoListo } = await import('../src/umbani/captcha')
+    const listo = humanoListo({}, {} as HTMLElement)
+    soltarConfig(respuesta(200, { turnstile: null }))
+    expect(await listo).toBeNull()
+    expect(turnstile.render).not.toHaveBeenCalled()
+  })
+
+  it('olvidar quita el widget, y la próxima vez vuelve a preguntar al servidor', async () => {
+    const { humanoListo, olvidarCaptcha } = await import('../src/umbani/captcha')
+    const captcha = {}
+    const listo = humanoListo(captcha, {} as HTMLElement)
+    soltarConfig(respuesta(200, { turnstile: { claveDeSitio: '0x4AAAAAAAsitio' } }))
+    await listo
+    olvidarCaptcha(captcha)
+    await vi.waitFor(() => expect(turnstile.remove).toHaveBeenCalledWith('widget-1'))
+    void humanoListo(captcha, {} as HTMLElement)
+    expect(fetchFalso).toHaveBeenCalledTimes(2)
+  })
+})

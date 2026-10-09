@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { RiArrowLeftSLine } from '@remixicon/react'
 import { Aviso, Boton } from '../components/ui'
-import { NO_COMPROBADO, prepararFichaHumana, type FichaHumana } from '../lib/turnstile'
-import {
-  canjearCodigoDeCorreo, configDeEntrada, ErrorDeLaApp, guardarToken, mensaje, pedirCodigoPorCorreo,
-} from './api'
+import { NO_COMPROBADO } from '../lib/turnstile'
+import { canjearCodigoDeCorreo, ErrorDeLaApp, guardarToken, mensaje, pedirCodigoPorCorreo } from './api'
+import { claveDelCaptcha, humanoListo, olvidarCaptcha, type Captcha } from './captcha'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // LO COMÚN DE LAS APPS WEB: el marco, la cabecera y ENTRAR CON EL CORREO
@@ -50,9 +49,7 @@ export function Cabecera({ titulo, onVolver }: { titulo: string; onVolver?: () =
 // Dos pasos: el correo, y el código de 6 números que llega a él. Sin
 // contraseñas. En el servidor de PRUEBAS no se mandan correos: el código
 // vuelve en la respuesta y se enseña aquí (en producción eso no existe).
-//
-// Y si el servidor tiene encendido el captcha (2026-10-09), cada petición de
-// código va con su ficha de persona (`lib/turnstile.ts`). Apagado, nada cambia.
+// Con el captcha encendido, cada petición lleva su ficha (`./captcha`).
 
 export function Entrar({ explicacion, onVolver, onDentro, titulo = 'Entra con tu correo' }: {
   explicacion?: ReactNode
@@ -67,61 +64,46 @@ export function Entrar({ explicacion, onVolver, onDentro, titulo = 'Entra con tu
   const [ocupado, setOcupado] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // El captcha: su clave la da el servidor, y su sitio está fuera de los dos
-  // pasos para que «Mandarme otro código» también tenga ficha.
-  const [claveDeSitio, setClaveDeSitio] = useState<string | null>(null)
+  // El captcha: su sitio está fuera de los dos pasos para que «Mandarme otro
+  // código» también tenga ficha.
   const [comprobando, setComprobando] = useState(false)
-  // Sube tras un fallo del captcha: vuelve a leer la config y a montar el widget.
-  const [intentoDelCaptcha, setIntentoDelCaptcha] = useState(0)
   const lugarDelCaptcha = useRef<HTMLDivElement>(null)
-  const humano = useRef<FichaHumana | null>(null)
+  const captcha = useRef<Captcha>({})
 
   useEffect(() => {
-    let vigente = true
-    configDeEntrada()
-      .then(config => { if (vigente) setClaveDeSitio(config.turnstile?.claveDeSitio ?? null) })
-      .catch(() => { /* sin config se pide sin ficha; si el servidor la exige, lo dice */ })
-    return () => { vigente = false }
-  }, [intentoDelCaptcha])
+    const actual = captcha.current
+    humanoListo(actual, lugarDelCaptcha.current).catch(() => { /* se reintenta al pedir el código */ })
+    return () => olvidarCaptcha(actual)
+  }, [])
 
-  useEffect(() => {
-    const lugar = lugarDelCaptcha.current
-    if (!claveDeSitio || !lugar) return
-    let vigente = true
-    prepararFichaHumana(lugar, claveDeSitio)
-      .then(ficha => { if (vigente) humano.current = ficha; else ficha.quitar() })
-      .catch(() => { /* sin widget: se le avisa al pedir el código */ })
-    return () => {
-      vigente = false
-      humano.current?.quitar()
-      humano.current = null
+  /** La ficha para esta petición: `undefined` si el servidor no pide captcha. */
+  const fichaDePersona = async (): Promise<string | undefined> => {
+    if (!await claveDelCaptcha(captcha.current)) return undefined
+    setComprobando(true)
+    try {
+      const humano = await humanoListo(captcha.current, lugarDelCaptcha.current)
+      return humano ? await humano.obtener() : undefined
+    } catch {
+      olvidarCaptcha(captcha.current)
+      throw new Error(NO_COMPROBADO)
+    } finally {
+      setComprobando(false)
     }
-  }, [claveDeSitio, intentoDelCaptcha])
+  }
 
   const pedirCodigo = async (evento?: FormEvent) => {
     evento?.preventDefault()
     setError(null)
     setOcupado(true)
     try {
-      let ficha: string | undefined
-      if (claveDeSitio) {
-        if (!humano.current) throw new Error(NO_COMPROBADO)
-        setComprobando(true)
-        try {
-          ficha = await humano.current.obtener()
-        } finally {
-          setComprobando(false)
-        }
-      }
-      const r = await pedirCodigoPorCorreo(correo.trim(), ficha)
+      const r = await pedirCodigoPorCorreo(correo.trim(), await fichaDePersona())
       setDePruebas(r.codigoDePruebas ?? null)
       setCodigo('')
       setPaso('codigo')
     } catch (e) {
-      // El captcha falló o el servidor lo encendió después: se monta de nuevo.
-      if (e instanceof ErrorDeLaApp ? e.falta === 'turnstile' : mensaje(e) === NO_COMPROBADO) {
-        setIntentoDelCaptcha(n => n + 1)
-      }
+      // El servidor pide un captcha que esta pantalla no conocía (se encendió
+      // después de abrirla): el próximo intento lee la clave y lo monta.
+      if (e instanceof ErrorDeLaApp && e.falta === 'turnstile') olvidarCaptcha(captcha.current)
       setError(mensaje(e))
     } finally {
       setOcupado(false)
