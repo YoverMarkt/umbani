@@ -69,8 +69,9 @@ repartidores propios encendidos.
   Si el local no terminó de empacar: `409` con lo que falta.
 - **Entregado:** `POST /api/v1/motorizado/pedidos/{id}/entregado`. Si
   `cobrarEnEfectivo` es verdadero, la app pide confirmar «Cobré $X» antes.
-  El cliente recibe sus avisos («en camino», «entregado») por WhatsApp en
-  cuanto la app marca cada paso; la app no manda nada.
+  El cliente ve cada paso («en camino», «entregado») en su app en cuanto esta
+  lo marca; la app del motorizado no le manda nada. Desde el 2026-10-09 no se
+  le avisa por WhatsApp, y las notificaciones push llegarán después.
 
 ## 4. Mis liquidaciones
 - **Llama:** `GET /api/v1/motorizado/liquidaciones` → cada semana con

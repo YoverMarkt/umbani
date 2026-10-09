@@ -19,6 +19,7 @@
     "test:e2e": "playwright test",
     "test:e2e:install": "playwright install chromium",
     "iconos": "node scripts/iconos-de-las-apps.mjs",
+    "boceto": "node scripts/comparar-con-boceto.mjs",
     "staging:up": "node server/tests/staging.mjs levantar",
     "staging:actualizar": "node server/tests/staging.mjs actualizar",
     "staging:down": "supabase stop",

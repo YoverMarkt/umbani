@@ -47,8 +47,8 @@ Umbani atiende ciudad por ciudad (hoy Chone) y **cada cliente ve solo los locale
 - **Confirmar:** `POST /api/store/{slug}/orders` con una `idempotencyKey` por carrito (si reintentas, manda la misma: no se crean dos pedidos).
 
 ## 6. Después de pedir
-- **Efectivo / al retirar:** «Recibimos tu pedido #N». El local lo confirma y el cliente recibe los avisos por WhatsApp.
-- **Transferencia:** `GET /api/store/{slug}/payment-info` → la cuenta del local para transferir. El comprobante se manda por el chat de WhatsApp de Umbani.
+- **Efectivo / al retirar:** «Recibimos tu pedido #N». El local lo confirma y el cliente sigue el pedido en «Mis pedidos» (§7): desde el 2026-10-09 no se le manda ningún aviso por WhatsApp, y las notificaciones push llegarán después.
+- **Transferencia:** `GET /api/store/{slug}/payment-info` → la cuenta del local para transferir. El comprobante se SUBE en la app: `POST /api/store/{slug}/orders/{id}/proof` (ver API-UMBANI.md §4b). Ya no se manda por WhatsApp.
 - **Tarjeta:** ver «Pagar con tarjeta» en API-UMBANI.md. Pantalla «Confirmando tu pago…» → «¡Pago recibido!» o «No se completó el pago» (con «Intentar de nuevo»).
 
 ## 7. Mis pedidos
