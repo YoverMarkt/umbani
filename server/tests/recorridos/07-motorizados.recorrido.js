@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
   admin, centavos, cerrarSql, clientePorWhatsApp, comoMotorizado, configurarElDinero, entrarComoLocal,
-  esperarHasta, exigir, lineaDelLibro, payphone, productosSimples, recogerLaMesa, reloj, sql,
+  exigir, lineaDelLibro, payphone, productosSimples, recogerLaMesa, reloj, sql,
 } from './actores.mjs'
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -93,13 +93,17 @@ describe('el motorizado de UMBANI', () => {
     expect(quien).toBe(motorizadoId)
   })
 
-  it('el cliente se entera por WhatsApp de que va en camino y de que llegó', async () => {
-    const avisos = await esperarHasta(async () => {
-      const { mensajes } = await payphone.estado()
-      const deEste = mensajes.filter(m => m.to.replace(/\D/g, '') === '000000000000' && m.texto.includes(`#${pedido.order_number}`))
-      return deEste.length >= 3 ? deEste : null
-    }, { segundos: 30, que: 'los avisos de en camino y entregado al cliente' })
-    expect(avisos.length).toBeGreaterThanOrEqual(3)
+  // Hasta el 2026-10-09 aquí se esperaban los avisos por WhatsApp. Umbani es
+  // solo app: el cliente ve en la app que llegó, y por WhatsApp no le sale nada.
+  it('el cliente lo sigue en la app, sin un solo WhatsApp', async () => {
+    const visto = await cliente.pedido(pedido.id)
+    expect((visto.order || visto).status).toBe('completado')
+    // Los avisos salían SIN esperar, justo después de cada cambio de estado: se
+    // da un margen para que, si saliera alguno, estuviera ya en el buzón falso.
+    await new Promise(listo => setTimeout(listo, 1500))
+    const { mensajes } = await payphone.estado()
+    const deEste = mensajes.filter(m => m.to.replace(/\D/g, '') === '000000000000' && m.texto.includes(`#${pedido.order_number}`))
+    expect(deEste).toEqual([])
   })
 
   it('el libro: la carrera es SUYA y el efectivo lo tiene ÉL', async () => {

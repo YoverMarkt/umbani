@@ -96,13 +96,15 @@ describe('un pedido por TRANSFERENCIA, de punta a punta', () => {
   })
 
   it('🔒 el pedido de OTRO teléfono no aparece ni se abre', async () => {
-    const [ajeno] = await sql(`select id from orders where contact_phone <> '000000000000' limit 1`)
+    // El cliente de la app entra con correo y SU celular (2026-10-09), no con el
+    // número del simulador de WhatsApp.
+    const [ajeno] = await sql('select id from orders where contact_phone not in ($1, $2) limit 1', [cliente.telefono, `+${cliente.telefono}`])
     if (ajeno) {
       const r = await http('GET', `/api/v1/pedidos/${ajeno.id}`, { token: cliente.tokenApp })
       expect(r.status).toBe(404)
     }
     const { pedidos } = await exigir(200, http('GET', '/api/v1/pedidos', { token: cliente.tokenApp }))
-    const [{ propios }] = await sql(`select count(*)::int as propios from orders where contact_phone in ('000000000000','+000000000000')`)
+    const [{ propios }] = await sql('select count(*)::int as propios from orders where contact_phone in ($1, $2)', [cliente.telefono, `+${cliente.telefono}`])
     expect(pedidos.length).toBe(Math.min(propios, 30))
   })
 })

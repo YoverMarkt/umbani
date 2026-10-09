@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import {
-  cerrarSql, clientePorWhatsApp, configurarElDinero, entrarComoLocal, esperarHasta, exigir,
+  cerrarSql, clientePorWhatsApp, configurarElDinero, entrarComoLocal, exigir,
   lineaDelLibro, llevarHastaEntregar, payphone, productosSimples, recogerLaMesa, sql,
 } from './actores.mjs'
 
@@ -44,15 +44,18 @@ const avisosDe = async numero => (await payphone.estado()).mensajes
   .filter(m => m.to.replace(/\D/g, '') === '000000000000' && m.texto.includes(`#${numero}`))
 
 describe('cancelaciones y pagos que no llegan', () => {
-  it('el local RECHAZA un pedido: no queda venta y el cliente se entera', async () => {
+  // Hasta el 2026-10-09 «se entera» era un aviso por WhatsApp. Umbani es solo
+  // app: lo ve en la app, y por WhatsApp no le sale nada.
+  it('el local RECHAZA un pedido: no queda venta y el cliente lo ve en la app', async () => {
     const pedido = await pedirEn('efectivo')
     await exigir(200, local.cambiarEstado(pedido.id, 'rechazado'))
     await sinRastroEnElDinero(pedido.id)
-    const avisos = await esperarHasta(async () => {
-      const suyos = await avisosDe(pedido.order_number)
-      return suyos.length ? suyos : null
-    }, { segundos: 20, que: 'el aviso del rechazo' })
-    expect(avisos.length).toBeGreaterThanOrEqual(1)
+    const visto = await cliente.pedido(pedido.id)
+    expect((visto.order || visto).status).toBe('rechazado')
+    // Los avisos salían SIN esperar, justo después de cada cambio de estado: se
+    // da un margen para que, si saliera alguno, estuviera ya en el buzón falso.
+    await new Promise(listo => setTimeout(listo, 1500))
+    expect(await avisosDe(pedido.order_number)).toEqual([])
   })
 
   it('la transferencia que nunca se paga CADUCA sola, sin venta', async () => {
