@@ -38,17 +38,21 @@ describe('la cuenta usa la misma puerta que el resto de la tienda', () => {
 // LOS TRES FALLOS QUE EL DUEÑO ENCONTRÓ EN PRODUCCIÓN (2026-09-26)
 // ═══════════════════════════════════════════════════════════════════════════
 
-describe('después de confirmar el número, los pedidos se vuelven a pedir', () => {
-  it('la cuenta escucha las sesiones nuevas y no se queda cargando', () => {
+describe('un acceso que no vale, en «Mis pedidos», lo DICE y manda a la app', () => {
+  // Nació el 2026-09-26 como «después de confirmar el número, se vuelve a
+  // pedir». La confirmación por WhatsApp se retiró el 2026-10-09 (Umbani es
+  // solo app): lo que queda es lo que importaba al dueño — que la pantalla no
+  // se quede en «Cargando…» para siempre, sino que diga qué falta.
+  it('no se queda cargando: dice «Entra desde la app» con su botón', () => {
     const cuenta = leer('../src/screens/Account.tsx')
-    // El efecto que carga los pedidos se repite al confirmar…
-    expect(cuenta).toMatch(/\}, \[slug, onFalloEnlace, sesionesNuevas, intento\]\)/)
-    // …y mientras falta confirmar lo DICE, en vez de un «Cargando…» eterno.
-    expect(cuenta).toMatch(/if \(await onFalloEnlace\(fallo\)\) \{\s*setFaltaConfirmar\(true\)/)
-    expect(cuenta).toContain('Confirmar mi número')
+    expect(cuenta).toMatch(/\}, \[slug, onFalloEnlace, intento\]\)/)
+    expect(cuenta).toMatch(/if \(await onFalloEnlace\(fallo\)\) \{\s*setSinAcceso\(true\)/)
+    expect(cuenta).toContain('titulo="Entra desde la app"')
+    expect(cuenta).toContain('href={DIRECCION_DE_UMBANI}')
+    // Y ya no hay contador de sesiones que la tienda tenga que pasarle.
     const tienda = fuenteDeLaPantalla()
     const cuentaEnTienda = tienda.slice(tienda.indexOf('<Account'), tienda.indexOf('/>', tienda.indexOf('<Account')))
-    expect(cuentaEnTienda).toContain('sesionesNuevas={sesionesNuevas}')
+    expect(cuentaEnTienda).not.toContain('sesionesNuevas')
   })
 })
 

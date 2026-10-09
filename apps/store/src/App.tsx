@@ -1,25 +1,26 @@
 import { Suspense, lazy, useCallback, useEffect, useState } from 'react'
 import { RiCloseLine } from '@remixicon/react'
-import {
-  ApiError, confirmarTelefono, getStore, isBlocked, isLinkProblem,
-} from './lib/api'
+import { ApiError, getStore, isBlocked, isLinkProblem } from './lib/api'
 import { isMobileDevice } from './lib/device'
 import { aplicarColorDeMarca } from './lib/marca'
 import { readSlug } from './lib/session'
+import { volverAUmbani } from './lib/umbani'
 import type { Business, StoreStatus } from './lib/types'
 import FoodStore from './screens/FoodStore'
 import { Bienvenida } from './components/ui'
 
-// ── LAS TRES PUERTAS VIAJAN APARTE ─────────────────────────────────────────
+// ── LAS PUERTAS VIAJAN APARTE ──────────────────────────────────────────────
 //
-// Ninguna de las tres se ve en una visita normal, y las tres se descargaban en
-// la primera carga —la que se paga en clientes que cierran antes de que la
-// tienda abra—:
+// Ninguna se ve en una visita normal, y se descargaban en la primera carga —la
+// que se paga en clientes que cierran antes de que la tienda abra—:
 //
 //   · `DesktopGate` solo sale en una COMPUTADORA, y esta app es para el
 //     teléfono: en el móvil es peso muerto al 100 %.
-//   · `Gate` solo sale con un enlace que no vale.
-//   · `Confirmar` solo cuando falta demostrar el número.
+//   · `Gate` solo sale con un acceso que no vale.
+//
+// (Había una tercera, `Confirmar`, que pedía el número de WhatsApp para
+// entrar con un enlace del chat. Se retiró el 2026-10-09: Umbani es solo app y
+// la tienda se abre desde ella, con la cuenta.)
 //
 // ⚠️ Se difieren ESTAS y no la pantalla de pedido recibido, que era la otra
 // candidata por tamaño. Aquella se pinta en el instante siguiente a confirmar
@@ -29,8 +30,7 @@ import { Bienvenida } from './components/ui'
 // un instante más en decirlo.
 //
 // Cada una en su propio trozo, no en uno común: quien se topa con una puerta
-// no tiene por qué descargarse las otras dos.
-const Confirmar = lazy(() => import('./screens/Confirmar'))
+// no tiene por qué descargarse las otras.
 const Gate = lazy(() => import('./screens/Gate'))
 const DesktopGate = lazy(() => import('./screens/DesktopGate'))
 // La cuarta puerta, y la más reciente (2026-08-29): el local bloqueó a esta
@@ -85,29 +85,6 @@ type Estado =
 export default function App() {
   const slug = readSlug()
   const [estado, setEstado] = useState<Estado>({ fase: 'cargando' })
-  /**
-   * Falta confirmar el número de WhatsApp. No es un error: es la puerta.
-   *
-   * ⚠️ Vive APARTE de la fase, y eso es el arreglo. Era una fase más, así que
-   * pedir el número desmontaba la tienda entera y con ella el carrito: el
-   * cliente llenaba su pedido, tocaba confirmar, escribía su número… y volvía
-   * a una tienda vacía. Ahora la confirmación se pinta ENCIMA y al cerrarse
-   * todo sigue donde estaba.
-   */
-  const [confirmando, setConfirmando] = useState<{ business: Business | null } | null>(null)
-  /**
-   * Cuántas veces se ha estrenado sesión en esta visita.
-   *
-   * ⚠️ Existe por un fallo que el cliente sufría cada vez: al confirmar el
-   * teléfono NO se volvía a preguntar quién es, así que `me` se quedaba en el
-   * `null` con el que había fallado antes — y con él, su libreta de
-   * direcciones. La persona veía «no tienes direcciones», escribía la suya
-   * otra vez, y acababa con la misma casa repetida tres veces.
-   *
-   * Es un contador y no un booleano porque lo que hace falta es DISPARAR de
-   * nuevo el efecto, y un `true` que ya era `true` no dispara nada.
-   */
-  const [sesionesNuevas, setSesionesNuevas] = useState(0)
 
   const cargar = useCallback(async () => {
     if (!slug) return setEstado({ fase: 'no_disponible' })
@@ -205,12 +182,8 @@ export default function App() {
     try {
       business = (await getStore(slug)).business
     } catch { business = null }
-    // 'necesita_telefono' no es un portazo: es que aún no ha demostrado quién
-    // es. Se le pide el número en vez de mandarlo a pedir otro enlace.
-    if (motivo === 'necesita_telefono') {
-      setConfirmando({ business })
-      return true
-    }
+    // 'necesita_telefono' (este teléfono aún no demostró el acceso) va por el
+    // mismo camino que los demás: a la app, que es quien abre las tiendas.
     // ⚠️ ENCIMA de la tienda, no en lugar de ella (2026-08-27).
     //
     // `fase: 'bloqueada'` desmonta `FoodStore`, y con él se va el CARRITO. El
@@ -343,44 +316,18 @@ export default function App() {
   // perdía el carrito entero: el cliente lo llenaba, tocaba confirmar,
   // escribía su número y volvía a una tienda vacía. Lo mismo valía para el
   // checkout a medio llenar.
-  const puertaDelTelefono = confirmando && (
-    <div className="fixed inset-0 z-[60] overflow-y-auto superficie">
-      <Suspense fallback={null}>
-        <Confirmar
-          business={confirmando.business}
-          onConfirmar={async (telefono) => {
-            const fallo = await confirmarTelefono(slug, telefono)
-            // El catálogo NO se recarga: la sesión ya está atada a este
-            // teléfono y la tienda sigue montada detrás, con su carrito
-            // intacto. Volver a pedirlo todo era justo lo que lo vaciaba.
-            //
-            // ⚠️ Pero SÍ hay que volver a preguntar QUIÉN ES. Acaba de
-            // demostrar su número, así que ahora el servidor puede devolver su
-            // nombre y sus direcciones; sin esto se quedaba con el `me` en
-            // nulo del intento anterior y su libreta parecía vacía. Solo eso
-            // se recarga: es una petición pequeña y no toca el carrito.
-            if (!fallo) {
-              setConfirmando(null)
-              setSesionesNuevas(veces => veces + 1)
-            }
-            return fallo
-          }}
-        />
-      </Suspense>
-    </div>
-  )
-
-
   return (
     <>
       <FoodStore
         slug={slug}
         business={business}
         status={status}
-        sesionesNuevas={sesionesNuevas}
+        // La flecha de la portada vuelve a la app. Sin ella, con la app
+        // instalada en un iPhone —sin botón de atrás— el cliente se quedaba
+        // encerrado en la tienda.
+        onVolver={volverAUmbani}
         onFalloEnlace={alFallarEnlace}
       />
-      {puertaDelTelefono}
       {puertaDelEnlace}
     </>
   )

@@ -196,33 +196,15 @@ paths:
         '410': { description: El código venció, se usó o agotó sus intentos; pedir otro }
   /api/v1/auth/whatsapp:
     post:
-      summary: EN ESPERA (2026-10-06) — pide un código para iniciar sesión con WhatsApp
+      summary: RETIRADA (2026-10-09) — ya no se entra con WhatsApp; se entra con el correo
+      description: Umbani es solo app. Responde siempre 410 con un texto para mostrar.
       responses:
-        '201':
-          description: Código y enlace de WhatsApp con el mensaje escrito
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  codigo: { type: string, example: K7P2QX }
-                  enlace: { type: string, example: 'https://wa.me/593991716574?text=Mi%20c%C3%B3digo%20de%20Umbani%3A%20K7P2QX' }
-                  expiraEn: { type: string, format: date-time }
+        '410': { description: '{ error: "Ya no se entra con WhatsApp. Entra con tu correo." }' }
   /api/v1/auth/whatsapp/verificar:
     post:
-      summary: Canjea el código por la sesión de la app (preguntar cada 2–3 s)
-      requestBody:
-        content:
-          application/json:
-            schema: { type: object, required: [codigo], properties: { codigo: { type: string } } }
+      summary: RETIRADA (2026-10-09) — ver /api/v1/auth/whatsapp
       responses:
-        '200':
-          description: Sesión iniciada
-          content:
-            application/json:
-              schema: { type: object, properties: { token: { type: string }, telefono: { type: string } } }
-        '202': { description: 'Todavía no llegó el mensaje: { pendiente: true }' }
-        '410': { description: El código venció o ya se usó }
+        '410': { description: '{ error: "Ya no se entra con WhatsApp. Entra con tu correo." }' }
   /api/v1/yo:
     get:
       summary: Quién es la sesión (su correo y su teléfono) y la ciudad que eligió
@@ -467,7 +449,7 @@ paths:
         '200': { description: '{ business: { name, logoUrl, deliveryFee, serviceFee, paymentMethods[{ code, label, help_text, test_mode }] … }, status, canOrder, todaysHours, nextOpen }' }
   /api/store/{slug}/session/verify:
     post:
-      summary: (Solo la mini app web) confirmar el teléfono de un enlace. La app no la necesita.
+      summary: (Solo los enlaces del chat de WhatsApp, en espera) confirmar el teléfono de un enlace. La app no la usa.
       parameters: [{ $ref: '#/components/parameters/slug' }]
       responses:
         '200': { description: Sesión confirmada }
@@ -609,6 +591,28 @@ paths:
       responses:
         '200': { description: '{ pagado, estadoDelPedido, estado, marca, ultimos }' }
 
+  /api/store/{slug}/orders/{id}/proof:
+    post:
+      summary: Sube el comprobante de una TRANSFERENCIA (una foto, en multipart)
+      description: |
+        Desde el 2026-10-09 el comprobante se sube en la app (Umbani es solo app; antes se mandaba
+        por el chat de WhatsApp). Campo `file`, una imagen de hasta 5 MB. El servidor la guarda en
+        privado, calcula su huella contra los duplicados y analiza el monto y la cuenta de destino;
+        el pedido pasa a `pago_en_revision` y el local lo revisa.
+      security: [{ sesionTienda: [] }]
+      parameters: [{ $ref: '#/components/parameters/slug' }, { $ref: '#/components/parameters/id' }]
+      requestBody:
+        content:
+          multipart/form-data:
+            schema: { type: object, required: [file], properties: { file: { type: string, format: binary } } }
+      responses:
+        '200': { description: '{ ok: true } — adjunto' }
+        '400': { description: Sin archivo, o no es una imagen }
+        '404': { description: Ese pedido no es de este teléfono o ya no existe }
+        '409': { description: Ese pedido ya está cerrado }
+        '413': { description: La imagen pasa de 5 MB }
+        '429': { description: Demasiados intentos, esperar un minuto }
+        '503': { description: El local no puede recibir comprobantes ahora mismo }
   /api/store/{slug}/orders/{id}/todo-bien:
     post:
       summary: «Todo bien» — lo mismo que /api/v1/pedidos/{id}/todo-bien, con la sesión de tienda

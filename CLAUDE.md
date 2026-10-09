@@ -198,6 +198,7 @@ Cada una existe porque algo falló. Lo que parece complejidad de más suele ser 
 - **La tarifa de servicio (dentro de la parte de Umbani, la lee la base, congelada)** → [DECISIONES.md](DECISIONES.md#la-tarifa-de-servicio)
 - **Las apps Flutter: usan la API de la tienda, entran con correo, el contrato vigilado** → [docs/apps/](docs/apps/README.md) y [DECISIONES.md](DECISIONES.md#la-api-de-las-apps-flutter)
 - **Entrar con correo: el teléfono se reclama en exclusiva (es la frontera de los pedidos), el código como huella, WhatsApp en espera** → [DECISIONES.md](DECISIONES.md#entrar-a-las-apps-con-correo)
+- **Umbani es SOLO APP: nada manda al cliente a WhatsApp (avisos al cliente apagados con un interruptor, entrada por WhatsApp en 410, el comprobante se sube en la app)** → [DECISIONES.md](DECISIONES.md#umbani-es-solo-app-nada-manda-al-cliente-a-whatsapp)
 - **Las apps instalables (PWA): el service worker antes del comodín, no guarda nada, solo iconos que ya usa la tienda** → [DECISIONES.md](DECISIONES.md#las-apps-instalables-pwa)
 - **Los motorizados (tope de efectivo, carrera retenida, su liquidación, apagado por defecto)** → [DECISIONES.md](DECISIONES.md#los-motorizados)
 - **Las ciudades (Chone y Portoviejo): sin ciudad un local no aparece, falla cerrado, el motorizado reparte en la suya** → [DECISIONES.md](DECISIONES.md#las-ciudades)

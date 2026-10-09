@@ -40,7 +40,6 @@ const ROUTERS_DE_LAS_APPS = ['app-v1.routes', 'app-entrar.routes', 'app-motoriza
 /** Las que NO usa la app, con su motivo. */
 const FUERA_DEL_CONTRATO = {
   '/s/{code}': 'enlace corto de WhatsApp para la mini app web',
-  '/api/store/{slug}/orders/{id}/proof': 'el comprobante se manda por el chat de WhatsApp, no desde la app',
 }
 
 describe('docs/apps/openapi.yaml', () => {

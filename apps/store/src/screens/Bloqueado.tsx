@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { RiForbid2Line, RiWhatsappLine } from '@remixicon/react'
+import { RiForbid2Line, RiHome5Line } from '@remixicon/react'
 import { Boton, LocalDeLaPuerta, SelloDePuerta } from '../components/ui'
 import { cuantoFalta } from '../lib/bloqueo'
+import { DIRECCION_DE_UMBANI } from '../lib/umbani'
 import type { Business } from '../lib/types'
 
 // Lo que ve quien está bloqueado en este local.
@@ -39,7 +40,6 @@ export default function Bloqueado({ business, until, permanent, onReintentar }: 
   }, [until])
 
   const nombre = business?.name || 'este local'
-  const telefono = String(business?.phone || '').replace(/[^\d]/g, '')
   const cumplido = Boolean(until) && !restante
 
   return (
@@ -85,21 +85,18 @@ export default function Bloqueado({ business, until, permanent, onReintentar }: 
         Mientras tanto puedes pedir en los demás locales de Umbani.
       </p>
 
-      {telefono && (
-        <div className="mt-4">
-          <a
-            href={`https://wa.me/${telefono}?text=${encodeURIComponent('MENÚ')}`}
-            className="block"
-          >
-            <Boton variante={cumplido ? 'linea' : 'principal'}>
-              <span className="flex items-center justify-center gap-2">
-                <RiWhatsappLine size={18} />
-                Ver otros locales
-              </span>
-            </Boton>
-          </a>
-        </div>
-      )}
+      {/* A la app, no al chat de WhatsApp (Umbani es solo app desde el
+          2026-10-09): allí están los demás locales. */}
+      <div className="mt-4">
+        <a href={DIRECCION_DE_UMBANI} className="block">
+          <Boton variante={cumplido ? 'linea' : 'principal'}>
+            <span className="flex items-center justify-center gap-2">
+              <RiHome5Line size={18} />
+              Ver otros locales
+            </span>
+          </Boton>
+        </a>
+      </div>
     </div>
   )
 }

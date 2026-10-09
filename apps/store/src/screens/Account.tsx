@@ -13,6 +13,7 @@ import { LlegoTodoBien } from '../components/LlegoTodoBien'
 import { getOrders } from '../lib/api'
 import { COMO_VA, PILL_ACTIVO, PILL_QUIETO } from '../lib/como-va'
 import { money } from '../lib/format'
+import { DIRECCION_DE_UMBANI } from '../lib/umbani'
 import type { Address, Me, TrackedOrder } from '../lib/types'
 
 // ── LA CUENTA DEL CLIENTE ──────────────────────────────────────────────────
@@ -28,13 +29,12 @@ import type { Address, Me, TrackedOrder } from '../lib/types'
 // Es la casa de lo que venga después: datos personales, favoritos, o lo que el
 // dueño decida. Hoy son dos secciones y ya justifica la pestaña.
 //
-// ⚠️ La lista de pedidos es de SOLO LECTURA desde el 2026-08-12. Tocar uno
-// abría su seguimiento, y esa pantalla se retiró: el pedido se sigue por
-// WhatsApp. Lo que se conserva —y no es poco— es el estado dicho en cristiano
-// junto a cada pedido: si el aviso no llegara (sin saldo en el canal, o fuera
-// de la ventana de 24 h), este es el único sitio de la app donde el cliente
-// puede comprobar por dónde va lo suyo. Una fila que no lleva a ninguna parte
-// no debe FINGIR que sí, así que deja de ser un botón.
+// ⚠️ La lista de pedidos es de SOLO LECTURA desde el 2026-08-12: una fila que
+// no lleva a ninguna parte no debe FINGIR que sí, así que no es un botón. Lo
+// que lleva es el estado dicho en cristiano junto a cada pedido, y desde el
+// 2026-10-09 es EL sitio donde el cliente sigue lo suyo: Umbani es solo app y
+// ya no le llega ningún aviso por WhatsApp (las notificaciones push vendrán
+// después).
 
 // ── El estado se lee, o esta pantalla no sirve para nada ───────────────────
 //
@@ -73,7 +73,7 @@ const cuando = (iso: string) => {
 type Vista = 'inicio' | 'pedidos' | 'direcciones'
 
 export default function Account({
-  slug, me, onVolver, onBorrarDireccion, onFalloEnlace, sesionesNuevas = 0,
+  slug, me, onVolver, onBorrarDireccion, onFalloEnlace,
 }: {
   slug: string
   me: Me | null
@@ -81,14 +81,13 @@ export default function Account({
   onBorrarDireccion: (addressId: string) => Promise<void>
   /** El mismo manejo que el resto de la tienda para un enlace que no vale. */
   onFalloEnlace: (error: unknown) => Promise<boolean>
-  /** Sube cada vez que el cliente confirma su número: hay que volver a pedir. */
-  sesionesNuevas?: number
 }) {
   const [pedidos, setPedidos] = useState<TrackedOrder[] | null>(null)
   const [error, setError] = useState<string | null>(null)
-  // El enlace pidió confirmar el número (o no vale) y la puerta ya se encargó:
-  // no es un error ni una carga, es un paso pendiente del cliente.
-  const [faltaConfirmar, setFaltaConfirmar] = useState(false)
+  // El acceso a la tienda no vale en este teléfono y la puerta ya se encargó:
+  // no es un error ni una carga, es un paso pendiente del cliente —entrar desde
+  // la app—.
+  const [sinAcceso, setSinAcceso] = useState(false)
   const [intento, setIntento] = useState(0)
   /**
    * ⚠️ Las dos secciones dejan de ir APILADAS (2026-08-28, pedido del dueño).
@@ -101,29 +100,23 @@ export default function Account({
 
   useEffect(() => {
     setError(null)
-    setFaltaConfirmar(false)
+    setSinAcceso(false)
     getOrders(slug)
       .then(setPedidos)
       .catch(async (fallo) => {
-        // ⚠️ Un enlace sin confirmar NO es «no pudimos cargar» (2026-09-25).
-        // Abriendo el enlace en otro teléfono, «Mis pedidos» decía que fallaba
-        // cuando lo que faltaba era confirmar el número: el resto de la tienda
-        // ya lo pedía y esta pantalla se lo tragaba. Ahora pasa por la misma
-        // puerta — confirmar, enlace caducado o bloqueo — y solo lo que de
-        // verdad es un fallo del camino se queda como error aquí.
-        //
-        // ⚠️ Y DESPUÉS de confirmar hay que volver a pedir (2026-09-26). Con el
-        // `return` a secas la pantalla se quedaba en «Cargando…» para siempre:
-        // el cliente confirmaba su número y nadie volvía a preguntar. Lo vio el
-        // dueño en producción. Ahora escucha `sesionesNuevas`, que la app sube
-        // al confirmar, y mientras tanto dice lo que falta en vez de cargar.
+        // ⚠️ Un acceso que no vale NO es «no pudimos cargar» (2026-09-25).
+        // Abriendo la tienda en otro teléfono, «Mis pedidos» decía que fallaba
+        // cuando lo que faltaba era entrar: el resto de la tienda ya lo decía y
+        // esta pantalla se lo tragaba. Ahora pasa por la misma puerta —acceso
+        // que no vale o bloqueo— y dice lo que falta en vez de cargar para
+        // siempre. Solo lo que de verdad es un fallo del camino es un error.
         if (await onFalloEnlace(fallo)) {
-          setFaltaConfirmar(true)
+          setSinAcceso(true)
           return
         }
         setError('No pudimos cargar tus pedidos')
       })
-  }, [slug, onFalloEnlace, sesionesNuevas, intento])
+  }, [slug, onFalloEnlace, intento])
 
   const direcciones: Address[] = me?.addresses || []
   // La flecha vuelve un paso, no dos: desde una sección se vuelve a la portada
@@ -156,7 +149,7 @@ export default function Account({
       <div className="space-y-7 px-4 pt-5">
         {me?.phone && vista === 'inicio' && (
           <p className="caption texto-cuerpo">
-            Tus pedidos y direcciones en este local, ligados a tu WhatsApp {me.phone}.
+            Tus pedidos y direcciones en este local, ligados a tu número {me.phone}.
           </p>
         )}
 
@@ -171,8 +164,8 @@ export default function Account({
                 id: 'pedidos' as const,
                 icono: RiShoppingBag3Line,
                 texto: 'Mis pedidos',
-                detalle: faltaConfirmar
-                  ? 'Confirma tu número para verlos'
+                detalle: sinAcceso
+                  ? 'Entra desde la app para verlos'
                   : pedidos === null
                   ? 'Cargando…'
                   : pedidos.length === 0
@@ -219,16 +212,16 @@ export default function Account({
               pantalla no salta cuando llegan los datos. El `brillo` recorre en
               vez de parpadear —un bloque que respira parece algo que viene— y
               se apaga solo con `prefers-reduced-motion`. */}
-          {faltaConfirmar && (
-            <EstadoVacio icono={<RiLockLine size={28} />} titulo="Confirma tu número">
-              Para ver tus pedidos, confirma el WhatsApp con el que pediste tu enlace.
-              <span className="mt-4 block">
-                <Boton onClick={() => setIntento(n => n + 1)}>Confirmar mi número</Boton>
-              </span>
+          {sinAcceso && (
+            <EstadoVacio icono={<RiLockLine size={28} />} titulo="Entra desde la app">
+              Para ver tus pedidos, entra en Umbani con tu cuenta y vuelve a este local.
+              <a href={DIRECCION_DE_UMBANI} className="mt-4 block">
+                <Boton>Ir a Umbani</Boton>
+              </a>
             </EstadoVacio>
           )}
 
-          {!pedidos && !error && !faltaConfirmar && (
+          {!pedidos && !error && !sinAcceso && (
             <div className="space-y-2">
               {[0, 1].map(fila => (
                 <div key={fila} className="brillo h-17 rounded-(--radius-tarjeta)" />

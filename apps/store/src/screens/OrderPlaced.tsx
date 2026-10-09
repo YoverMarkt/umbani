@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react'
+import { Suspense, lazy, useEffect, useState } from 'react'
 import {
   RiCheckLine,
   RiCloseLine,
   RiTimeLine,
   RiMapPin2Line,
-  RiWhatsappLine,
+  RiShoppingBag3Line,
 } from '@remixicon/react'
 import PagoPendiente from '../components/PagoPendiente'
 import { getOrder } from '../lib/api'
@@ -12,8 +12,11 @@ import { esEstadoFinal, estaCancelado } from '../lib/estado'
 import { money, rangoDeEspera } from '../lib/format'
 import { grupoEnTexto } from '../lib/resumen'
 import type { LineaResumen } from '../lib/resumen'
-import { enlaceWhatsApp, textoComprobante } from '../lib/whatsapp'
+import { DIRECCION_DE_MIS_PEDIDOS } from '../lib/umbani'
 import type { Business, Fulfillment } from '../lib/types'
+
+// Solo lo descarga quien paga por transferencia.
+const SubirComprobante = lazy(() => import('../components/SubirComprobante'))
 
 // ── EL PEDIDO ENTRÓ ────────────────────────────────────────────────────────
 //
@@ -37,22 +40,17 @@ import type { Business, Fulfillment } from '../lib/types'
 // el texto cambia — decirle «lo estamos preparando» a quien todavía no ha
 // transferido es mandarlo a esperar sentado.
 //
-// ── El comprobante se manda por WhatsApp (2026-08-12) ─────────────────────
+// ── El comprobante se sube AQUÍ, y el pedido se sigue en la app (2026-10-09) ─
 //
-// Esta pantalla tenía un botón para subirlo aquí y el chat como segunda vía.
-// Dos caminos para lo mismo, y el que casi nadie usaba era el de la app: la
-// gente transfiere desde su banco y la captura le queda en el teléfono, junto
-// a la conversación donde le llegó el enlace. Ahora hay UNO: los datos para
-// transferir, y de ahí de vuelta a WhatsApp.
+// Del 2026-08-12 a esa fecha el comprobante se mandaba por el chat de WhatsApp
+// y el estado del pedido llegaba en tres avisos por ahí. Desde que Umbani es
+// SOLO APP, el cliente llegó desde la app y en ella sigue: sube la captura en
+// esta misma pantalla (`SubirComprobante`) y ve por dónde va su pedido en «Mis
+// pedidos». Ya no se le escribe por WhatsApp (`config/avisos-al-cliente.ts`
+// del servidor); las notificaciones push vendrán después.
 //
-// Lo que sostiene la decisión es que la foto del chat YA se adjunta sola al
-// pedido (`services/payment-proof-inbox.ts`), así que el cliente no hace nada
-// distinto y el dueño ve exactamente lo mismo en su panel.
-//
-// Es ESTÁTICA a propósito, que fue la otra crítica de cuando se retiró: no
-// consulta nada porque no promete nada que pueda cambiar. Lo que cambia —el
-// estado del pedido— llega por los tres avisos de WhatsApp, que es donde el
-// cliente ya está mirando.
+// Es ESTÁTICA a propósito: no consulta nada porque no promete nada que pueda
+// cambiar, salvo que el pedido se cancele (ver más abajo).
 
 export interface PedidoRecibido {
   id: string
@@ -148,31 +146,16 @@ export default function OrderPlaced({
   )
   const total = Number(pedido.total) || pedido.subtotal + pedido.envio
 
-  // ⚠️ Con transferencia el enlace lleva escrito el texto del comprobante: el
-  // cliente vuelve al chat con la frase puesta y solo tiene que adjuntar la
-  // foto. Sin transferencia se abre la conversación limpia — no hay nada que
-  // pedirle, y un mensaje prellenado que no viene a cuento se borra.
-  const whatsapp = enlaceWhatsApp(
-    business.phone,
-    transferencia ? textoComprobante(pedido.order_number) : null,
-  )
-
   // ── El pedido murió ─────────────────────────────────────────────────────
   //
   // Reemplaza la pantalla ENTERA, no se añade encima. El resumen de lo que
   // pidió y el número de cuenta ya no sirven para nada: lo único que le queda
   // por hacer es preguntar qué pasó.
   //
-  // ⚠️ El botón abre el CHAT de Umbani, no una llamada (2026-09-07). Era un
-  // `tel:` al número del local, y desde que todo pasa por Umbani ese número es
-  // el WhatsApp de la plataforma: llamar ahí no lo coge nadie. Y aunque lo
-  // cogieran, el pedido, el comprobante y el seguimiento viven en el chat —
-  // que es donde de verdad se puede responder qué pasó.
-  //
-  // Dice lo MISMO que el aviso que llega por WhatsApp (`order-notify.ts`): el
-  // cliente llega por los dos caminos y no puede leer dos cosas distintas.
+  // El botón lleva a «Mis pedidos» de la app, donde el pedido sigue con su
+  // estado (2026-10-09). Antes abría el chat de WhatsApp de Umbani; Umbani es
+  // solo app, y un local nunca le da su número a un cliente.
   if (cancelado) {
-    const chat = String(business.phone || '').replace(/[^\d]/g, '')
     return (
       <div className="animar-entrada mx-auto flex min-h-[100dvh] max-w-md flex-col justify-center px-5 py-10">
         <div className="flex flex-col items-center text-center">
@@ -187,20 +170,18 @@ export default function OrderPlaced({
           </h1>
           <p className="mt-2.5 text-[14.5px] leading-relaxed texto-cuerpo">
             {numero ? `Tu pedido ${numero} no pudo continuar. ` : 'Tu pedido no pudo continuar. '}
-            Si quieres saber qué pasó o volver a pedir, escríbenos por aquí.
+            Lo ves en «Mis pedidos» de Umbani, y puedes volver a pedir cuando quieras.
           </p>
         </div>
 
         <div className="mt-8 space-y-1">
-          {chat && (
-            <a
-              href={`https://wa.me/${chat}?text=${encodeURIComponent('MENÚ')}`}
-              className="tinta flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-4 text-[15.5px] font-bold tracking-tight shadow-alzada transition active:scale-[0.98] active:opacity-90"
-            >
-              <RiWhatsappLine size={18} />
-              Escribirnos por WhatsApp
-            </a>
-          )}
+          <a
+            href={DIRECCION_DE_MIS_PEDIDOS}
+            className="tinta flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-4 text-[15.5px] font-bold tracking-tight shadow-alzada transition active:scale-[0.98] active:opacity-90"
+          >
+            <RiShoppingBag3Line size={18} />
+            Ver mis pedidos
+          </a>
           <button
             onClick={onVolver}
             className="w-full py-3.5 text-[14px] font-semibold texto-cuerpo transition active:scale-[0.98]"
@@ -334,17 +315,19 @@ export default function OrderPlaced({
             </div>
           </section>
         )}
-        {/* Los datos para transferir. Sin subidor desde el 2026-08-12: aquí
-            solo se lee el número de cuenta, y el comprobante se manda por el
-            chat, que es donde el cliente tiene la captura. */}
+        {/* Los datos para transferir y, debajo, dónde subir la captura (vuelve
+            el 2026-10-09: Umbani es solo app y el chat ya no es el camino). */}
         {transferencia && (
           <div className="mt-6 w-full">
             <PagoPendiente slug={slug} />
+            <Suspense fallback={null}>
+              <SubirComprobante slug={slug} orderId={pedido.id} />
+            </Suspense>
           </div>
         )}
 
         {/* ── Cómo llegar, para quien retira ──
-            Va ANTES del bloque de WhatsApp y a tamaño de botón, no de nota al
+            Va ANTES del bloque del seguimiento y a tamaño de botón, no de nota al
             pie: quien eligió retirar tiene que salir de casa, y el dato que
             necesita es el punto. Sin esto solo sabía el nombre del local. */}
         {puntoDelLocal && (
@@ -359,61 +342,40 @@ export default function OrderPlaced({
           </a>
         )}
 
-        {/* ⚠️ EL TEXTO GRANDE, y el tamaño es la decisión. Esto no es una nota
-            al pie: con transferencia es la instrucción que desbloquea el
-            pedido, y en efectivo es la promesa de que nadie tiene que volver a
-            abrir esta app para enterarse de nada. Puesto en letra pequeña bajo
-            un botón, se lee cuando ya no hace falta. */}
-        <div className="superficie mt-6 w-full rounded-(--radius-tarjeta) px-4 py-4 text-left shadow-tarjeta">
-          <div className="flex items-start gap-3">
-            <span className="acento flex size-10 shrink-0 items-center justify-center rounded-full shadow-acento">
-              <RiWhatsappLine size={19} />
-            </span>
-            <div className="min-w-0">
-              <p className="titulo-m">
-                {transferencia
-                  ? 'Mándanos el comprobante por WhatsApp'
-                  : 'Te mantenemos al tanto por WhatsApp'}
-              </p>
-              <p className="mt-1.5 text-[14px] leading-relaxed texto-cuerpo">
-                {transferencia
-                  // ⚠️ «a Umbani», no «al local». En el marketplace el número
-                  // que el cliente tiene en su chat es el de la PLATAFORMA: el
-                  // local no tiene canal propio, así que mandarlo «al chat del
-                  // local» es mandarlo a un WhatsApp que no existe. Es el mismo
-                  // arreglo que ya se hizo en `Gate.tsx` con «escríbele al
-                  // negocio».
-                  // ⚠️ «a tu nombre» se dice POR DELANTE, sin que haya pasado
-                  // nada (2026-09-01). Es la instrucción, no un reproche: si
-                  // solo apareciera al rechazar un comprobante, parecería una
-                  // norma inventada sobre la marcha justo cuando la persona
-                  // ya transfirió.
-                  ? `Envía la captura de tu transferencia al chat ${business.phoneIsPlatform ? 'de Umbani' : 'del local'}. Tiene que estar a tu nombre. En cuanto la revisen, te avisamos por ahí y empiezan a prepararlo.`
-                  : entrega === 'delivery'
-                    ? 'Te escribimos cuando el local empiece a prepararlo, cuando salga para tu dirección y cuando llegue.'
-                    : 'Te escribimos cuando el local empiece a prepararlo y cuando esté listo para que pases a retirarlo.'}
-              </p>
+        {/* ⚠️ EL TEXTO GRANDE, y el tamaño es la decisión: es la promesa de
+            que el cliente sabrá por dónde va su pedido sin tener que preguntar.
+            Con transferencia no sale: allí la instrucción es subir el
+            comprobante, que va arriba con su botón. */}
+        {!transferencia && (
+          <div className="superficie mt-6 w-full rounded-(--radius-tarjeta) px-4 py-4 text-left shadow-tarjeta">
+            <div className="flex items-start gap-3">
+              <span className="acento flex size-10 shrink-0 items-center justify-center rounded-full shadow-acento">
+                <RiTimeLine size={19} />
+              </span>
+              <div className="min-w-0">
+                <p className="titulo-m">Síguelo en «Mis pedidos»</p>
+                <p className="mt-1.5 text-[14px] leading-relaxed texto-cuerpo">
+                  {entrega === 'delivery'
+                    ? 'Ahí ves cuándo el local empieza a prepararlo, cuándo sale para tu dirección y cuándo llega.'
+                    : 'Ahí ves cuándo el local empieza a prepararlo y cuándo está listo para que pases a retirarlo.'}
+                </p>
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
 
       <div className="mt-8 space-y-1">
-        {/* ⚠️ La salida principal es el chat, no una pantalla de esta app. El
-            cliente llegó aquí desde WhatsApp y ahí es donde va a recibir los
-            avisos; devolverlo es terminar el viaje donde empezó. Va en TINTA
-            como todo botón principal: el acento señala, no acciona. */}
-        {whatsapp && (
-          <a
-            href={whatsapp}
-            target="_blank"
-            rel="noreferrer"
-            className="tinta flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-4 text-[15.5px] font-bold tracking-tight shadow-alzada transition active:scale-[0.98] active:opacity-90"
-          >
-            <RiWhatsappLine size={18} />
-            Volver a WhatsApp
-          </a>
-        )}
+        {/* La salida principal es «Mis pedidos» de la app (2026-10-09): ahí
+            se sigue el pedido. Antes era volver al chat de WhatsApp. Va en
+            TINTA como todo botón principal: el acento señala, no acciona. */}
+        <a
+          href={DIRECCION_DE_MIS_PEDIDOS}
+          className="tinta flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-4 text-[15.5px] font-bold tracking-tight shadow-alzada transition active:scale-[0.98] active:opacity-90"
+        >
+          <RiShoppingBag3Line size={18} />
+          Ver mis pedidos
+        </a>
         <button
           onClick={onVolver}
           className="w-full py-3.5 text-[14px] font-semibold texto-cuerpo transition active:scale-[0.98]"
