@@ -29,7 +29,6 @@ const LIMITE = 1000
 /** Los que ya pasaban el 2026-10-06, con sus líneas de ese día. Solo encogen. */
 const PENDIENTES_DE_PARTIR = {
   'apps/store/src/screens/FoodStore.tsx': 1346,
-  'apps/store/src/components/ProductSheet.tsx': 1018,
 }
 
 const GENERADOS = new Set(['server/src/db/tipos-generados.ts'])
