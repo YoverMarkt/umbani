@@ -17,6 +17,11 @@ import type { Correo, EnvioDeCorreo } from './correo'
 //    puede repartir intentos entre varios códigos vivos.
 //  · 5 códigos por hora y correo: sin tope, este servidor serviría para
 //    llenarle el buzón a cualquiera.
+//  · Un tope GLOBAL por hora (2026-10-08, `CODIGOS_POR_HORA_EN_TOTAL`): los
+//    de arriba frenan a uno que insiste, no a mil bots que piden UN código
+//    cada uno para correos inventados. Esos correos rebotan, y un remitente
+//    con muchos rebotes acaba suspendido por el proveedor: nadie más podría
+//    entrar. Al llenarse queda en el registro de errores.
 //  · La respuesta es la misma exista o no la cuenta: nadie puede averiguar
 //    quién usa Umbani preguntando.
 //
@@ -29,6 +34,12 @@ import type { Correo, EnvioDeCorreo } from './correo'
 export const VIGENCIA_DEL_CODIGO_DE_CORREO_MS = 10 * 60 * 1000
 export const INTENTOS_POR_CODIGO = 5
 export const CODIGOS_POR_HORA = 5
+/**
+ * Para TODA la plataforma. Holgado para el día a día (una cuenta pide código
+ * al entrar en un teléfono nuevo, y la sesión dura 30 días); se sube con
+ * `CORREO_CODIGOS_POR_HORA_EN_TOTAL` antes de una campaña.
+ */
+export const CODIGOS_POR_HORA_EN_TOTAL = 120
 export const CODIGO_DE_CORREO_VALIDO = /^\d{6}$/
 
 export const generarCodigoDeCorreo = (): string => String(randomInt(0, 1_000_000)).padStart(6, '0')
@@ -74,13 +85,15 @@ export interface DependenciasDelCorreo {
   /** Gasta un intento si nadie lo gastó a la vez; false si otro llegó antes. */
   gastarIntento: (id: string, intentosAntes: number) => Promise<boolean>
   marcarUsado: (id: string) => Promise<boolean>
+  /** El tope global: ¿cabe otro código en toda la plataforma? Si cabe, ya cuenta. */
+  cabeOtroCodigo: () => boolean
   ahora?: () => number
 }
 
 export type ResultadoDePedirCodigo =
   | { estado: 'enviado'; expiraEn: string }
   | { estado: 'pruebas'; expiraEn: string; codigo: string }
-  | { estado: 'demasiados' | 'no_disponible' | 'fallo' }
+  | { estado: 'demasiados' | 'saturado' | 'no_disponible' | 'fallo' }
 
 export async function pedirCodigoPorCorreo(correo: string, d: DependenciasDelCorreo): Promise<ResultadoDePedirCodigo> {
   const pruebas = !d.hayProveedor() && d.esStaging()
@@ -92,6 +105,8 @@ export async function pedirCodigoPorCorreo(correo: string, d: DependenciasDelCor
   if (await d.contarCodigos(correo, new Date(ahora - 60 * 60 * 1000)) >= CODIGOS_POR_HORA) {
     return { estado: 'demasiados' }
   }
+  // DESPUÉS del tope por correo: quien ya agotó los suyos no gasta cupo ajeno.
+  if (!d.cabeOtroCodigo()) return { estado: 'saturado' }
   const codigo = generarCodigoDeCorreo()
   const expira = new Date(ahora + VIGENCIA_DEL_CODIGO_DE_CORREO_MS)
   await d.guardarCodigo(correo, huellaDelCodigo(correo, codigo, d.secreto()), expira)

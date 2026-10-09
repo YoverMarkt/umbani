@@ -61,6 +61,8 @@ import appMotorizadoRouter = require('./routes/app-motorizado.routes')
 import cooperativaRouter = require('./routes/cooperativa.routes')
 import healthRouter = require('./routes/health.routes')
 import { cachearEstaticos, enviarHtmlDeSpa } from './lib/cache-estaticos'
+import { unaVezCada } from './lib/una-vez-cada'
+import { ajustarTiemposDeEspera } from './lib/tiempos-de-espera'
 import { montarAppsInstalables } from './lib/apps-instalables'
 import { alEntrarUnMensaje } from './lib/despertador-de-la-cola'
 
@@ -340,6 +342,26 @@ const telegramLimiter = rateLimit({
 })
 app.use('/webhook/telegram', telegramLimiter)
 
+// Lo que tarda UNA consulta a la base desde el servidor (2026-09-26). Cada
+// respuesta del chat hace varias en fila, así que este número multiplicado
+// es el grueso de lo que el cliente espera. Con la región al lado, dice si
+// servidor y base están cerca o se cruzan medio continente.
+//
+// ⚠️ Como mucho UNA vez cada 2 s, lleguen las peticiones que lleguen
+// (2026-10-08): la ruta es pública y sin limitador —Railway la usa para saber
+// si el contenedor vive— y sin esto cada petición era una consulta a la base.
+// Ver `lib/una-vez-cada.ts`.
+const leerLaBaseParaLaSalud = unaVezCada(2_000, async () => {
+  const antes = Date.now()
+  let lastInboundAt: string | null = null
+  try {
+    lastInboundAt = await db.getLastInboundAt()
+  } catch {
+    lastInboundAt = null
+  }
+  return { lastInboundAt, baseMs: Date.now() - antes }
+})
+
 // ⚠️ Esta ruta es PÚBLICA: solo dice lo que se le puede contar a cualquiera.
 // Su hermano con token —`/api/health/detalle`, en `routes/health.routes.ts`—
 // es el que cuenta el saldo y las credenciales al vigía externo.
@@ -352,18 +374,7 @@ app.get('/api/health', asyncHandler(async (_req: Request, res: Response) => {
   // viaja como dato informativo; para el diagnóstico completo por negocio está
   // /api/admin/channel-health.
   const ok = !shuttingDown && webhookInboxWorker.isReady()
-  let lastInboundAt: string | null = null
-  // Lo que tarda UNA consulta a la base desde el servidor (2026-09-26). Cada
-  // respuesta del chat hace varias en fila, así que este número multiplicado
-  // es el grueso de lo que el cliente espera. Con la región al lado, dice si
-  // servidor y base están cerca o se cruzan medio continente.
-  const antesDeLaBase = Date.now()
-  try {
-    lastInboundAt = await db.getLastInboundAt()
-  } catch {
-    lastInboundAt = null
-  }
-  const baseMs = Date.now() - antesDeLaBase
+  const { lastInboundAt, baseMs } = await leerLaBaseParaLaSalud()
   const recentFailures = getRecentWebhookFailures(5)
   res.status(ok ? 200 : 503).json({
     ok,
@@ -732,4 +743,6 @@ void comprobarIdentidadDeLaBase({
     process.exit(1)
   }
   httpServer = app.listen(port, alAbrirElPuerto)
+  // Contra quien manda las cabeceras a cuentagotas. Ver `lib/tiempos-de-espera.ts`.
+  ajustarTiemposDeEspera(httpServer)
 })

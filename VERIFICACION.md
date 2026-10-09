@@ -718,3 +718,44 @@ marca de staging. La última es la que de verdad protege.
   la app: «Mi código de Umbani: XXXXXX»).
 - **La tarjeta** solo funciona si su dominio está registrado en PayPhone
   (pruebas): lo registra el dueño en su portal.
+
+## La prueba de carga y de ataques (2026-10-08)
+
+`npm run test:carga -w @botpanel/server` (con `-- --informe <archivo.md>`, además
+lo deja escrito). Nació a pedido del dueño —«pruebas de DDoS, protección a bots
+o atacantes»— y responde lo que UNA máquina puede responder sobre el servidor
+de verdad, Railway + Supabase. Las defensas que comprueba están en
+[DECISIONES.md](DECISIONES.md#las-defensas-contra-bots-y-ataques).
+
+### Qué comprueba
+
+Diez escenarios, cada uno con su veredicto: la línea base; una avalancha contra
+la vitrina (el freno salta y el servidor sigue contestando a los demás);
+**falsear `X-Forwarded-For`** (si colara, cada petición podría inventarse una IP
+y ningún límite valdría nada); una avalancha contra `/api/health` (cuenta las
+lecturas DISTINTAS de la base en las respuestas: si se comparten, son pocas);
+fuerza bruta al login (el freno, y que un correo sin cuenta tarde lo mismo que
+uno con cuenta); adivinar un código del correo; pedir códigos sin parar; un
+cuerpo de 3 MB; cabeceras a cuentagotas; y muchas conexiones a la vez.
+
+### 🔐 La guardia
+
+Una lista de lo **PERMITIDO**, no de lo prohibido: solo corre contra el staging
+de `server/.env.staging-remoto` o contra uno local, y además el servidor tiene
+que DECLARARSE staging en `/api/health`. ⚠️ La primera versión comparaba con el
+`BASE_URL` de `server/.env` para negarse con producción… y ese archivo no lo
+tiene (en producción vive en las variables de Railway): no comparaba con nada.
+Lo destapó probar la guardia ANTES de usarla —el argumento llegó vacío y la
+prueba cayó al staging—. Una guardia se prueba con lo que debe rechazar.
+
+### Qué NO cubre
+
+- **Un DDoS de verdad.** Llega desde miles de direcciones y se para delante, en
+  Cloudflare. Desde un portátil no se simula.
+- **Que dos clientes distintos tengan contadores distintos.** Desde una sola IP
+  no se puede ver (el dominio de Railway no tiene IPv6 para usarla de segundo
+  cliente). Lo que sí se ve es lo peligroso: que una IP inventada no cuela. Para
+  lo otro: con la IP de este equipo frenada, abrir `/u` desde un teléfono con
+  datos móviles; si carga, cada cliente cuenta aparte.
+- ⚠️ Deja **la IP de este equipo frenada** en el staging un rato (el login del
+  panel, 15 minutos). Un despliegue vacía los contadores.

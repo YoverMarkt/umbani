@@ -115,7 +115,7 @@ describe('POST /api/client/login', () => {
         business_id: 'business-a',
         password_hash: 'stored-hash',
       })
-    vi.spyOn(bcrypt, 'compare').mockResolvedValue(false)
+    const compare = vi.spyOn(bcrypt, 'compare').mockResolvedValue(false)
 
     const missing = await dispatch('/api/client/login', {
       email: 'missing@example.com', password: 'password',
@@ -129,6 +129,21 @@ describe('POST /api/client/login', () => {
     expect(incorrect.status).toBe(401)
     expect(incorrect.body.error).toBe('Credenciales incorrectas')
     expect(getClientByEmail).toHaveBeenCalledTimes(2)
+    // Y TARDAN lo mismo: sin cuenta también se paga el bcrypt (2026-10-08).
+    // Si no, cronometrando se sabría qué correos tienen cuenta.
+    expect(compare).toHaveBeenCalledTimes(2)
+  })
+
+  it('una cuenta creada sin clave es un 401, no un 500', async () => {
+    // `bcrypt.compare(clave, null)` lanza: antes eso acababa en «Error interno».
+    vi.spyOn(db, 'getClientByEmail').mockResolvedValue({
+      id: 'user-a', business_id: 'business-a', password_hash: null,
+    })
+    const response = await dispatch('/api/client/login', {
+      email: 'user@example.com', password: 'una-clave-cualquiera',
+    })
+    expect(response.status).toBe(401)
+    expect(response.body.error).toBe('Credenciales incorrectas')
   })
 
   it('rechaza negocios inactivos', async () => {

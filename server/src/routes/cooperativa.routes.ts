@@ -5,6 +5,7 @@ import { cooperativaDe, cooperativaGuard, firmarSesionDeCooperativa } from '../m
 import { telefonoDelRepartidor } from '../lib/telefono-del-repartidor'
 import { ERROR_SIN_CORREO, MENSAJE_CORREO_REPETIDO, datoRepetido } from '../lib/alta-del-repartidor'
 import { correoNormalizado } from '../lib/correo-normalizado'
+import { claveCorrecta } from '../lib/clave-sin-pistas'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // EL PANEL DE UNA COOPERATIVA DE REPARTO (`/cooperativa`, 2026-10-06)
@@ -20,8 +21,6 @@ import { correoNormalizado } from '../lib/correo-normalizado'
 // ⚠️ El dinero no se calcula aquí: carreras, efectivo y saldos vienen de la
 // base (`courier_balance`, `courier_settlements`), en centavos.
 
-interface ModuloBcrypt { compare(valor: string, hash: string): Promise<boolean> }
-const bcrypt: ModuloBcrypt = require('bcryptjs') as typeof import('bcryptjs')
 const db = require('../db') as typeof import('../db')
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -48,7 +47,9 @@ router.post('/api/cooperativa/login', loginLimiter, async (req, res) => {
   if (!email || !clave) return res.status(401).json({ error: NO_ENTRA })
 
   const usuario = await db.getCooperativeUserByEmail(email)
-  if (!usuario || !await bcrypt.compare(clave, usuario.password_hash)) {
+  // Sin cuenta también se paga el bcrypt (ver `lib/clave-sin-pistas.ts`).
+  const claveBuena = await claveCorrecta(clave, usuario?.password_hash)
+  if (!usuario || !claveBuena) {
     return res.status(401).json({ error: NO_ENTRA })
   }
   const cooperativa = await db.getCooperative(usuario.cooperative_id)

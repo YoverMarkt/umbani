@@ -31,7 +31,9 @@ el `token`, porque el resto de la app no cambiará — todas las rutas solo mira
    - `401` → código incorrecto: gasta uno de sus **5 intentos**.
    - `410` → venció, se usó o agotó sus intentos: vuelve al paso 1.
    Solo vale el **último** código pedido. Como mucho **5 códigos por hora** por
-   correo (`429`).
+   correo (`429`). Y un tope para toda la plataforma: si se llena (un bot
+   pidiendo códigos), el paso 1 responde `503` con `Retry-After` en segundos —
+   muestra su `error` y deja reintentar pasado ese tiempo.
 3. **El número.** Una cuenta de correo nace SIN teléfono, y sin él no se puede
    pedir: `POST /api/v1/locales/{slug}/sesion` responde `409 { falta: 'telefono' }`.
    La app pregunta UNA vez «¿a qué número te llama el repartidor?» y lo manda

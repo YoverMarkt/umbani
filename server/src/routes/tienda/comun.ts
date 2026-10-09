@@ -145,7 +145,6 @@ export const storeLimiter = rateLimit({
   message: { error: 'Demasiadas peticiones, espera un momento' },
 })
 
-// Crear pedidos es mucho más caro y nadie pide 30 veces por minuto.
 /**
  * Los métodos que ESE local acepta, con la tarjeta si le toca.
  *
@@ -163,6 +162,7 @@ export async function metodosDeLaTienda(business: StorefrontBusiness) {
     : metodos
 }
 
+// Crear pedidos es mucho más caro y nadie pide 30 veces por minuto.
 export const orderLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 8,

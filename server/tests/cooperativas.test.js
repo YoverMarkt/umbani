@@ -154,6 +154,7 @@ describe('el inicio de sesión de la cooperativa', () => {
   })
 
   it('un correo que no existe y una clave mala dicen lo mismo', async () => {
+    const compare = vi.spyOn(bcrypt, 'compare')
     const buscar = vi.spyOn(db, 'getCooperativeUserByEmail').mockResolvedValue(null)
     const r1 = await login({ email: 'nadie@x.ec', password: 'cualquier-cosa-larga' })
     vi.spyOn(db, 'getCooperative').mockResolvedValue(cooperativa)
@@ -161,6 +162,8 @@ describe('el inicio de sesión de la cooperativa', () => {
     const r2 = await login({ email: 'coop@x.ec', password: 'otra-clave-mala!!' })
     expect(r1).toMatchObject({ status: 401, body: { error: 'Correo o contraseña incorrectos' } })
     expect(r2).toMatchObject({ status: 401, body: { error: 'Correo o contraseña incorrectos' } })
+    // …y tardan lo mismo: sin cuenta también se paga el bcrypt (2026-10-08).
+    expect(compare).toHaveBeenCalledTimes(2)
   })
 
   it('entra con su token de cooperativa (correo sin mayúsculas ni espacios), y nunca devuelve el hash', async () => {
