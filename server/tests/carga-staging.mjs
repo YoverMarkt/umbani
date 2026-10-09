@@ -8,6 +8,9 @@
 // máquina puede responder sobre el servidor de verdad (Railway + Supabase):
 //
 //    1. Sin nadie molestando, cuánto tarda cada cosa.
+//    1b. UN contador por cliente: `RateLimit-Remaining` baja de uno en uno.
+//       Si salta (89, 88, 89…), el servidor cuenta por nodo de Railway y no
+//       por cliente — lo que destapó esta prueba el primer día.
 //    2. Una avalancha contra la vitrina: el freno salta (429) y el servidor
 //       sigue contestando a los demás mientras tanto.
 //    3. Falsear `X-Forwarded-For` no salta el freno (si lo saltara, cualquiera
@@ -189,6 +192,23 @@ async function lineaBase() {
   return ciudad
 }
 
+async function unContadorPorCliente() {
+  // Ocho seguidas a una ruta con freno: con un solo contador para esta IP, lo
+  // que queda baja de uno en uno. Con varios (uno por nodo), se repite o sube.
+  const restantes = []
+  for (let i = 0; i < 8; i++) {
+    const r = await pedir('/api/v1/ciudades')
+    restantes.push(Number(r.cabeceras?.get('ratelimit-remaining')))
+  }
+  const deUnoEnUno = restantes.every((n, i) => i === 0 || n === restantes[i - 1] - 1)
+  anotar('Un contador por cliente (no uno por nodo de Railway)', deUnoEnUno ? 'bien' : 'mal', [
+    `RateLimit-Remaining en ocho peticiones seguidas: ${restantes.join(', ')}`,
+    deUnoEnUno
+      ? 'Baja de uno en uno: el freno cuenta a ESTE cliente.'
+      : '⚠️ Se repite o sube: hay varios contadores para una sola IP — el freno cuenta por nodo (ver config/ip-del-cliente.ts).',
+  ])
+}
+
 async function avalanchaContraLaVitrina(ciudad) {
   const parar = vigia()
   const { resultados, duracionMs } = await rafaga(300, 30, () => pedir(`/api/v1/marketplace?ciudad=${ciudad}`))
@@ -361,6 +381,7 @@ console.log(`\n🧪 Prueba de carga contra ${BASE} (versión ${salud.version}, $
 const inicio = new Date()
 
 const ciudad = await lineaBase()
+await unContadorPorCliente()
 if (ciudad) {
   await avalanchaContraLaVitrina(ciudad)
   await falsearLaIp(ciudad)
