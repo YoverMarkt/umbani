@@ -8,6 +8,7 @@ import { JWT } from '../middleware/auth'
 import { createRouter } from '../middleware/async'
 import { enlaceDeConfiguracion, nuevaClave, verificarCodigo } from '../lib/codigos-de-un-solo-uso'
 import { conActor } from '../lib/actor-de-la-peticion'
+import { claveCorrecta } from '../lib/clave-sin-pistas'
 
 interface LoginBody {
   email?: unknown
@@ -23,10 +24,6 @@ interface ClientUser {
   permissions?: unknown
 }
 
-interface ModuloBcrypt {
-  compare(value: string, hash: string): Promise<boolean>
-}
-const bcrypt: ModuloBcrypt = require('bcryptjs') as typeof import('bcryptjs')
 interface ModuloDb {
   getClientByEmail(email: string): Promise<ClientUser | null>
   getBusinessById(businessId: string): Promise<BusinessRecord | null>
@@ -217,10 +214,10 @@ router.post('/api/client/login', loginLimiter, async (req, res) => {
   }
   try {
     const user = await db.getClientByEmail(email)
-    if (!user) return res.status(401).json({ error: 'Credenciales incorrectas' })
-
-    const validPassword = await bcrypt.compare(password, user.password_hash)
-    if (!validPassword) return res.status(401).json({ error: 'Credenciales incorrectas' })
+    // Sin cuenta también se paga el bcrypt: si no, el tiempo de respuesta dice
+    // qué correos tienen cuenta. Ver `lib/clave-sin-pistas.ts`.
+    const validPassword = await claveCorrecta(password, user?.password_hash)
+    if (!user || !validPassword) return res.status(401).json({ error: 'Credenciales incorrectas' })
 
     const business = await db.getBusinessById(user.business_id)
     if (!business?.active) {

@@ -5,9 +5,11 @@ import { leerConfiguracionCorreo } from '../config/correo'
 import { correoNormalizado } from '../lib/correo-normalizado'
 // La misma regla que el repartidor: el celular de Ecuador, en dígitos y con su código de país.
 import { telefonoDelRepartidor as telefonoDeCelular } from '../lib/telefono-del-repartidor'
+import { crearTopePorVentana, enteroDelEntorno } from '../lib/tope-por-ventana'
 import { enviarCorreo } from '../services/correo'
+import { recordError } from '../services/error-log'
 import {
-  canjearCodigoDeCorreo, pedirCodigoPorCorreo, type DependenciasDelCorreo,
+  CODIGOS_POR_HORA_EN_TOTAL, canjearCodigoDeCorreo, pedirCodigoPorCorreo, type DependenciasDelCorreo,
 } from '../services/entrar-con-correo'
 import { authApp, correoDe, firmarSesionDeCorreo } from '../services/sesion-app'
 
@@ -33,6 +35,22 @@ const pedirLimiter = limitador(5, 'Demasiados códigos pedidos, espera un moment
 const canjearLimiter = limitador(20, 'Demasiados intentos, espera un momento')
 const cuentaLimiter = limitador(30, 'Demasiadas peticiones, espera un momento')
 
+// El tope GLOBAL de códigos (2026-10-08): los de arriba cuentan por IP y por
+// correo; este, para toda la plataforma. Ver `services/entrar-con-correo.ts`.
+const topeDeCodigos = crearTopePorVentana({
+  maximo: enteroDelEntorno(process.env.CORREO_CODIGOS_POR_HORA_EN_TOTAL, CODIGOS_POR_HORA_EN_TOTAL),
+  ventanaMs: 60 * 60 * 1000,
+  alLlenarse: () => {
+    console.warn('⚠️ 📧 Se llenó el tope global de códigos por correo: ¿un bot pidiendo códigos?')
+    void recordError({
+      category: 'envio',
+      code: 'correo_tope_global',
+      message: 'Se llenó el tope de códigos por correo de la hora: o hay una campaña (súbelo con '
+        + 'CORREO_CODIGOS_POR_HORA_EN_TOTAL) o un bot pidiendo códigos para correos inventados.',
+    })
+  },
+})
+
 const dependencias: DependenciasDelCorreo = {
   hayProveedor: () => Boolean(leerConfiguracionCorreo()),
   esStaging: () => esStaging(process.env),
@@ -47,6 +65,7 @@ const dependencias: DependenciasDelCorreo = {
   codigoVigente: correo => db.codigoDeCorreoVigente(correo),
   gastarIntento: (id, intentosAntes) => db.gastarIntentoDeCodigoDeCorreo(id, intentosAntes),
   marcarUsado: id => db.marcarCodigoDeCorreoUsado(id),
+  cabeOtroCodigo: () => topeDeCodigos.cabe(),
 }
 
 const cuerpo = (req: { body?: unknown }) => (req.body || {}) as Record<string, unknown>
@@ -62,6 +81,9 @@ router.post('/api/v1/auth/correo', pedirLimiter, async (req, res) => {
     // ⚠️ SOLO EN STAGING, sin proveedor de correo: el código vuelve aquí.
     case 'pruebas': return res.status(201).json({ enviado: false, expiraEn: r.expiraEn, codigoDePruebas: r.codigo })
     case 'demasiados': return res.status(429).json({ error: 'Ya te mandamos varios códigos. Revisa tu correo (también el spam) o espera un rato.' })
+    case 'saturado':
+      res.setHeader('Retry-After', '600')
+      return res.status(503).json({ error: 'Hay muchas personas entrando ahora mismo. Inténtalo en unos minutos.' })
     case 'no_disponible': return res.status(503).json({ error: 'Entrar con correo todavía no está disponible' })
     default: return res.status(502).json({ error: 'No pudimos mandar el correo. Inténtalo en un momento.' })
   }

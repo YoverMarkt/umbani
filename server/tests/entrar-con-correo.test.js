@@ -17,6 +17,7 @@ const { enviarCorreo } = require('../dist/services/correo')
 // piezas, así que cada una se comprueba sola. Lo que se defiende:
 //   · el código no se guarda en claro;
 //   · nadie llena el buzón de otro (5 por hora y correo);
+//   · ni mil bots el de la plataforma (el tope global por hora);
 //   · el código solo se ve en pantalla en STAGING;
 //   · 5 intentos, y cada intento se gana ANTES de comparar;
 //   · un código se usa una vez.
@@ -25,7 +26,7 @@ const SECRETO = 'secreto-de-prueba'
 const CORREO = 'ana@correo.com'
 
 /** Un almacén en memoria con las mismas reglas que el repositorio. */
-function piezas({ proveedor = true, staging = false, recientes = 0, envio = 'enviado' } = {}) {
+function piezas({ proveedor = true, staging = false, recientes = 0, envio = 'enviado', cabe = true } = {}) {
   const guardados = []
   const enviados = []
   const d = {
@@ -53,6 +54,7 @@ function piezas({ proveedor = true, staging = false, recientes = 0, envio = 'env
       fila.usado = true
       return true
     }),
+    cabeOtroCodigo: vi.fn(() => cabe),
   }
   return { d, guardados, enviados }
 }
@@ -85,6 +87,27 @@ describe('pedir el código', () => {
     // Cuenta la última hora, no la vida entera del correo.
     const desde = d.contarCodigos.mock.calls[0][1]
     expect(Date.now() - desde.getTime()).toBeGreaterThanOrEqual(60 * 60 * 1000 - 1000)
+  })
+
+  it('con el tope GLOBAL lleno no guarda ni manda nada: mil bots no salen de aquí', async () => {
+    // Cada bot pide UN código para un correo inventado: ni el tope por IP ni el
+    // de cada correo los ven. Esos correos rebotarían, y con muchos rebotes el
+    // proveedor suspende al remitente — y entonces no entra nadie.
+    const { d, guardados, enviados } = piezas({ cabe: false })
+    expect(await pedirCodigoPorCorreo(CORREO, d)).toEqual({ estado: 'saturado' })
+    expect(guardados).toHaveLength(0)
+    expect(enviados).toHaveLength(0)
+  })
+
+  it('el tope global se mira DESPUÉS del de cada correo: quien agotó los suyos no gasta cupo ajeno', async () => {
+    const { d } = piezas({ recientes: CODIGOS_POR_HORA })
+    expect(await pedirCodigoPorCorreo(CORREO, d)).toEqual({ estado: 'demasiados' })
+    expect(d.cabeOtroCodigo).not.toHaveBeenCalled()
+  })
+
+  it('el tope global vale también en staging, sin proveedor', async () => {
+    const { d } = piezas({ proveedor: false, staging: true, cabe: false })
+    expect(await pedirCodigoPorCorreo(CORREO, d)).toEqual({ estado: 'saturado' })
   })
 
   it('en STAGING sin proveedor, el código vuelve en la respuesta para poder probar', async () => {

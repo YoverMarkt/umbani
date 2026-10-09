@@ -211,6 +211,7 @@ Cada una existe porque algo falló. Lo que parece complejidad de más suele ser 
 - **Los vigías, el parte diario y el respaldo (lo que vigila producción YA desplegada)** → [VERIFICACION.md](VERIFICACION.md#las-dos-capas-que-vigilan-lo-que-ya-está-en-producción-2026-09-18)
 - **El staging local y el freno de tareas de fondo** → [VERIFICACION.md](VERIFICACION.md#el-staging-local-y-el-freno-que-lo-hizo-necesario-2026-09-19)
 - **Los tipos generados de la base (y por qué generarlos no basta)** → [VERIFICACION.md](VERIFICACION.md#los-tipos-de-la-base-generados-desde-la-base-2026-09-19)
+- **Las defensas contra bots y ataques (qué se cerró, qué no y por qué; un DDoS se para en Cloudflare, no aquí)** → [DECISIONES.md](DECISIONES.md#las-defensas-contra-bots-y-ataques) y su prueba de carga en [VERIFICACION.md](VERIFICACION.md#la-prueba-de-carga-y-de-ataques-2026-10-08)
 ---
 
 ## 7. HIGIENE DE GIT

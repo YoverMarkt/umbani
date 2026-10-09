@@ -167,7 +167,13 @@ paths:
         '400': { description: Correo no válido }
         '429': { description: Ya pidió 5 en la última hora }
         '502': { description: El proveedor de correo falló; reintentar en un momento }
-        '503': { description: Entrar con correo todavía no está disponible en este servidor }
+        '503':
+          description: |
+            Dos casos, los dos con `error` para mostrar: entrar con correo todavía no está disponible
+            en este servidor, o se llenó el tope de códigos de TODA la plataforma (un bot pidiendo
+            códigos). En el segundo llega `Retry-After` con los segundos que hay que esperar.
+          headers:
+            Retry-After: { schema: { type: integer, example: 600 }, description: Solo cuando se llenó el tope }
   /api/v1/auth/correo/verificar:
     post:
       summary: Canjea el código del correo por la sesión de la app
