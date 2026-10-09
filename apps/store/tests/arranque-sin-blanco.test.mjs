@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
+import { fuenteDeLaPantalla } from './fuente-de-la-pantalla.mjs'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // LA PANTALLA EN BLANCO DEL ARRANQUE
@@ -35,7 +36,7 @@ import { readFileSync } from 'node:fs'
 // ═══════════════════════════════════════════════════════════════════════════
 
 const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
-const tienda = readFileSync(new URL('../src/screens/FoodStore.tsx', import.meta.url), 'utf8')
+const tienda = fuenteDeLaPantalla() // entera: ver `fuente-de-la-pantalla.mjs`
 const ui = readFileSync(new URL('../src/components/ui.tsx', import.meta.url), 'utf8')
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8')
 

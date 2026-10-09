@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { fuenteDeLaPantalla } from './fuente-de-la-pantalla.mjs'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // LA TIENDA ABRE LA PANTALLA DE BUSCAR DE VERDAD (2026-09-26)
@@ -12,7 +12,9 @@ import { readFileSync } from 'node:fs'
 // `cuenta-sin-confirmar.test.mjs`.
 
 describe('la tienda abre la pantalla de verdad', () => {
-  const tienda = readFileSync(new URL('../src/screens/FoodStore.tsx', import.meta.url), 'utf8')
+  // La pantalla ENTERA: desde el 2026-10-08 el pie (con «Buscar») vive en
+  // `components/PieDeLaTienda.tsx`. Ver `fuente-de-la-pantalla.mjs`.
+  const tienda = fuenteDeLaPantalla()
 
   it('viaja en su propio trozo, fuera del presupuesto de la carta', () => {
     expect(tienda).toContain("const Buscar = lazy(() => import('./Buscar'))")

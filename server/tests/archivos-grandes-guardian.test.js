@@ -15,21 +15,16 @@ import { raiz } from './pantallas.mjs'
 // todas. `marketplace-entry.ts` llegó a 1.968 juntando la entrada del chat, sus
 // pantallas y sus frenos.
 //
-// ⚠️ ES UN TRINQUETE. Los archivos que ya pasaban el día que nació el guardián
-// están apuntados abajo con su tamaño de ese día: pueden ENCOGER, nunca
-// crecer. Si hay que tocar uno, primero se parte. Y el día que baja del límite
-// hay que sacarlo de la lista, para que no vuelva a engordar a escondidas: la
-// lista solo se acorta.
+// Nació TRINQUETE el 2026-10-06: trece archivos pasaban y quedaron apuntados
+// con su tamaño, para que pudieran encoger y nunca crecer. El 2026-10-08 se
+// partió el último (`FoodStore.tsx`, 1.346) y la lista se retiró: la regla es
+// ya ABSOLUTA. Un archivo que pasa se parte antes de fusionar; no hay lista de
+// espera a la que volver a apuntarlo.
 //
 // Quedan fuera los archivos GENERADOS: `tipos-generados.ts` lo escribe
 // `supabase gen types`, y partirlo a mano se perdería al regenerarlo.
 
 const LIMITE = 1000
-
-/** Los que ya pasaban el 2026-10-06, con sus líneas de ese día. Solo encogen. */
-const PENDIENTES_DE_PARTIR = {
-  'apps/store/src/screens/FoodStore.tsx': 1346,
-}
 
 const GENERADOS = new Set(['server/src/db/tipos-generados.ts'])
 
@@ -59,36 +54,19 @@ const tamanos = new Map(codigoDelMonorepo().map((archivo) => [
 ]))
 
 describe('ningún archivo de código pasa de 1.000 líneas', () => {
-  it('ninguno nuevo pasa del límite', () => {
+  it('ninguno pasa del límite', () => {
     const culpables = [...tamanos]
-      .filter(([archivo, lineas]) => lineas > LIMITE && !(archivo in PENDIENTES_DE_PARTIR) && !GENERADOS.has(archivo))
+      .filter(([archivo, lineas]) => lineas > LIMITE && !GENERADOS.has(archivo))
       .map(([archivo, lineas]) => `${archivo} → ${lineas} líneas`)
 
     expect(culpables, `Pártelo por responsabilidades antes de seguir (máximo ${LIMITE}):\n${culpables.join('\n')}`)
       .toEqual([])
   })
 
-  it('los que ya pasaban no crecen', () => {
-    const crecieron = Object.entries(PENDIENTES_DE_PARTIR)
-      .filter(([archivo, tope]) => (tamanos.get(archivo) ?? 0) > tope)
-      .map(([archivo, tope]) => `${archivo} → ${tamanos.get(archivo)} líneas (tenía ${tope})`)
-
-    expect(crecieron, `Para tocar uno de estos, primero se parte:\n${crecieron.join('\n')}`).toEqual([])
-  })
-
-  it('el que baja del límite sale de la lista', () => {
-    const yaCumplen = Object.keys(PENDIENTES_DE_PARTIR)
-      .filter((archivo) => tamanos.has(archivo) && tamanos.get(archivo) <= LIMITE)
-      .map((archivo) => `${archivo} → ${tamanos.get(archivo)} líneas`)
-
-    expect(yaCumplen, `Ya cumplen: sácalos de PENDIENTES_DE_PARTIR para que no vuelvan a engordar:\n${yaCumplen.join('\n')}`)
-      .toEqual([])
-  })
-
-  it('la lista no apunta a archivos que ya no existen', () => {
-    // Un archivo partido o renombrado que se queda en la lista es un hueco: su
-    // sucesor podría crecer sin que nadie lo mire.
-    const fantasmas = [...Object.keys(PENDIENTES_DE_PARTIR), ...GENERADOS]
+  it('la excepción de los generados no apunta a archivos que ya no existen', () => {
+    // Un generado renombrado que se queda en la lista es un hueco: el nombre
+    // viejo ya no exime nada y el nuevo pasaría a contar sin que nadie lo vea.
+    const fantasmas = [...GENERADOS]
       .filter((archivo) => !existsSync(path.join(raiz, archivo)))
 
     expect(fantasmas, `Sácalos de la lista:\n${fantasmas.join('\n')}`).toEqual([])
