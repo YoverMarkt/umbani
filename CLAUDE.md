@@ -310,6 +310,7 @@ Ante cualquier pedido, identifica la situación y consulta la(s) skill(s) corres
 | Crear feature/endpoint/etiqueta nueva o cambiar comportamiento que otros consumen | **documentacion** |
 | Crear o modificar gráficos, dashboards, KPIs o visualizaciones en el panel | **graficos-dashboard** (usa la bundled **dataviz**) |
 | Crear, migrar o revisar pantallas React y componentes del sistema visual | **shadcn-ui** |
+| Construir o cambiar una pantalla de la app desde el diseño de Figma del dueño (o una imagen suya) | **fiel-al-boceto** (`npm run boceto`; donde choque con premium-ui-design, manda el diseño) |
 
 **Combinaciones frecuentes:**
 - "Agrega una tabla/campo nuevo" → base-de-datos + arquitecto-saas + tester-saas + documentacion.

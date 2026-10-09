@@ -21,3 +21,8 @@ respaldos/
 
 # El staging en internet: sus credenciales nunca van a git (server/tests/staging-remoto.mjs)
 server/.env.staging-remoto
+
+# Los bocetos de Figma del dueño y sus comparaciones (`npm run boceto`, skill
+# fiel-al-boceto): el repositorio es PÚBLICO y el diseño no se publica antes de
+# tiempo. Lo vigila server/tests/bocetos-privados-guardian.test.js.
+.bocetos/
