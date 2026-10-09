@@ -185,25 +185,30 @@ export function checkSession(input: {
   return { ok: false, reason: 'necesita_telefono', session }
 }
 
-/** Qué contarle a quien no puede entrar. Nunca revela datos del dueño. */
+/**
+ * Qué contarle a quien no puede entrar. Nunca revela datos del dueño.
+ *
+ * Desde el 2026-10-09 manda de vuelta a la APP, no a WhatsApp: Umbani es solo
+ * app y la sesión de tienda la pide la app (`/api/v1/locales/:slug/sesion`).
+ */
 export function rejectionMessage(reason: SessionRejection): string {
   switch (reason) {
     // Deliberadamente igual que 'no_existe': quien prueba un token de otro
     // negocio no debe averiguar que existe y pertenece a otro sitio.
     case 'otro_negocio':
-      return 'Este enlace no es válido. Escríbele al negocio por WhatsApp para hacer tu pedido.'
+      return 'Este acceso a la tienda no es válido. Vuelve a Umbani para hacer tu pedido.'
     case 'otro_dispositivo':
-      return 'Este enlace es personal y ya lo está usando otra persona. Escríbele al negocio por WhatsApp y te enviará el tuyo.'
+      return 'Este acceso a la tienda es de otro teléfono. Vuelve a Umbani y entra con tu cuenta.'
     // No es un rechazo: es un paso más. El texto lo pinta la app.
     case 'necesita_telefono':
-      return 'Confirma tu número de WhatsApp para entrar.'
+      return 'Entra a esta tienda desde la app de Umbani.'
     case 'caducada':
-      return 'Este enlace ya venció. Escríbele al negocio por WhatsApp y te enviará uno nuevo.'
+      return 'Este acceso ya venció. Vuelve a Umbani para entrar otra vez.'
     case 'revocada':
-      return 'Este enlace ya no está disponible. Escríbele al negocio por WhatsApp para continuar.'
+      return 'Este acceso ya no está disponible. Vuelve a Umbani para continuar.'
     case 'bloqueado':
       return 'Ahora mismo no puedes hacer pedidos aquí.'
     default:
-      return 'Este enlace no es válido. Escríbele al negocio por WhatsApp para hacer tu pedido.'
+      return 'Este acceso a la tienda no es válido. Vuelve a Umbani para hacer tu pedido.'
   }
 }

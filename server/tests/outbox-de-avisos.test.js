@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
@@ -30,6 +30,20 @@ const RUTA = readFileSync(
   'utf8',
 )
 
+// ⚠️ Este archivo prueba el aviso DORMIDO: desde el 2026-10-09 no se le
+// escribe al cliente por WhatsApp (`config/avisos-al-cliente.ts`), pero el
+// código sigue entero para el día que se vuelva a encender. Aquí se enciende;
+// que por defecto esté APAGADO lo vigila `avisos-al-cliente.test.js`.
+let antes
+beforeAll(() => {
+  antes = process.env.AVISOS_WHATSAPP_AL_CLIENTE
+  process.env.AVISOS_WHATSAPP_AL_CLIENTE = 'si'
+})
+afterAll(() => {
+  if (antes === undefined) delete process.env.AVISOS_WHATSAPP_AL_CLIENTE
+  else process.env.AVISOS_WHATSAPP_AL_CLIENTE = antes
+})
+
 const evento = (extra = {}) => ({
   id: 'ev-1', business_id: 'biz-1', aggregate_id: 'ord-1',
   payload: { status: 'preparacion' }, lease_token: 'tok-1', ...extra,
@@ -49,7 +63,7 @@ const deps = (over = {}) => ({
 describe('el worker de avisos', () => {
   it('envía lo que quedó pendiente y lo cierra', async () => {
     const d = deps()
-    expect(await crearWorkerDeAvisos(d)()).toEqual({ enviados: 1, fallidos: 0, muertos: 0 })
+    expect(await crearWorkerDeAvisos(d)()).toEqual({ enviados: 1, fallidos: 0, muertos: 0, apagados: 0 })
     expect(d.enviar).toHaveBeenCalledOnce()
     expect(d.complete).toHaveBeenCalledWith('ev-1', 'tok-1')
     expect(d.fail).not.toHaveBeenCalled()
@@ -57,7 +71,7 @@ describe('el worker de avisos', () => {
 
   it('si vuelve a fallar, lo devuelve a la cola en vez de perderlo', async () => {
     const d = deps({ enviar: vi.fn().mockResolvedValue(false) })
-    expect(await crearWorkerDeAvisos(d)()).toEqual({ enviados: 0, fallidos: 1, muertos: 0 })
+    expect(await crearWorkerDeAvisos(d)()).toEqual({ enviados: 0, fallidos: 1, muertos: 0, apagados: 0 })
     expect(d.complete).not.toHaveBeenCalled()
     expect(d.fail).toHaveBeenCalledOnce()
   })
@@ -66,7 +80,7 @@ describe('el worker de avisos', () => {
     // Un pedido borrado no va a reaparecer: reintentarlo solo retrasa el resto
     // de la cola.
     const d = deps({ pedido: vi.fn().mockResolvedValue(null) })
-    expect(await crearWorkerDeAvisos(d)()).toEqual({ enviados: 0, fallidos: 0, muertos: 1 })
+    expect(await crearWorkerDeAvisos(d)()).toEqual({ enviados: 0, fallidos: 0, muertos: 1, apagados: 0 })
     expect(d.enviar).not.toHaveBeenCalled()
     expect(d.fail).toHaveBeenCalledOnce()
   })
@@ -85,7 +99,7 @@ describe('el worker de avisos', () => {
 
   it('un evento sin lease se salta: sin token no se puede cerrar ni fallar', async () => {
     const d = deps({ lease: vi.fn().mockResolvedValue([evento({ lease_token: null })]) })
-    expect(await crearWorkerDeAvisos(d)()).toEqual({ enviados: 0, fallidos: 0, muertos: 0 })
+    expect(await crearWorkerDeAvisos(d)()).toEqual({ enviados: 0, fallidos: 0, muertos: 0, apagados: 0 })
     expect(d.enviar).not.toHaveBeenCalled()
   })
 
@@ -295,7 +309,7 @@ describe('el worker que corre de verdad', () => {
       expect.objectContaining({ id: 'biz-1' }), PEDIDO, 'en_camino',
     )
     expect(completar).toHaveBeenCalledWith('ev-1', 'tok')
-    expect(resultado).toEqual({ enviados: 1, fallidos: 0, muertos: 0 })
+    expect(resultado).toEqual({ enviados: 1, fallidos: 0, muertos: 0, apagados: 0 })
   })
 
   it('si el envío falla, marca el fallo con el motivo y NO lo da por enviado', async () => {
@@ -331,6 +345,6 @@ describe('el worker que corre de verdad', () => {
     const resultado = await worker.procesarAvisosPendientes()
 
     expect(fallar).toHaveBeenCalledWith('ev-3', 'tok3', expect.stringContaining('ya no existen'))
-    expect(resultado).toEqual({ enviados: 0, fallidos: 0, muertos: 1 })
+    expect(resultado).toEqual({ enviados: 0, fallidos: 0, muertos: 1, apagados: 0 })
   })
 })

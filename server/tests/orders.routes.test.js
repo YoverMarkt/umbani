@@ -457,9 +457,35 @@ describe('PUT /api/client/orders/:id/status', () => {
   // que acepta un pedido intentaría hablar con Supabase y con YCloud de
   // verdad: la primera vez se quedaron cinco segundos colgadas esperando un
   // `fetch` que nadie iba a contestar.
+  // ⚠️ El aviso al cliente está APAGADO desde el 2026-10-09 (Umbani es solo
+  // app, `config/avisos-al-cliente.ts`). Este bloque prueba el aviso DORMIDO,
+  // así que lo enciende; sin esto sus comprobaciones pasarían en vacío.
+  let avisosAntes
   beforeEach(() => {
+    avisosAntes = process.env.AVISOS_WHATSAPP_AL_CLIENTE
+    process.env.AVISOS_WHATSAPP_AL_CLIENTE = 'si'
     vi.spyOn(db, 'getBusinessById').mockResolvedValue({ id: 'business-a', name: 'Negocio' })
     vi.spyOn(db, 'claimOrderNotification').mockResolvedValue(null)
+  })
+  afterEach(() => {
+    if (avisosAntes === undefined) delete process.env.AVISOS_WHATSAPP_AL_CLIENTE
+    else process.env.AVISOS_WHATSAPP_AL_CLIENTE = avisosAntes
+  })
+
+  it('por defecto NO le escribe al cliente: ni reclama el aviso (Umbani es solo app)', async () => {
+    delete process.env.AVISOS_WHATSAPP_AL_CLIENTE
+    vi.spyOn(db, 'confirmOrderPayment').mockResolvedValue(null)
+    const reclamar = vi.spyOn(db, 'claimOrderNotification').mockResolvedValue(null)
+    const encolar = vi.spyOn(db, 'enqueueOutboxEvent')
+    for (const status of ['preparacion', 'en_camino', 'completado', 'cancelado']) {
+      vi.spyOn(db, 'setOrderStatus').mockResolvedValue({
+        data: { result: 'updated', order: { id: 'order-a', status } },
+        error: null,
+      })
+      expect((await dispatchStatus({ authorization: authorization(), status })).status, status).toBe(200)
+    }
+    expect(reclamar).not.toHaveBeenCalled()
+    expect(encolar).not.toHaveBeenCalled()
   })
 
   // Aceptar el pedido ES dar el pago por bueno: el dueño que manda algo a la

@@ -2,12 +2,9 @@ import rateLimit from 'express-rate-limit'
 import { createHash } from 'node:crypto'
 import { enSegundoPlano } from '../lib/segundo-plano'
 import { createRouter } from '../middleware/async'
-import { getPlatformPhone } from '../services/platform-channel'
 import { deviceFingerprint } from '../services/storefront-session'
 import { issueStorefrontSession } from '../services/storefront-link'
-import {
-  CODIGO_VALIDO, VIGENCIA_DEL_CODIGO_MS, authApp, firmarSesionApp, generarCodigo, mensajeDelCodigo, telefonoDe,
-} from '../services/sesion-app'
+import { authApp, telefonoDe } from '../services/sesion-app'
 import { conOpcionesAgrupadas } from '../services/order-detail'
 import { reglaDeMargen } from '../services/storefront'
 import { pedidoParaElCliente, porcentajePorProducto } from '../lib/precio-para-el-cliente'
@@ -20,8 +17,8 @@ import { clienteDeLaSesion, telefonoDelCliente } from '../services/cliente-de-la
 // ═══════════════════════════════════════════════════════════════════════════
 //
 // Lo que la app necesita ADEMÁS de la API de la tienda (`/api/store/:slug/*`),
-// que usa tal cual: iniciar sesión con WhatsApp, ver el marketplace y pedir una
-// sesión de tienda para entrar en un local. Documentada en
+// que usa tal cual: ver el marketplace y pedir una sesión de tienda para entrar
+// en un local. Se entra con el correo (`app-entrar.routes.ts`). Documentada en
 // `docs/apps/openapi.yaml` — si una ruta cambia aquí, cambia allí (lo vigila
 // `docs-apps.test.js`).
 //
@@ -39,34 +36,19 @@ const verificarLimiter = limitador(60, 'Demasiados intentos, espera un momento')
 const appLimiter = limitador(90, 'Demasiadas peticiones, espera un momento')
 
 
-// ── Iniciar sesión con WhatsApp ───────────────────────────────────────────
-router.post('/api/v1/auth/whatsapp', codigoLimiter, async (_req, res) => {
-  const umbani = String(await getPlatformPhone().catch(() => '') || '').replace(/\D/g, '')
-  if (!umbani) return res.status(503).json({ error: 'El número de Umbani no está configurado' })
-  const expira = new Date(Date.now() + VIGENCIA_DEL_CODIGO_MS)
-  for (let intento = 0; intento < 3; intento++) {
-    const codigo = generarCodigo()
-    if (await db.createAppLoginCode(codigo, expira)) {
-      return res.status(201).json({
-        codigo,
-        // Abre WhatsApp con el mensaje escrito: el cliente solo toca «enviar».
-        enlace: `https://wa.me/${umbani}?text=${encodeURIComponent(mensajeDelCodigo(codigo))}`,
-        expiraEn: expira.toISOString(),
-      })
-    }
-  }
-  return res.status(503).json({ error: 'No pudimos generar el código, inténtalo de nuevo' })
-})
-
-router.post('/api/v1/auth/whatsapp/verificar', verificarLimiter, async (req, res) => {
-  const codigo = String((req.body as Record<string, unknown> | undefined)?.codigo || '').trim().toUpperCase()
-  if (!CODIGO_VALIDO.test(codigo)) return res.status(400).json({ error: 'Código no válido' })
-  const r = await db.consumeAppLoginCode(codigo)
-  if (r.estado === 'ok') return res.json({ token: firmarSesionApp(r.phone), telefono: r.phone })
-  // La app pregunta cada pocos segundos mientras el cliente manda el mensaje.
-  if (r.estado === 'pendiente') return res.status(202).json({ pendiente: true })
-  return res.status(410).json({ error: 'Ese código ya no vale. Pide uno nuevo.' })
-})
+// ── La entrada por WhatsApp, RETIRADA (2026-10-09) ────────────────────────
+//
+// Las apps entraban mandando un código al WhatsApp de Umbani. Decisión del
+// dueño: Umbani es SOLO APP y se entra con el correo (`app-entrar.routes.ts`);
+// después vendrán el SMS, Google y Apple. Las dos rutas siguen registradas
+// —documentadas como retiradas en `docs/apps/openapi.yaml`— para que una app
+// vieja reciba una respuesta clara en vez de un 404.
+//
+// El bot conserva su parte (reconocer «Mi código de Umbani» en el chat): es
+// WhatsApp en espera, y sin una app que pida códigos no tiene nada que hacer.
+const ENTRADA_RETIRADA = { error: 'Ya no se entra con WhatsApp. Entra con tu correo.' }
+router.post('/api/v1/auth/whatsapp', codigoLimiter, (_req, res) => res.status(410).json(ENTRADA_RETIRADA))
+router.post('/api/v1/auth/whatsapp/verificar', verificarLimiter, (_req, res) => res.status(410).json(ENTRADA_RETIRADA))
 
 /** Con la ciudad que eligió el cliente (2026-10-05), si eligió alguna. */
 router.get('/api/v1/yo', appLimiter, authApp, async (req, res) => {

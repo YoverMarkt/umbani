@@ -35,6 +35,8 @@
  * un error al cliente le haría creer que su pedido no entró —y volvería a
  * pedirlo—, que es exactamente el duplicado que todo esto evita.
  */
+import { avisaAlClientePorWhatsApp } from '../config/avisos-al-cliente'
+
 const db = require('../db') as typeof import('../db')
 // Por PROPIEDAD y no desestructurando, igual que `order-status-notice`:
 // desestructurar congela la referencia al cargar el módulo y el envío deja de
@@ -85,6 +87,8 @@ export const textoPideComprobante = (input: {
 }
 
 export interface PideComprobanteDependencias {
+  /** ¿Se le escribe al cliente por WhatsApp? Ver `config/avisos-al-cliente.ts`. */
+  avisaAlCliente?: () => boolean
   claimOrderNotification: typeof db.claimOrderNotification
   getBusinessById: typeof db.getBusinessById
   enqueueOutboxEvent: typeof db.enqueueOutboxEvent
@@ -97,6 +101,9 @@ export const crearAvisoDeComprobante = (dependencias: PideComprobanteDependencia
     businessId: string,
     orderId: string,
   ): Promise<boolean> {
+    // Apagado mientras Umbani sea solo app: el comprobante se sube en la app.
+    // ANTES de reclamar ni encolar, para no dejar nada que la cola reintente.
+    if (dependencias.avisaAlCliente && !dependencias.avisaAlCliente()) return false
     try {
       // Se RECLAMA antes de redactar: el reclamo es atómico y solo lo gana
       // quien de verdad va a avisar.
@@ -147,6 +154,7 @@ export const crearAvisoDeComprobante = (dependencias: PideComprobanteDependencia
   }
 
 export const pedirComprobantePorChat = crearAvisoDeComprobante({
+  avisaAlCliente: () => avisaAlClientePorWhatsApp(),
   claimOrderNotification: (...args) => db.claimOrderNotification(...args),
   getBusinessById: (...args) => db.getBusinessById(...args),
   enqueueOutboxEvent: (...args) => db.enqueueOutboxEvent(...args),

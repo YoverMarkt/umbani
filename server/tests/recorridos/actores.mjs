@@ -160,16 +160,15 @@ export async function clientePorWhatsApp() {
 }
 
 /**
- * El cliente de la APP (Flutter): pide un código, lo manda por WhatsApp (aquí,
- * por el simulador) y con la sesión de la app abre la tienda del local.
+ * El cliente de la APP: desde el 2026-10-09 entra SOLO con su correo —la
+ * entrada por WhatsApp se retiró— y abre la tienda del local con la sesión de
+ * la app. Correo y celular NUEVOS cada vez: el número se reclama en exclusiva y
+ * no puede chocar con el de otro cliente del recorrido.
  */
 export async function clientePorLaApp() {
-  const { codigo } = await exigir(201, http('POST', '/api/v1/auth/whatsapp'))
-  await admin.escribirAlChat(`Mi código de Umbani: ${codigo}`)
-  const { token: tokenApp, telefono } = await exigir(200, http('POST', '/api/v1/auth/whatsapp/verificar', { cuerpo: { codigo } }))
-  const cabeceras = dispositivo()
-  const { token } = await exigir(201, http('POST', `/api/v1/locales/${SLUG()}/sesion`, { token: tokenApp, cabeceras }))
-  return { ...clienteDeTienda(token, cabeceras, telefono), tokenApp }
+  const sufijo = `${Date.now()}${Math.floor(Math.random() * 1000)}`
+  const celular = `09${String(Math.floor(Math.random() * 1e8)).padStart(8, '0')}`
+  return clientePorCorreo(`cliente.${sufijo}@umbani.test`, celular)
 }
 
 /** El último código que le llegó a ese correo (el «buzón» es el Resend falso). */

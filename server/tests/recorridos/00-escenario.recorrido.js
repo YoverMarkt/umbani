@@ -25,9 +25,9 @@ describe('el escenario de los recorridos', () => {
     expect(carta.products?.length || carta.categories?.length).toBeGreaterThan(0)
   })
 
-  it('el cliente de la app entra con su código por WhatsApp', async () => {
+  it('el cliente de la app entra con su correo y su celular', async () => {
     const cliente = await clientePorLaApp()
-    expect(cliente.telefono).toMatch(/0{6,}/)
+    expect(cliente.telefono).toMatch(/^5939\d{8}$/)
     const yo = await http('GET', '/api/v1/yo', { token: cliente.tokenApp })
     expect(yo.status).toBe(200)
   })

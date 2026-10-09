@@ -11,6 +11,8 @@ import { NEGOCIO_ABIERTO, db, ejecutar } from './manejadores-de-la-tienda.mjs'
 // pruebas van a lo que no se puede fallar: que el precio lo ponga el servidor
 // y que un negocio no vea lo de otro.
 
+const AVISOS_ANTES = process.env.AVISOS_WHATSAPP_AL_CLIENTE
+
 describe('crear pedido desde la mini app', () => {
   beforeEach(() => {
     vi.spyOn(db, 'getBusinessBySlug').mockResolvedValue(NEGOCIO_ABIERTO)
@@ -25,7 +27,12 @@ describe('crear pedido desde la mini app', () => {
     // releer»: cada prueba que le importe el dinero lo espía a su manera.
     vi.spyOn(db, 'getOrderMoney').mockResolvedValue(null)
   })
-  afterEach(() => vi.restoreAllMocks())
+  afterEach(() => {
+    vi.restoreAllMocks()
+    // Alguna prueba enciende el aviso dormido: se devuelve aunque falle a mitad.
+    if (AVISOS_ANTES === undefined) delete process.env.AVISOS_WHATSAPP_AL_CLIENTE
+    else process.env.AVISOS_WHATSAPP_AL_CLIENTE = AVISOS_ANTES
+  })
 
   // Regla inviolable #8: la IA conversa, el CÓDIGO calcula. Aquí ni siquiera
   // hay IA — hay un teléfono, que es aún menos de fiar. Si un precio enviado
@@ -117,7 +124,9 @@ describe('crear pedido desde la mini app', () => {
   //
   // Por eso aquí la RPC devuelve su forma REAL (sin `status`), y lo que se
   // mira es que el aviso llegue a reclamar el pedido.
-  it('pide el comprobante por el chat cuando la FILA espera pago', async () => {
+  it('pide el comprobante por el chat cuando la FILA espera pago (con el aviso encendido)', async () => {
+    // El aviso está APAGADO desde el 2026-10-09: aquí se prueba DORMIDO.
+    process.env.AVISOS_WHATSAPP_AL_CLIENTE = 'si'
     vi.spyOn(db, 'createStorefrontOrder').mockResolvedValue({
       data: { id: 'pedido-3', order_number: 7, subtotal: 10, shipping: 0, total: 10, items: 1 },
       error: null,
@@ -135,6 +144,26 @@ describe('crear pedido desde la mini app', () => {
 
     expect(respuesta.status).toBe(201)
     expect(reclamo).toHaveBeenCalledWith('negocio-a', 'pedido-3', 'esperando_pago')
+  })
+
+  it('por defecto NO lo pide por el chat: el comprobante se sube en la app (Umbani es solo app)', async () => {
+    vi.spyOn(db, 'createStorefrontOrder').mockResolvedValue({
+      data: { id: 'pedido-5', order_number: 9, subtotal: 10, shipping: 0, total: 10, items: 1 },
+      error: null,
+    })
+    vi.spyOn(db, 'getOrderMoney').mockResolvedValue({
+      subtotal: 10, shipping: 0, total: 10, status: 'esperando_pago',
+    })
+    const reclamo = vi.spyOn(db, 'claimOrderNotification').mockResolvedValue(null)
+
+    const respuesta = await ejecutar('/api/store/:slug/orders', 'post', {
+      storefront: { businessId: 'negocio-a', customerId: 'cliente-1', contactPhone: '+593999' },
+      params: { slug: 'pizzeria' },
+      body: { items: [{ productId: 'producto-1', quantity: 1 }], paymentMethod: 'transferencia' },
+    })
+
+    expect(respuesta.status).toBe(201)
+    expect(reclamo).not.toHaveBeenCalled()
   })
 
   it('no se lo pide a un pedido en efectivo', async () => {

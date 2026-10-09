@@ -55,10 +55,6 @@ async function correr(r, method, path, { headers = {}, body = {}, params = {}, q
 }
 
 describe('la sesión de la app', () => {
-  it('los códigos son de 6, sin letras que se confunden', () => {
-    for (let i = 0; i < 50; i++) expect(sesion.generarCodigo()).toMatch(/^[A-HJ-NP-Z2-9]{6}$/)
-  })
-
   it('el bot reconoce el mensaje aunque venga escrito a mano', () => {
     expect(sesion.codigoEnElMensaje('Mi código de Umbani: K7P2QX')).toBe('K7P2QX')
     expect(sesion.codigoEnElMensaje('mi codigo de umbani k7p2qx')).toBe('K7P2QX')
@@ -83,27 +79,27 @@ describe('la sesión de la app', () => {
   })
 })
 
-describe('iniciar sesión con WhatsApp', () => {
-  it('da un código y el enlace de WhatsApp con el mensaje escrito', async () => {
-    vi.spyOn(db, 'createAppLoginCode').mockResolvedValue(true)
-    const plataforma = require('../dist/services/platform-channel')
-    vi.spyOn(plataforma, 'getPlatformPhone').mockResolvedValue('+593 99 171 6574')
-    const r = await correr(router, 'post', '/api/v1/auth/whatsapp')
-    expect(r.status).toBe(201)
-    expect(r.body.enlace).toBe(`https://wa.me/593991716574?text=${encodeURIComponent(`Mi código de Umbani: ${r.body.codigo}`)}`)
+describe('la entrada por WhatsApp, RETIRADA (2026-10-09)', () => {
+  // Umbani es solo app: se entra con el correo. Las dos rutas siguen
+  // registradas para que una app vieja reciba una respuesta clara (410), y no
+  // tocan la base ni el número de Umbani.
+  it('pedir un código y canjearlo responden 410 y mandan a entrar con el correo', async () => {
+    const crear = vi.spyOn(db, 'createAppLoginCode')
+    const canjear = vi.spyOn(db, 'consumeAppLoginCode')
+    for (const [ruta, body] of [['/api/v1/auth/whatsapp', {}], ['/api/v1/auth/whatsapp/verificar', { codigo: 'K7P2QX' }]]) {
+      const r = await correr(router, 'post', ruta, { body })
+      expect(r.status, ruta).toBe(410)
+      expect(r.body.error, ruta).toBe('Ya no se entra con WhatsApp. Entra con tu correo.')
+    }
+    expect(crear).not.toHaveBeenCalled()
+    expect(canjear).not.toHaveBeenCalled()
   })
 
-  it('canjear: pendiente mientras no llega el mensaje, token al llegar, 410 si no vale', async () => {
-    const canje = vi.spyOn(db, 'consumeAppLoginCode')
-    canje.mockResolvedValueOnce({ estado: 'pendiente' })
-    expect((await correr(router, 'post', '/api/v1/auth/whatsapp/verificar', { body: { codigo: 'k7p2qx' } })).status).toBe(202)
-    expect(canje).toHaveBeenLastCalledWith('K7P2QX')
-    canje.mockResolvedValueOnce({ estado: 'ok', phone: '593999111222' })
-    const ok = await correr(router, 'post', '/api/v1/auth/whatsapp/verificar', { body: { codigo: 'K7P2QX' } })
-    expect(sesion.leerSesionApp(ok.body.token)).toBe('593999111222')
-    canje.mockResolvedValueOnce({ estado: 'invalido' })
-    expect((await correr(router, 'post', '/api/v1/auth/whatsapp/verificar', { body: { codigo: 'K7P2QX' } })).status).toBe(410)
-    expect((await correr(router, 'post', '/api/v1/auth/whatsapp/verificar', { body: { codigo: "x' or 1" } })).status).toBe(400)
+  it('y siguen detrás de su freno, como toda ruta pública', () => {
+    for (const ruta of ['/api/v1/auth/whatsapp', '/api/v1/auth/whatsapp/verificar']) {
+      const capa = router.stack.find(l => l.route?.path === ruta)
+      expect(capa.route.stack.length, ruta).toBe(2)
+    }
   })
 })
 

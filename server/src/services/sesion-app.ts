@@ -1,4 +1,3 @@
-import { randomInt } from 'node:crypto'
 import jwt from 'jsonwebtoken'
 import type { Request, RequestHandler } from 'express'
 
@@ -6,28 +5,19 @@ import type { Request, RequestHandler } from 'express'
 // LA SESIÓN DEL CLIENTE EN LA APP (Flutter)
 // ═══════════════════════════════════════════════════════════════════════════
 //
-// El teléfono lo prueba WhatsApp (ver `migration-2026-09-28-login-con-
-// whatsapp.sql`); aquí solo se generan los códigos y se firma la sesión.
+// Desde el 2026-10-09 las apps entran SOLO con el correo
+// (`entrar-con-correo.ts`): la entrada por WhatsApp se retiró. Aquí se firma
+// la sesión. Las sesiones por TELÉFONO que ya se emitieron siguen valiendo
+// hasta caducar, y el bot —WhatsApp en espera— sigue sabiendo leer un código.
 //
 // ⚠️ `role: 'cliente_app'` y audiencia `umbani-app`: `authAdmin` exige
 // `admin` y `authClient` exige `client` con negocio, así que este token no
 // abre NINGÚN panel. Solo sirve para las rutas `/api/v1/*` de la app.
 
-/** Sin 0/O ni 1/I: el cliente no los tiene que distinguir, pero se leen en voz alta. */
-const ALFABETO = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+/** Los códigos de la entrada por WhatsApp: sin 0/O ni 1/I. */
 export const CODIGO_VALIDO = /^[A-HJ-NP-Z2-9]{6}$/
-export const VIGENCIA_DEL_CODIGO_MS = 10 * 60 * 1000
 const AUDIENCIA = 'umbani-app'
 const DURACION = '30d'
-
-export function generarCodigo(): string {
-  let codigo = ''
-  for (let i = 0; i < 6; i++) codigo += ALFABETO[randomInt(ALFABETO.length)]
-  return codigo
-}
-
-/** El mensaje que la app deja escrito en WhatsApp. El bot lo reconoce igual. */
-export const mensajeDelCodigo = (codigo: string) => `Mi código de Umbani: ${codigo}`
 
 /** Lee el código de un mensaje de WhatsApp, o null si no es uno. */
 export function codigoEnElMensaje(texto: string): string | null {
