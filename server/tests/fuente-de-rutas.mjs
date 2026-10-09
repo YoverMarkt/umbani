@@ -31,3 +31,11 @@ export const fuenteDeRutas = (router, carpeta, opciones) =>
 
 export const fuenteDeLaTienda = opciones => fuenteDeRutas('storefront.routes', 'tienda', opciones)
 export const fuenteDeLasRutasDeLocales = opciones => fuenteDeRutas('admin-clients.routes', 'locales', opciones)
+
+/**
+ * La entrada del marketplace entera (2026-10-07): el orquestador y las cuatro
+ * partes que se separaron de él (tipos, recorrido, comandos y enlace).
+ */
+export const fuenteDeLaEntradaDelMarketplace = () => [
+  'marketplace-entry', 'marketplace-entry-tipos', 'marketplace-recorrido', 'marketplace-comandos', 'marketplace-enlace',
+].map(nombre => readFileSync(path.join(servidor, 'src/services', `${nombre}.ts`), 'utf8')).join('\n')

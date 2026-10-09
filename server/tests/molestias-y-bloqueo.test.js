@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { fuenteDeLaEntradaDelMarketplace } from './fuente-de-rutas.mjs'
 import { createRequire } from 'node:module'
 
 const require = createRequire(import.meta.url)
@@ -318,9 +318,7 @@ describe('el bloqueo del dueño', () => {
 // su función: falló en cuanto se conectó, que era exactamente el objetivo.
 
 describe('el marketplace tiene techo de gasto y honra el bloqueo', () => {
-  const fuente = readFileSync(
-    new URL('../src/services/marketplace-entry.ts', import.meta.url), 'utf8',
-  )
+  const fuente = fuenteDeLaEntradaDelMarketplace()
 
   // El techo va ANTES que MENÚ, y no es un detalle de orden: MENÚ se comprueba
   // antes que cualquier intención porque es la salida del cliente, pero si el

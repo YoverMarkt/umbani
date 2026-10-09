@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { fuenteDeLaEntradaDelMarketplace } from './fuente-de-rutas.mjs'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MENÚ MATA EL ENLACE ANTERIOR
@@ -133,7 +133,7 @@ describe('MENÚ revoca el enlace anterior', () => {
   })
 
   it('el estado del chat ya no decide nada: no se le pasa', async () => {
-    const fuente = readFileSync(new URL('../src/services/marketplace-entry.ts', import.meta.url), 'utf8')
+    const fuente = fuenteDeLaEntradaDelMarketplace()
     expect(fuente).not.toMatch(/matarEnlaceAnterior\([^)]*estadoDeLaConversacion/)
     expect(fuente).not.toMatch(/necesitaSuEnlace/)
   })
