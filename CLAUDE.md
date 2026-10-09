@@ -13,6 +13,7 @@ entera de verdad, que era el problema cuando todo estaba junto:
 | **[PENDIENTE.md](PENDIENTE.md)** | Cuando surja "¿y si añadimos…?". Lista de módulos futuros y de decisiones de **no** construir todavía. |
 | **[ARQUITECTURA.md](ARQUITECTURA.md)** | Antes de crear archivos o features nuevas. |
 | **[DISENO-MINIAPP.md](DISENO-MINIAPP.md)** | Antes de tocar la apariencia de la tienda. Es el respaldo escrito del diagrama aprobado: estructura de las once pantallas, los tres selectores y qué NO se copia. La imagen manda si la tienes; esto existe para que la referencia no se pierda entre sesiones. |
+| **[DOMINIO.md](DOMINIO.md)** | El día que se compre el dominio (todavía no hay). Los pasos EN ORDEN: Cloudflare delante —y la IP del cliente con él, o los frenos vuelven a contar por nodo—, PayPhone antes que `BASE_URL`, YCloud, Resend para entrar con correo, y lo que notan quienes ya instalaron las apps. |
 
 ---
 
