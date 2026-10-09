@@ -31,7 +31,6 @@ const PENDIENTES_DE_PARTIR = {
   'apps/store/src/screens/FoodStore.tsx': 1346,
   'apps/client/src/features/catalog/OptionsManager.tsx': 1307,
   'apps/store/src/components/ProductSheet.tsx': 1018,
-  'apps/client/src/features/orders/Orders.tsx': 1011,
 }
 
 const GENERADOS = new Set(['server/src/db/tipos-generados.ts'])
