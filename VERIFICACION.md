@@ -738,6 +738,29 @@ fuerza bruta al login (el freno, y que un correo sin cuenta tarde lo mismo que
 uno con cuenta); adivinar un código del correo; pedir códigos sin parar; un
 cuerpo de 3 MB; cabeceras a cuentagotas; y muchas conexiones a la vez.
 
+### Lo que midió el primer día (2026-10-08, staging en internet)
+
+- ❌→✅ **Los frenos contaban por nodo de Railway, no por cliente.** Una sola IP
+  vio dos contadores en `RateLimit-Remaining` (89, 88, 87, 89, 88…); en
+  producción, al menos cuatro. Arreglado en `config/ip-del-cliente.ts` (PR #448)
+  y vigilado desde entonces por el escenario «Un contador por cliente». Ver
+  [DECISIONES.md](DECISIONES.md#la-ip-del-cliente-detrás-de-railway).
+- La vitrina: 300 peticiones en 4 s, el freno contesta en p95 ~300 ms y la
+  salud sigue bien. Falsear la IP: 20 de 20 frenadas (el borde reescribe la
+  cabecera).
+- `/api/health`: 600 peticiones en 3,6 s, todas 200, **2** lecturas de la base.
+- Login: el freno salta en el intento 21; con cuenta y sin cuenta tardan lo
+  mismo dentro del ruido de la red (385 y 475 ms de mediana).
+- El código del correo muere al 5.º fallo, y después ni el bueno entra (410).
+- Cabeceras a cuentagotas: **ninguna** de 20 conexiones se cortó en 70 s. El
+  proxy de Railway retiene las cabeceras a medias y nunca llegan al servidor, así
+  que los 20 s de `lib/tiempos-de-espera.ts` solo cuentan si alguien llegara sin
+  pasar por él. La salud no se enteró (56 de 56). Contra esto, Cloudflare.
+- 1.500 peticiones a `/u`, 100 a la vez: cero errores, 69 por segundo, p50 ~1 s
+  y p95 ~4 s, y la salud también se frenó mientras duró. Es lo que aguanta este
+  staging pequeño desde UNA máquina; una avalancha de estáticos de verdad se
+  sirve desde la caché del borde (Cloudflare), no desde Node.
+
 ### 🔐 La guardia
 
 Una lista de lo **PERMITIDO**, no de lo prohibido: solo corre contra el staging
