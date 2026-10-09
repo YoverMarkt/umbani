@@ -16,6 +16,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { notificarCambioDePedido, type PedidoParaAvisar } from './order-notify'
+import { avisaAlClientePorWhatsApp } from '../config/avisos-al-cliente'
 import type { BusinessRecord } from '../db/types'
 
 interface OutboxDeps {
@@ -32,20 +33,31 @@ interface OutboxDeps {
   negocio(businessId: string): Promise<BusinessRecord | null>
   enviar(negocio: BusinessRecord, pedido: PedidoParaAvisar, status: string): Promise<boolean>
   registrar(mensaje: string): void
+  /**
+   * ¿Se le escribe al cliente por WhatsApp? Apagado, lo que quede en la cola se
+   * CIERRA sin enviar: no es un fallo, es una decisión (`config/avisos-al-cliente.ts`).
+   */
+  avisaAlCliente?: () => boolean
 }
 
 export const crearWorkerDeAvisos = (deps: OutboxDeps) =>
   async function procesarAvisosPendientes(
     owner = 'outbox', limite = 10, leaseS = 60,
-  ): Promise<{ enviados: number; fallidos: number; muertos: number }> {
+  ): Promise<{ enviados: number; fallidos: number; muertos: number; apagados: number }> {
     const eventos = await deps.lease(owner, limite, leaseS)
     let enviados = 0
     let fallidos = 0
     let muertos = 0
+    let apagados = 0
 
     for (const evento of eventos) {
       const token = evento.lease_token
       if (!token) continue
+      if (deps.avisaAlCliente && !deps.avisaAlCliente()) {
+        await deps.complete(evento.id, token).catch(() => { /* vencerá el lease y volverá aquí */ })
+        apagados += 1
+        continue
+      }
       const status = String(evento.payload?.status || '')
 
       try {
@@ -76,11 +88,12 @@ export const crearWorkerDeAvisos = (deps: OutboxDeps) =>
       }
     }
 
-    return { enviados, fallidos, muertos }
+    return { enviados, fallidos, muertos, apagados }
   }
 
 // Carga diferida, como el resto de servicios que hablan con los canales.
 export const procesarAvisosPendientes = crearWorkerDeAvisos({
+  avisaAlCliente: () => avisaAlClientePorWhatsApp(),
   lease(owner, limite, leaseS) {
     const db = require('../db') as typeof import('../db')
     return db.leaseOutboxEvents(owner, limite, leaseS)

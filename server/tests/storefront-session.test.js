@@ -190,9 +190,12 @@ describe('sesiones de la mini app', () => {
   })
 
   describe('qué se le dice a quien no puede entrar', () => {
-    it('siempre lo manda a escribir al negocio', () => {
-      for (const motivo of ['no_existe', 'caducada', 'revocada', 'otro_dispositivo']) {
-        expect(rejectionMessage(motivo)).toMatch(/negocio/i)
+    // Desde el 2026-10-09 Umbani es solo app: lo manda de vuelta a la APP,
+    // nunca a WhatsApp (antes: «Escríbele al negocio por WhatsApp»).
+    it('siempre lo manda de vuelta a la app, nunca a WhatsApp', () => {
+      for (const motivo of ['no_existe', 'otro_negocio', 'caducada', 'revocada', 'otro_dispositivo', 'necesita_telefono']) {
+        expect(rejectionMessage(motivo), motivo).toMatch(/Umbani/)
+        expect(rejectionMessage(motivo), motivo).not.toMatch(/whatsapp/i)
       }
     })
 

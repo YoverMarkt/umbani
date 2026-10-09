@@ -7,6 +7,8 @@
  * pagar: duplicarlo daría dos sitios donde arreglar cada fallo del aviso, y el
  * aviso es lo que se paga.
  */
+import { avisaAlClientePorWhatsApp } from '../config/avisos-al-cliente'
+
 const db = require('../db') as typeof import('../db')
 // ⚠️ Por PROPIEDAD, no desestructurando: desestructurar congela la referencia
 // al cargar el módulo y el envío deja de poder ejercerse en una prueba — que
@@ -20,6 +22,9 @@ export const avisarAlCliente = async (
   /** Las faltas de pago del cliente, cuando el aviso es de expiración. */
   falta?: import('./order-notify').FaltaDePago | null,
 ): Promise<void> => {
+  // Apagado mientras Umbani sea solo app, y ANTES de reclamar ni encolar: así
+  // no queda nada que la cola reintente. Ver `config/avisos-al-cliente.ts`.
+  if (!avisaAlClientePorWhatsApp()) return
   try {
     // Se RECLAMA el aviso antes de redactarlo: el reclamo es atómico y solo lo
     // gana quien de verdad avisa. `set_order_status` responde `updated`
