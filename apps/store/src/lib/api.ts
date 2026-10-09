@@ -82,9 +82,8 @@ export const request = async <T>(
     // para que un reintento no lo vuelva a mandar.
     //
     // Salvo 'necesita_telefono': ahí el token está PERFECTO, solo falta que
-    // esta persona demuestre que el número es suyo. Borrarlo dejaba al cliente
-    // legítimo sin enlace justo cuando iba a confirmarlo — entraba el número
-    // correcto y aun así acababa en «Necesitas tu propio enlace».
+    // esta persona demuestre que es suya. Desde el 2026-10-09 eso se hace en
+    // la app (la puerta lo manda allí), y borrarlo no ganaba nada.
     //
     // ⚠️ Y salvo un enlace MUERTO (revocado o caducado, 2026-09-17). Ese token
     // es la prueba de que esta persona ya tuvo su enlace: borrarlo hacía que
@@ -251,47 +250,38 @@ export const createOrder = (slug: string, input: {
 })
 
 /**
- * Confirma el número de WhatsApp y ata la sesión a ESTE teléfono.
+ * Sube la foto del comprobante de una transferencia a su pedido (2026-10-09).
  *
- * Devuelve null si entró, o el texto a mostrar si no. No lanza: un número que
- * no coincide es lo esperado aquí —le pasa a todo el que reciba el enlace de
- * otra persona— y tratarlo como una excepción llenaría el registro de errores
- * de ruido.
+ * Vuelve tras retirarse el 2026-08-12, cuando el comprobante se mandaba por
+ * WhatsApp: Umbani es solo app y ese chat ya no es el camino. La ruta del
+ * servidor nunca se fue —`POST /api/store/:slug/orders/:id/proof`, con su
+ * sesión, su límite, la huella contra duplicados y el análisis del monto y de
+ * la cuenta de destino—; solo faltaba quien la llamara.
+ *
+ * Es la ÚNICA petición multipart de la app, y por eso no pasa por `request`,
+ * que habla JSON. La imagen la guarda el SERVIDOR en su almacén privado: aquí
+ * no se ve ninguna credencial.
+ *
+ * Devuelve null si quedó adjunto, o el texto a mostrar si no. No lanza.
  */
-export async function confirmarTelefono(
-  slug: string,
-  telefono: string,
-): Promise<string | null> {
+export async function uploadPaymentProof(slug: string, orderId: string, archivo: File): Promise<string | null> {
+  const datos = new FormData()
+  datos.append('file', archivo)
   try {
-    const respuesta = await fetch(`/api/store/${encodeURIComponent(slug)}/session/verify`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-storefront-token': readToken(),
-        'x-storefront-device': deviceId(),
+    const respuesta = await fetch(
+      `/api/store/${encodeURIComponent(slug)}/orders/${encodeURIComponent(orderId)}/proof`,
+      {
+        method: 'POST',
+        // Sin `Content-Type`: el navegador lo pone con la frontera del multipart.
+        headers: { 'x-storefront-token': readToken(), 'x-storefront-device': deviceId() },
+        body: datos,
       },
-      body: JSON.stringify({ phone: telefono }),
-    })
-    if (respuesta.ok) return null
-    const cuerpo = await respuesta.json().catch(() => ({}))
-    if (respuesta.status === 429) {
-      return 'Demasiados intentos. Espera un minuto y vuelve a probar.'
-    }
-    return String(
-      (cuerpo as { error?: unknown }).error
-      || 'Ese número no coincide con este enlace.',
     )
+    if (respuesta.ok) return null
+    if (respuesta.status === 429) return 'Demasiados intentos. Espera un minuto y vuelve a probar.'
+    const cuerpo = await respuesta.json().catch(() => ({}))
+    return String((cuerpo as { error?: unknown }).error || 'No pudimos subir tu comprobante. Inténtalo otra vez.')
   } catch {
-    return 'No pudimos comprobarlo. Revisa tu conexión e inténtalo otra vez.'
+    return 'No pudimos subirlo. Revisa tu conexión e inténtalo otra vez.'
   }
 }
-
-// ⚠️ Aquí vivía `uploadPaymentProof`, la subida del comprobante desde la app.
-// Se retiró el 2026-08-12: el comprobante se manda por WhatsApp y la foto se
-// adjunta sola al pedido (`services/payment-proof-inbox.ts`). Era la ÚNICA
-// petición multipart de esta app.
-//
-// La ruta `POST /api/store/:slug/orders/:id/proof` sigue en el servidor,
-// protegida por sesión, con su límite de peticiones y sus pruebas. No se borró:
-// funciona, no estorba y es la puerta que usaría el Marketplace o una vuelta
-// atrás. Lo que ya no hay es quien la llame desde aquí.

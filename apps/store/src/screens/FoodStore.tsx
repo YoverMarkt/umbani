@@ -41,16 +41,11 @@ import type {
 // eso no se inventa nada nuevo aquí.
 
 export default function FoodStore({
-  slug, business, status, sesionesNuevas, onVolver, onFalloEnlace,
+  slug, business, status, onVolver, onFalloEnlace,
 }: {
   slug: string
   business: Business
   status: StoreStatus
-  /**
-   * Sube cada vez que se estrena sesión (al confirmar el teléfono). Dispara
-   * volver a preguntar QUIÉN ES — ver el efecto de más abajo.
-   */
-  sesionesNuevas?: number
   onVolver?: () => void
   onFalloEnlace: (error: unknown) => Promise<boolean>
 }) {
@@ -207,31 +202,6 @@ export default function FoodStore({
       })
       .catch(error => void onFalloEnlace(error))
   }, [slug, onFalloEnlace])
-
-  /**
-   * Quién es, PREGUNTADO OTRA VEZ al estrenar sesión.
-   *
-   * ⚠️ Este es el arreglo de un fallo que el cliente sufría en cada pedido:
-   * quien llega sin sesión ve fallar `GET /me`, confirma su teléfono… y `me`
-   * se quedaba en el `null` de aquel fallo. Con él se quedaba vacía su libreta
-   * de direcciones, así que la persona escribía su casa de nuevo — y acababa
-   * con la misma dirección repetida tantas veces como pedidos hizo.
-   *
-   * Solo se recarga ESTO. El catálogo no: recargarlo entero es lo que en su día
-   * vaciaba el carrito, y aquí el cliente suele tener el suyo lleno.
-   *
-   * No corre en el primer pintado (`sesionesNuevas` empieza en 0): de eso ya se
-   * encarga el efecto de arriba, y pedirlo dos veces al abrir sería un viaje
-   * de más en la carga que más se paga.
-   */
-  useEffect(() => {
-    if (!sesionesNuevas) return
-    getMe(slug)
-      .then((quien) => { setMe(quien); setSinSesion(null) })
-      // Si falla, la tienda sigue como estaba: el checkout volverá a pedir lo
-      // que haga falta. Perder la carta por no saber el nombre sería peor.
-      .catch(() => { /* sin sesión todavía: el checkout lo resolverá */ })
-  }, [slug, sesionesNuevas])
 
   const puedePedir = catalogo?.canOrder ?? (status === 'abierta')
 
@@ -579,7 +549,6 @@ export default function FoodStore({
           onVolver={() => setEnCuenta(false)}
           onBorrarDireccion={borrarDireccion}
           onFalloEnlace={onFalloEnlace}
-          sesionesNuevas={sesionesNuevas}
         />
       </Suspense>
     )

@@ -50,6 +50,9 @@ describe('subida de media', () => {
     const route = mediaRouter.stack.find(layer => layer.route?.path === '/api/client/media')
     expect(route.route.stack).toHaveLength(4)
     expect(mediaRouter.multipartFileSize).toBe(16 * 1024 * 1024)
+    // Y con el límite de cada subida: el comprobante admite 5 MB, no 16.
+    expect(media.mapMulterError({ code: 'LIMIT_FILE_SIZE' }, media.MEDIA_LIMITS.image).error)
+      .toBe('Archivo demasiado grande (máx 5MB)')
     expect(media.mapMulterError({ code: 'LIMIT_FILE_SIZE' })).toEqual({
       status: 413,
       error: 'Archivo demasiado grande (máx 16MB)',

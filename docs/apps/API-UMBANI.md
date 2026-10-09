@@ -52,8 +52,10 @@ credenciales que llegan al final): el paso 1 devuelve además
 `codigoDePruebas` con el código, para poder probar. En producción ese campo no
 existe nunca —el servidor lo impide—, y sin proveedor la puerta responde `503`.
 
-⏸️ **La puerta de WhatsApp sigue en el servidor, en espera** (`/api/v1/auth/whatsapp`
-y `/verificar`): una sesión de WhatsApp vale igual, pero las apps no la usan.
+🚫 **La entrada por WhatsApp está RETIRADA** (2026-10-09: Umbani es solo app).
+`/api/v1/auth/whatsapp` y `/verificar` responden siempre `410` con un `error`
+para mostrar. Las sesiones por teléfono que ya se emitieron valen hasta que
+caducan; las nuevas, solo con correo.
 
 **b) La sesión de tienda (en qué local está).** Para entrar en un local:
 `POST /api/v1/locales/{slug}/sesion` → `{ token }`. Con ese token la app usa
@@ -122,7 +124,26 @@ Algunos traen `reason`:
 Si `business.paymentMethods` trae la tarjeta con `test_mode: true`, enseña una
 franja visible «PAGOS DE PRUEBA»: no se cobra dinero real.
 
+## 4b. Pagar por transferencia: el comprobante se SUBE en la app
+
+Desde el 2026-10-09 ya no se manda por WhatsApp. Con `paymentMethod:
+"transferencia"` el pedido nace en `esperando_pago`:
+
+1. Enseña los datos para transferir: `GET /api/store/{slug}/payment-info`.
+2. El cliente transfiere desde su banco y sube la captura:
+   `POST /api/store/{slug}/orders/{id}/proof`, **multipart** con el campo
+   `file` (una imagen de hasta **5 MB**; si es una foto de cámara más grande,
+   redúcela antes en el teléfono). `200 { ok: true }`. El pedido pasa a
+   `pago_en_revision` y el local lo revisa; los errores traen su `error` para
+   mostrar (`413` si pasa de 5 MB).
+3. Recuérdale que **la transferencia tiene que estar a su nombre**.
+
 ## 5. «Mis pedidos»
+
+⚠️ **Es el ÚNICO sitio donde el cliente sigue su pedido**: desde el 2026-10-09
+ya no se le manda ningún aviso por WhatsApp, y las notificaciones push llegarán
+después. Refresca el estado al volver a primer plano.
+
 
 `GET /api/v1/pedidos` (con la sesión de la **app**, no la de tienda) devuelve
 los pedidos de ese teléfono en **todos** los locales, los 30 más recientes:

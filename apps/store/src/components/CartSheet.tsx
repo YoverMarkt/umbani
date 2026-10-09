@@ -626,7 +626,7 @@ export default function CartSheet({
           />
           {me?.phone && (
             <p className="mt-2 px-1 text-[12.5px] texto-cuerpo">
-              Te contactamos al {me.phone} — el mismo de WhatsApp.
+              Si hace falta, te llamamos al {me.phone}.
             </p>
           )}
         </section>
@@ -725,7 +725,7 @@ export default function CartSheet({
         <p className="mt-2.5 text-center text-[11.5px] texto-cuerpo">
           {pagoEfectivo === 'tarjeta'
             ? 'Pagas en la página segura de PayPhone. Tus datos de tarjeta no pasan por Umbani.'
-            : 'El negocio confirma tu pedido por WhatsApp y coordina el pago.'}
+            : 'El local confirma tu pedido y lo sigues en «Mis pedidos».'}
         </p>
       </div>
       )}

@@ -154,7 +154,7 @@ export default function PagoConTarjeta({
     listo: `Tu pedido${n} está guardado. Pagas en la página segura de PayPhone: tus datos de tarjeta no pasan por Umbani.`,
     abriendo: 'Te llevamos a PayPhone.',
     confirmando: 'Esto tarda unos segundos. No cierres esta pantalla.',
-    pagado: `${nombreDelLocal} ya tiene tu pedido${n}. Te avisaremos por WhatsApp cuando lo empiece a preparar.`,
+    pagado: `${nombreDelLocal} ya tiene tu pedido${n}. Lo sigues en «Mis pedidos»: ahí ves cuándo lo empieza a preparar.`,
     fallido: 'No se te cobró nada. Puedes intentarlo otra vez, con la misma tarjeta o con otra.',
     devuelto: 'Hubo un problema con este cobro y el dinero vuelve a tu tarjeta. Según tu banco, puede tardar unos días.',
     cancelado: 'Si todavía lo quieres, vuelve al menú y pídelo de nuevo.',

@@ -28,10 +28,23 @@ import {
 
 type Pantalla = 'ubicacion' | 'inicio' | 'entrar' | 'telefono' | 'pedidos'
 
+/**
+ * Con qué pantalla abre. `/u#pedidos` abre directo en «Mis pedidos» (2026-10-09):
+ * es a donde lleva la tienda después de pedir, ahora que el pedido se sigue en
+ * la app y no por WhatsApp. La marca se borra al leerla: si no, cada recarga
+ * volvería a «Mis pedidos» aunque la persona ya estuviera en otra parte.
+ */
+function pantallaInicial(): Pantalla {
+  if (!ciudadGuardada()) return 'ubicacion'
+  if (window.location.hash !== '#pedidos') return 'inicio'
+  window.history.replaceState(null, '', window.location.pathname + window.location.search)
+  return 'pedidos'
+}
+
 
 export default function UmbaniApp() {
   const [ciudad, setCiudad] = useState<Ciudad | null>(() => ciudadGuardada())
-  const [pantalla, setPantalla] = useState<Pantalla>(() => (ciudadGuardada() ? 'inicio' : 'ubicacion'))
+  const [pantalla, setPantalla] = useState<Pantalla>(pantallaInicial)
   // El local al que iba cuando se le pidió entrar: al entrar, se abre solo.
   const [pendiente, setPendiente] = useState<LocalDelMenu | null>(null)
   const [abriendo, setAbriendo] = useState<string | null>(null)

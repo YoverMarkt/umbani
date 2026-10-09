@@ -1,85 +1,49 @@
-import {
-  RiLockLine,
-  RiWhatsappLine,
-} from '@remixicon/react'
+import { RiHome5Line, RiLockLine } from '@remixicon/react'
 import { Boton, LocalDeLaPuerta, SelloDePuerta } from '../components/ui'
+import { DIRECCION_DE_UMBANI } from '../lib/umbani'
 import type { Business } from '../lib/types'
 
 // Lo que ve quien NO puede usar la tienda.
 //
-// El caso importante es el enlace reenviado: alguien recibe por un grupo el
-// enlace de otra persona y lo abre. La app no lo trata como un error técnico
-// —no lo es— sino que le explica que cada enlace es personal y le da el botón
-// para pedir el suyo al negocio. Es la diferencia entre perder un cliente y
-// ganarlo.
+// Desde el 2026-10-09 Umbani es SOLO APP: la tienda de un local se abre desde
+// la app, que es quien pide la sesión. A quien llega sin una que valga —un
+// enlace viejo del chat, uno reenviado, otro teléfono— se le manda de vuelta a
+// la app, nunca a WhatsApp: allí entra con su cuenta y vuelve a este local en
+// dos toques. Hasta esa fecha esta pantalla le decía que le escribiera a
+// Umbani por WhatsApp para recibir un enlace.
 
-/**
- * Motivos que devuelve el servidor al rechazar la sesión.
- *
- * ⚠️ Los textos cambian según A QUIÉN hay que escribirle, y eso no es un
- * matiz de estilo: es la diferencia entre que la persona resuelva o se quede
- * dando vueltas.
- *
- * En el marketplace **el enlace no se pide: NACE de elegir un local**. El
- * cliente escribe a Umbani, el bot le enseña las categorías, elige su local y
- * `mandarElEnlace` le emite su sesión en ese momento. Decirle «escríbele al
- * negocio» —como decía hasta el 2026-08-30— lo manda a buscar un WhatsApp que
- * ese local no tiene, porque en el marketplace ninguno tiene número propio.
- *
- * Con canal propio sigue valiendo el texto de siempre.
- */
-const MENSAJES: Record<string, { titulo: string; detalle: (donde: string) => string }> = {
+/** Motivos que devuelve el servidor al rechazar la sesión. */
+const MENSAJES: Record<string, { titulo: string; detalle: string }> = {
   otro_dispositivo: {
-    titulo: 'Este enlace es de otra persona',
-    detalle: donde => 'Cada enlace se abre en un solo teléfono, para que nadie '
-      + `pida a nombre de otro. ${donde} y te llega el tuyo al instante.`,
+    titulo: 'Este acceso es de otro teléfono',
+    detalle: 'Cada acceso a una tienda vale en un solo teléfono, para que nadie pida a nombre '
+      + 'de otro. Entra en Umbani con tu cuenta y vuelve a este local.',
   },
-  // Los enlaces nuevos ya no caducan (2026-08-02). Este mensaje solo lo ven
-  // los que quedaban vivos de antes, hasta que la limpieza se los lleve.
+  // «Expiró» para los dos: que por dentro sea una caducidad o una revocación
+  // al cliente le da igual. Su acceso ya no sirve y necesita otro.
   caducada: {
-    titulo: 'Tu enlace expiró',
-    detalle: donde => 'Era de los antiguos, que duraban unas horas. '
-      + `${donde} y recibes uno nuevo — ese ya no vence.`,
+    titulo: 'Tu acceso expiró',
+    detalle: 'Entra en Umbani y vuelve a este local: tendrás uno nuevo al instante.',
   },
-  // «Expiró» y no «ya no está activo» (2026-09-16): es la palabra del dueño y
-  // la que entiende cualquiera. Que por dentro sea una revocación —MENÚ,
-  // «seguir mi pedido», un enlace más nuevo— al cliente le da igual: su enlace
-  // ya no sirve y necesita otro.
   revocada: {
-    titulo: 'Tu enlace expiró',
-    detalle: donde => 'Ya abriste uno más nuevo, o volviste al inicio del chat. '
-      + `${donde} y te llega uno nuevo.`,
+    titulo: 'Tu acceso expiró',
+    detalle: 'Entra en Umbani y vuelve a este local: tendrás uno nuevo al instante.',
   },
   otro_negocio: {
-    titulo: 'Este enlace es de otro local',
-    detalle: donde => 'El enlace que abriste pertenece a otra tienda. '
-      + `${donde} para pedir aquí.`,
+    titulo: 'Este acceso es de otro local',
+    detalle: 'Vuelve a Umbani y elige este local para pedir aquí.',
+  },
+  // El acceso no se demostró en este teléfono. Antes se pedía el número de
+  // WhatsApp; ahora la cuenta de la app es la prueba.
+  necesita_telefono: {
+    titulo: 'Entra desde la app',
+    detalle: 'Las tiendas se abren desde Umbani, con tu cuenta. Entra y elige este local.',
   },
   no_existe: {
-    titulo: 'Necesitas tu propio enlace',
-    detalle: donde => 'Puedes mirar la carta, pero para pedir hace falta tu '
-      + `enlace personal. ${donde}: te llega al instante.`,
+    titulo: 'Entra desde la app',
+    detalle: 'Puedes mirar la carta, pero para pedir hace falta entrar en Umbani con tu cuenta. '
+      + 'Es un momento.',
   },
-}
-
-/**
- * El enlace a WhatsApp, con el mensaje ya escrito.
- *
- * ⚠️ En el marketplace se NOMBRA el local. El bot de Umbani busca por texto
- * libre, así que escribir «quiero pedir en Monster Pizza» lo lleva directo a
- * ese local en vez de empezar por las categorías. Y si la búsqueda no lo
- * encontrara, el cliente recibe el menú de siempre: no se pierde nada.
- *
- * Con canal propio se deja el saludo de antes: ahí no hay nada que elegir.
- */
-const textoWhatsapp = (telefono: string, negocio: string, esPlataforma: boolean): string => {
-  const limpio = telefono.replace(/[^\d]/g, '')
-  const mensaje = encodeURIComponent(
-    esPlataforma && negocio
-      ? `Hola, quiero pedir en ${negocio} 🙂`
-      : 'Hola, quiero ver el menú 🙂',
-  )
-  return `https://wa.me/${limpio}?text=${mensaje}`
 }
 
 export default function Gate({ business, motivo }: {
@@ -87,18 +51,6 @@ export default function Gate({ business, motivo }: {
   motivo: string | null
 }) {
   const { titulo, detalle } = MENSAJES[motivo || 'no_existe'] || MENSAJES.no_existe
-  const telefono = business?.phone || ''
-  const nombre = business?.name || ''
-  // Con el número del MARKETPLACE hay un paso más que nombrar: elegir el local.
-  // Es el paso que EMITE el enlace, así que callarlo deja a la persona
-  // esperando algo que no va a llegar sola.
-  const esPlataforma = Boolean(business?.phoneIsPlatform)
-  // ⚠️ SIN asteriscos. `*así*` pone negrita en WhatsApp, pero esto es una
-  // pantalla HTML: salían literales, «elige *Monster Pizza*». El énfasis de
-  // WhatsApp solo vale en los textos que viajan por el chat.
-  const donde = esPlataforma
-    ? `Escríbele a Umbani por WhatsApp y elige ${nombre || 'tu local'}`
-    : 'Escríbele al negocio por WhatsApp'
 
   return (
     <div className="animar-entrada mx-auto flex min-h-full max-w-md flex-col justify-center px-6 pt-[calc(env(safe-area-inset-top)+3rem)] pb-12">
@@ -111,26 +63,18 @@ export default function Gate({ business, motivo }: {
       <SelloDePuerta><RiLockLine size={26} /></SelloDePuerta>
 
       <h1 className="titulo-xl">{titulo}</h1>
-      <p className="mt-3 text-[15px] leading-relaxed texto-cuerpo">{detalle(donde)}</p>
+      <p className="mt-3 text-[15px] leading-relaxed texto-cuerpo">{detalle}</p>
 
-      {telefono
-        ? (
-            <div className="mt-8">
-              <a href={textoWhatsapp(telefono, nombre, esPlataforma)} className="block">
-                <Boton>
-                  <span className="flex items-center justify-center gap-2">
-                    <RiWhatsappLine size={18} />
-                    {esPlataforma ? 'Escribir a Umbani' : 'Pedir mi enlace por WhatsApp'}
-                  </span>
-                </Boton>
-              </a>
-            </div>
-          )
-        : (
-            <p className="superficie mt-8 rounded-(--radius-tarjeta) px-4 py-4 text-[13.5px] leading-relaxed texto-cuerpo shadow-tarjeta">
-              Contacta al negocio para recibir tu enlace.
-            </p>
-          )}
+      <div className="mt-8">
+        <a href={DIRECCION_DE_UMBANI} className="block">
+          <Boton>
+            <span className="flex items-center justify-center gap-2">
+              <RiHome5Line size={18} />
+              Ir a Umbani
+            </span>
+          </Boton>
+        </a>
+      </div>
     </div>
   )
 }

@@ -97,7 +97,7 @@ export function registrarPagos(router: Router): void {
     multer({ storage: multer.memoryStorage(), limits: { fileSize: MEDIA_LIMITS.image } })
       .single('file')(req, res, error => {
         if (error) {
-          const mapped = mapMulterError(error)
+          const mapped = mapMulterError(error, MEDIA_LIMITS.image)
           return res.status(mapped.status).json({ error: mapped.error })
         }
         next()

@@ -10,28 +10,10 @@ import type { BankAccount } from '../lib/types'
 //
 // Los datos bancarios del negocio, y nada más.
 //
-// ⚠️ Aquí había además un botón para SUBIR el comprobante, y se retiró el
-// 2026-08-12. No porque fallara —funcionaba—, sino porque eran dos caminos
-// para lo mismo y el de la app era el que casi nadie tomaba: la gente
-// transfiere desde su banco y la captura le queda en la galería del teléfono,
-// a un toque del chat donde le llegó el enlace de la tienda. Pedirle que
-// vuelva a la tienda, encuentre el pedido y la suba otra vez es trabajo de más
-// para llegar al mismo sitio.
-//
-// Lo que hace que quitarlo no pierda nada: la foto que llega por el chat YA se
-// adjunta sola al pedido (`services/payment-proof-inbox.ts`) — misma RPC,
-// mismo estado `pago_en_revision`, misma alarma en el panel y el mismo «Ver
-// comprobante» con firma temporal. El dueño no nota diferencia.
-//
-// ⚠️ Se conserva el `<a>` de vuelta a WhatsApp en la pantalla que envuelve a
-// esto (`screens/OrderPlaced.tsx`), no aquí: con el enlace en los dos sitios
-// había dos botones verdes compitiendo en la misma pantalla por el mismo
-// gesto. La instrucción y el botón van juntos, y este bloque solo informa.
-//
-// La ruta `POST /api/store/:slug/orders/:id/proof` sigue viva en el servidor,
-// protegida y con sus pruebas. No se borró a propósito: funciona, no estorba,
-// y es la puerta que usaría el Marketplace o una vuelta atrás. Lo que ya no
-// existe es quien la llame desde esta app.
+// La subida del comprobante va JUSTO DEBAJO, en su propio componente
+// (`SubirComprobante`, 2026-10-09): este bloque solo informa. Entre el
+// 2026-08-12 y esa fecha no había subida —el comprobante se mandaba por el
+// chat de WhatsApp—; desde que Umbani es solo app, vuelve a subirse aquí.
 
 const lineasBanco = (cuenta: BankAccount) => [
   { etiqueta: 'Banco', valor: cuenta.bank_name },
@@ -58,9 +40,7 @@ export default function PagoPendiente({ slug }: { slug: string }) {
   }
 
   const filas = cuenta ? lineasBanco(cuenta) : []
-  // Sin datos cargados no se pinta un título con un hueco debajo. El negocio
-  // que no los tenga coordina el pago por el chat, que es la salida de todos
-  // modos.
+  // Sin datos cargados no se pinta un título con un hueco debajo.
   if (filas.length === 0) return null
 
   return (

@@ -33,10 +33,15 @@ export function validateMediaFile(file: MediaFileInfo): MediaError | null {
   return null
 }
 
-export function mapMulterError(error: unknown): MediaError {
+/**
+ * El error de una subida, dicho para la persona. ⚠️ Con el límite de ESA
+ * subida (2026-10-09): decía «máx 16MB» también en el comprobante, que admite
+ * 5, y quien subía una foto de 6 MB leía que le sobraba espacio.
+ */
+export function mapMulterError(error: unknown, maximo: number = MEDIA_LIMITS.multipart): MediaError {
   const uploadError = error as { code?: string; message?: string }
   if (uploadError.code === 'LIMIT_FILE_SIZE') {
-    return { status: 413, error: 'Archivo demasiado grande (máx 16MB)' }
+    return { status: 413, error: `Archivo demasiado grande (máx ${Math.round(maximo / 1024 / 1024)}MB)` }
   }
   return { status: 400, error: uploadError.message as string }
 }
