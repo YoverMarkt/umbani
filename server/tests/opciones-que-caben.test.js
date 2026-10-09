@@ -43,8 +43,15 @@ const etiquetasDe = (fuente) => [
 ].filter(Boolean)
 
 describe('ninguna opción se pasa del tope de WhatsApp', () => {
+  // ⚠️ El menú y sus DOS partes (2026-10-07): `VER_MAS` y `VOLVER` viven ahora
+  // en los textos, y algunas opciones en las pantallas. Leyendo solo el menú,
+  // esas etiquetas se escaparían de la prueba sin que nada fallara.
   const fuentes = {
-    'marketplace-menu.ts': leer('../src/services/marketplace-menu.ts'),
+    'el menú del marketplace (con sus textos y pantallas)': [
+      '../src/services/marketplace-menu.ts',
+      '../src/services/marketplace-menu-textos.ts',
+      '../src/services/marketplace-menu-pantallas.ts',
+    ].map(leer).join('\n'),
   }
 
   for (const [archivo, fuente] of Object.entries(fuentes)) {

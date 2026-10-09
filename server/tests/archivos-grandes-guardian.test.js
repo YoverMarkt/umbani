@@ -29,7 +29,6 @@ const LIMITE = 1000
 /** Los que ya pasaban el 2026-10-06, con sus líneas de ese día. Solo encogen. */
 const PENDIENTES_DE_PARTIR = {
   'apps/store/src/screens/FoodStore.tsx': 1346,
-  'server/src/services/marketplace-menu.ts': 1326,
   'apps/client/src/features/catalog/OptionsManager.tsx': 1307,
   'apps/store/src/components/ProductSheet.tsx': 1018,
   'apps/client/src/features/orders/Orders.tsx': 1011,
