@@ -1,10 +1,11 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import express from 'express'
 import rateLimit from 'express-rate-limit'
 import {
   PROXIES_DE_CONFIANZA, crearClienteSegunRailway, vieneDelProxyDeRailway,
 } from '../dist/middleware/ip-del-cliente.js'
+import { RANGOS_DE_CLOUDFLARE, esDeCloudflare } from '../dist/lib/rangos-de-cloudflare.js'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // LOS FRENOS CUENTAN POR CLIENTE, NO POR NODO DE RAILWAY (2026-10-08)
@@ -45,11 +46,14 @@ let ahora // el servidor como queda: la lista + X-Real-IP, con la conexión fing
 let real // el middleware de verdad, que mira la conexión (aquí, 127.0.0.1: no es Railway)
 let antes // `trust proxy 1`, lo que había
 let soloLista // el primer intento: la lista sin X-Real-IP (no bastó en el staging)
+let conCloudflare // el de `ahora`, con los rangos de Cloudflare de verdad y los avisos a mano
+const avisos = []
 beforeAll(async () => {
   ahora = await montar({ middleware: crearClienteSegunRailway(() => true) })
   real = await montar({ middleware: crearClienteSegunRailway() })
   antes = await montar({ confianza: 1 })
   soloLista = await montar()
+  conCloudflare = await montar({ middleware: crearClienteSegunRailway(() => true, esDeCloudflare, (borde) => avisos.push(borde)) })
 })
 afterAll(() => Promise.all(servidores.map(s => new Promise(r => s.close(r)))))
 
@@ -123,6 +127,104 @@ describe('lo de siempre sigue igual', () => {
 
   it('sin cabeceras, la IP es la de la conexión', async () => {
     expect((await real()).ip).toBe('127.0.0.1')
+  })
+})
+
+// ── Con Cloudflare delante (preparado el 2026-10-09, para el dominio) ──────
+//
+// Lo que verá Railway: la conexión de su proxy (100.x), `X-Real-IP` = un NODO
+// de Cloudflare, y el cliente en `CF-Connecting-IP`.
+const NODO_CF_A = '104.16.12.34'
+const NODO_CF_B = '172.70.1.2'
+const porCloudflare = (cliente, nodo = NODO_CF_A) => ({
+  'x-forwarded-for': `${cliente}, ${nodo}`,
+  'x-real-ip': nodo,
+  'cf-connecting-ip': cliente,
+})
+
+describe('con Cloudflare delante, el cliente sigue siendo el cliente', () => {
+  it('la IP es la que dice Cloudflare, no la de su nodo', async () => {
+    expect((await conCloudflare(porCloudflare(CLIENTE))).ip).toBe(CLIENTE)
+    // Sin esto, el domingo: todos los que pasan por el nodo, una sola IP.
+    expect((await ahora({ 'x-real-ip': NODO_CF_A })).ip).toBe(NODO_CF_A)
+  })
+
+  it('pase por el nodo que pase, el cliente tiene UN contador', async () => {
+    const restantes = []
+    for (const nodo of [NODO_CF_A, NODO_CF_B, NODO_CF_A]) {
+      restantes.push((await conCloudflare(porCloudflare('181.39.7.7', nodo), '/frenado')).restantes)
+    }
+    expect(restantes).toEqual([49, 48, 47])
+  })
+
+  it('y dos clientes del mismo nodo NO comparten freno', async () => {
+    const uno = await conCloudflare(porCloudflare('181.39.8.1'), '/frenado')
+    const otro = await conCloudflare(porCloudflare('181.39.8.2'), '/frenado')
+    expect([uno.restantes, otro.restantes]).toEqual([49, 49])
+  })
+
+  it('también con un cliente en IPv6', async () => {
+    expect((await conCloudflare(porCloudflare('2800:bf0:8000::1'))).ip).toBe('2800:bf0:8000::1')
+  })
+})
+
+describe('con Cloudflare delante, falla hacia lo seguro', () => {
+  it('quien le habla a Railway directo NO se cambia la IP inventando CF-Connecting-IP', async () => {
+    avisos.length = 0
+    const atacante = '203.0.113.9'
+    const r = await conCloudflare({ 'x-real-ip': atacante, 'cf-connecting-ip': '181.39.9.9' })
+    expect(r.ip).toBe(atacante)
+    // Y queda en el registro: con Cloudflare delante, sería una red que falta en la lista.
+    expect(avisos).toEqual([atacante])
+  })
+
+  it('un nodo de Cloudflare sin CF-Connecting-IP cuenta como el nodo (peor, pero nunca por lo que diga el cliente)', async () => {
+    expect((await conCloudflare({ 'x-real-ip': NODO_CF_A })).ip).toBe(NODO_CF_A)
+  })
+
+  it('lo que no es UNA IP en CF-Connecting-IP se ignora', async () => {
+    for (const basura of ['no-soy-una-ip', `${CLIENTE}, 1.2.3.4`, '   ']) {
+      expect((await conCloudflare({ 'x-real-ip': NODO_CF_A, 'cf-connecting-ip': basura })).ip, basura).toBe(NODO_CF_A)
+    }
+  })
+
+  it('sin la conexión de Railway, CF-Connecting-IP no cuenta', async () => {
+    // `real` mira la conexión de verdad (127.0.0.1): no es Railway.
+    expect((await real({ 'x-real-ip': NODO_CF_A, 'cf-connecting-ip': CLIENTE })).ip).toBe('127.0.0.1')
+  })
+
+  it('el aviso sale UNA vez por hora como mucho: un ataque no inunda el registro', async () => {
+    const consola = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const conAvisoDeVerdad = await montar({ middleware: crearClienteSegunRailway(() => true) })
+      for (let i = 0; i < 3; i++) await conAvisoDeVerdad({ 'x-real-ip': '203.0.113.10', 'cf-connecting-ip': '181.39.9.9' })
+      expect(consola).toHaveBeenCalledTimes(1)
+      expect(String(consola.mock.calls[0][0])).toContain('203.0.113.10')
+    } finally {
+      consola.mockRestore()
+    }
+  })
+})
+
+describe('qué dirección es de Cloudflare', () => {
+  it('la lista es la publicada: 15 redes IPv4 y 7 IPv6', () => {
+    expect(RANGOS_DE_CLOUDFLARE.filter((r) => r.includes('.'))).toHaveLength(15)
+    expect(RANGOS_DE_CLOUDFLARE.filter((r) => r.includes(':'))).toHaveLength(7)
+  })
+
+  it('la primera dirección de cada red es de Cloudflare', () => {
+    for (const rango of RANGOS_DE_CLOUDFLARE) {
+      const red = rango.split('/')[0]
+      expect(esDeCloudflare(red.endsWith('::') ? `${red}1` : red), rango).toBe(true)
+    }
+  })
+
+  it('también escrita como IPv6, y nada más', () => {
+    for (const si of ['::ffff:104.16.12.34', '2606:4700::6810:1', '172.70.1.2']) expect(esDeCloudflare(si), si).toBe(true)
+    // 1.1.1.1 es su DNS, no su red de proxy; 104.28.x, la salida de WARP; 152.233.x, el borde de Railway.
+    for (const no of ['1.1.1.1', '104.28.0.1', '152.233.23.193', '100.64.0.1', '190.12.34.56', '2800:bf0::1', 'basura', '', undefined]) {
+      expect(esDeCloudflare(no), String(no)).toBe(false)
+    }
   })
 })
 

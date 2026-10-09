@@ -32,11 +32,15 @@ algo que hoy funciona.
    Con Cloudflare delante, el `X-Real-IP` que escribe Railway pasa a ser una IP
    **de Cloudflare**, y los frenos volverían a contar por nodo — el fallo del
    PR #448 ([DECISIONES.md](DECISIONES.md#la-ip-del-cliente-detrás-de-railway)).
-   Hay que enseñar a `server/src/middleware/ip-del-cliente.ts` a leer
-   `CF-Connecting-IP` **solo** cuando la petición llega desde los rangos
-   publicados de Cloudflare (<https://www.cloudflare.com/ips/>). Se prueba
-   primero en `pruebas.<dominio>` con `npm run test:carga -w @botpanel/server`:
-   el escenario «Un contador por cliente» tiene que salir en verde.
+   ✅ **El código ya está hecho (2026-10-09)**: `ip-del-cliente.ts` lee
+   `CF-Connecting-IP` **solo** cuando el `X-Real-IP` es de los rangos publicados
+   de Cloudflare (`server/src/lib/rangos-de-cloudflare.ts`). Antes de este paso,
+   comprobar que la lista sigue igual que <https://www.cloudflare.com/ips/>.
+   Se prueba primero en `pruebas.<dominio>` con
+   `npm run test:carga -w @botpanel/server`: el escenario «Un contador por
+   cliente» tiene que salir en verde. Si en el registro de Railway aparece
+   «CF-Connecting-IP desde …, que no es una red de Cloudflare» con el dominio
+   ya delante, falta una red en la lista.
 5. ⚠️ **Que Cloudflare no bloquee a quien nos avisa**: excepciones en el WAF y
    en *Bot Fight Mode* para `/webhook`, `/webhook/ycloud` y `/pagos/payphone/*`
    (YCloud, Meta y PayPhone no resuelven desafíos).
