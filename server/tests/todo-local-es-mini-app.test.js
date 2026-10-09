@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync, existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import { fuenteDeLaEntradaDelMarketplace } from './fuente-de-rutas.mjs'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TODO LOCAL PIDE POR LA MINI APP
@@ -130,7 +131,8 @@ describe('el motor del chat ya no cuelga del marketplace', () => {
   const leer = ruta => readFileSync(fileURLToPath(new URL(ruta, import.meta.url)), 'utf8')
 
   it('la entrada del marketplace no importa el menú ni su checkout', () => {
-    const fuente = leer('../src/services/marketplace-entry.ts')
+    // Entera: desde el 2026-10-07 la entrada son cinco archivos.
+    const fuente = fuenteDeLaEntradaDelMarketplace()
     expect(fuente).not.toMatch(/bot-menu-flow|marketplace-checkout/)
   })
 
