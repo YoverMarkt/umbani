@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
+import { fuenteDeLaEntradaDelMarketplace } from './fuente-de-rutas.mjs'
 import { fileURLToPath } from 'node:url'
 import {
   PAGINA, VER_MAS, VOLVER, elegir, esConversacion, esSaludo, paso, verCategorias, verNegocios,
@@ -424,10 +425,7 @@ describe('intentar empezar otra cosa con un pedido abierto', () => {
   // Pedir el menú DOS VECES no es ambiguo: es la misma petición repetida.
   it('un segundo MENÚ confirma en vez de volver a preguntar', async () => {
     const entrada = await import('../dist/services/marketplace-entry.js')
-    const fuente = readFileSync(
-      fileURLToPath(new URL('../src/services/marketplace-entry.ts', import.meta.url)),
-      'utf8',
-    )
+    const fuente = fuenteDeLaEntradaDelMarketplace()
     expect(entrada.handleMarketplaceMessage).toBeTypeOf('function')
     // La rama existe y suelta el local, que es lo que rompe el bucle.
     expect(fuente).toMatch(// La ventana se amplió el 2026-09-04: entre la comprobación y el guardado

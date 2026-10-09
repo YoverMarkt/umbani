@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { fuenteDeLaTienda } from './fuente-de-rutas.mjs'
+import { fuenteDeLaEntradaDelMarketplace } from './fuente-de-rutas.mjs'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // LAS DEFENSAS SON PARA TODOS LOS LOCALES
@@ -87,7 +88,7 @@ describe('el bloqueo se comprueba ANTES de elegir el camino', () => {
     // Si el bloqueo se mirara después de entregar el local, el bloqueado se
     // llevaría su enlace, armaría el carrito entero y solo lo frenaría el
     // rechazo al confirmar — el peor momento para enterarse.
-    const fuente = readFileSync('src/services/marketplace-entry.ts', 'utf8')
+    const fuente = fuenteDeLaEntradaDelMarketplace()
     const entrega = fuente.slice(fuente.indexOf('async function entregarLocal'))
     const bloqueo = entrega.indexOf('isContactBlocked')
     const enlace = entrega.indexOf('mandarElEnlace')
