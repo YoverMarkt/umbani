@@ -3,6 +3,7 @@ import {
   type UploadApiErrorResponse,
   type UploadApiResponse,
 } from 'cloudinary'
+import { esStaging } from '../config/environment'
 
 interface CloudinaryCredentials {
   cloud_name?: string
@@ -20,6 +21,14 @@ interface ModuloSettings {
   get(key: string): Promise<string | null | undefined>
 }
 const settings: ModuloSettings = require('../services/settings') as typeof import('../services/settings')
+
+/**
+ * La carpeta raíz de todo lo que se sube (2026-10-10). El servidor de PRUEBAS
+ * usa la misma cuenta de Cloudinary que producción (decisión del dueño), así
+ * que sus fotos van aparte: nada de pruebas se mezcla con las de verdad.
+ */
+export const raizDeLaNube = (env: NodeJS.ProcessEnv = process.env): string =>
+  esStaging(env) ? 'botpanel-pruebas' : 'botpanel'
 
 async function configure(): Promise<boolean> {
   const cloudName = await settings.get('cloudinary_cloud_name')
@@ -75,7 +84,7 @@ export async function uploadMedia(
 
   return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
-      { folder: `botpanel/${businessId}`, resource_type: 'auto' },
+      { folder: `${raizDeLaNube()}/${businessId}`, resource_type: 'auto' },
       (error: UploadApiErrorResponse | undefined, result: UploadApiResponse | undefined) => {
         if (error) return reject(error)
         const uploaded = result as UploadApiResponse
@@ -105,13 +114,15 @@ export async function uploadMedia(
 export async function uploadPrivateMedia(
   buffer: Buffer,
   businessId: string,
+  /** `comprobantes`, o `reclamos/<pedido>` para la foto de un reclamo (2026-10-10). */
+  carpeta = 'comprobantes',
 ): Promise<MediaUploadResult & { phash?: string }> {
   if (!(await configure())) throw new Error('Cloudinary no está configurado')
 
   return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
       {
-        folder: `botpanel/${businessId}/comprobantes`,
+        folder: `${raizDeLaNube()}/${businessId}/${carpeta}`,
         resource_type: 'image',
         type: 'authenticated',
         // La huella PERCEPTUAL de la imagen, que la calcula Cloudinary al

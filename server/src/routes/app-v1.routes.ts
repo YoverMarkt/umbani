@@ -1,5 +1,9 @@
 import rateLimit from 'express-rate-limit'
+import multer from 'multer'
+import type { RequestHandler } from 'express'
 import { createHash } from 'node:crypto'
+import { MEDIA_LIMITS, mapMulterError, validateMediaFile } from '../lib/media'
+import { isConfigured, uploadPrivateMedia } from '../integrations/cloudinary'
 import { enSegundoPlano } from '../lib/segundo-plano'
 import { createRouter } from '../middleware/async'
 import { deviceFingerprint } from '../services/storefront-session'
@@ -9,7 +13,7 @@ import { conOpcionesAgrupadas } from '../services/order-detail'
 import { reglaDeMargen } from '../services/storefront'
 import { pedidoParaElCliente, porcentajePorProducto } from '../lib/precio-para-el-cliente'
 import { ciudadesDe } from '../services/marketplace-ciudad'
-import { conConfirmacion, leerReclamo, respuestaAlCliente } from '../services/reclamos'
+import { conConfirmacion, leerReclamo, respuestaAlCliente, respuestaDelReclamo } from '../services/reclamos'
 import { clienteDeLaSesion, telefonoDelCliente } from '../services/cliente-de-la-app'
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -34,6 +38,7 @@ const limitador = (max: number, mensaje: string) => rateLimit({
 const codigoLimiter = limitador(5, 'Demasiados códigos pedidos, espera un momento')
 const verificarLimiter = limitador(60, 'Demasiados intentos, espera un momento')
 const appLimiter = limitador(90, 'Demasiadas peticiones, espera un momento')
+const fotoLimiter = limitador(10, 'Demasiadas fotos seguidas, espera un momento')
 
 
 // ── La entrada por WhatsApp, RETIRADA (2026-10-09) ────────────────────────
@@ -53,8 +58,11 @@ router.post('/api/v1/auth/whatsapp/verificar', verificarLimiter, (_req, res) => 
 /** Con la ciudad que eligió el cliente (2026-10-05), si eligió alguna. */
 router.get('/api/v1/yo', appLimiter, authApp, async (req, res) => {
   const cliente = await clienteDeLaSesion(req)
+  // El saldo Umbani (2026-10-10). Si no se pudo leer, `null`: la app no
+  // enseña un saldo que no conoce, y el resto de su cuenta sigue.
+  const saldo = await db.customerCreditBalance(cliente.id).catch(() => null)
   // `telefono` null = entró con correo y aún no dijo a qué número le llaman.
-  return res.json({ telefono: telefonoDe(req) || cliente.telefono, correo: cliente.correo, ciudadId: cliente.ciudadId })
+  return res.json({ telefono: telefonoDe(req) || cliente.telefono, correo: cliente.correo, ciudadId: cliente.ciudadId, saldo })
 })
 
 // ── Las ciudades (2026-10-05) ─────────────────────────────────────────────
@@ -231,11 +239,51 @@ router.post('/api/v1/pedidos/:id/todo-bien', appLimiter, authApp, async (req, re
 router.post('/api/v1/pedidos/:id/reclamo', appLimiter, authApp, async (req, res) => {
   const id = String(req.params.id || '').trim()
   if (!UUID.test(id)) return res.status(404).json({ error: 'No encontramos ese pedido' })
-  const { tipo, lineas, nota } = leerReclamo(req.body)
-  const r = await db.reportOrderProblem(id, await telefonoDelCliente(req), tipo, lineas, nota)
-  if (r.result === 'ok') return res.status(201).json({ ok: true, sugeridoCents: Number(r.sugeridoCents) || 0 })
+  const { tipo, lineas, nota, foto } = leerReclamo(req.body)
+  const r = await db.reportOrderProblem(id, await telefonoDelCliente(req), tipo, lineas, nota, foto)
+  // Fase 2 (2026-10-10): si es pequeño y su historial está limpio, el saldo
+  // llega AL INSTANTE (`estado: 'compensada'`); si no, lo revisa una persona.
+  if (r.result === 'ok') return res.status(201).json(respuestaDelReclamo(tipo, r))
   const e = respuestaAlCliente(r.result)
   return res.status(e.status).json({ error: e.error })
+})
+
+// ── La foto del reclamo (2026-10-10) ──────────────────────────────────────
+// «Vino mal» se aprueba al instante solo con foto. La sube el SERVIDOR, en
+// privado, en la carpeta de ESE pedido; la app manda luego su identificador
+// en `foto` y la base comprueba que es de ese pedido. Antes de subir nada se
+// comprueba que el pedido es de la sesión y está entregado: nadie llena la
+// nube de fotos de pedidos ajenos.
+const subidaDeFoto: RequestHandler = (req, res, next) => {
+  multer({ storage: multer.memoryStorage(), limits: { fileSize: MEDIA_LIMITS.image } })
+    .single('file')(req, res, error => {
+      if (error) {
+        const mapped = mapMulterError(error, MEDIA_LIMITS.image)
+        return res.status(mapped.status).json({ error: mapped.error })
+      }
+      next()
+    })
+}
+
+router.post('/api/v1/pedidos/:id/reclamo/foto', fotoLimiter, authApp, subidaDeFoto, async (req, res) => {
+  const id = String(req.params.id || '').trim()
+  if (!UUID.test(id)) return res.status(404).json({ error: 'No encontramos ese pedido' })
+  if (!req.file) return res.status(400).json({ error: 'No llegó la foto' })
+  const invalido = validateMediaFile(req.file)
+  if (invalido) return res.status(invalido.status).json({ error: invalido.error })
+  if (!req.file.mimetype?.startsWith('image/')) return res.status(400).json({ error: 'Tiene que ser una foto' })
+  // El mismo 404 para «no existe» y «es de otro».
+  const dueno = await db.getAppOrderOwner(await telefonoDelCliente(req), id).catch(() => null)
+  if (!dueno) return res.status(404).json({ error: 'No encontramos ese pedido' })
+  if (dueno.status !== 'completado') return res.status(409).json({ error: 'Tu pedido todavía no se ha entregado' })
+  if (!(await isConfigured())) return res.status(503).json({ error: 'No podemos recibir fotos ahora mismo. Inténtalo en un rato.' })
+  try {
+    const subida = await uploadPrivateMedia(req.file.buffer, dueno.business_id, `reclamos/${id}`)
+    return res.status(201).json({ foto: subida.public_id })
+  } catch (error) {
+    console.error('❌ foto del reclamo:', error instanceof Error ? error.message : 'Error desconocido')
+    return res.status(502).json({ error: 'No pudimos guardar tu foto. Inténtalo de nuevo.' })
+  }
 })
 
 export = router

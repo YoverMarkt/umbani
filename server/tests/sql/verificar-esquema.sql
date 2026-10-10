@@ -8226,6 +8226,8 @@ declare
 begin
   insert into businesses (slug, name, type, whatsapp_provider, whatsapp_number, ycloud_number, takes_orders, storefront_enabled)
   values ('verif-incidencias', 'Incidencias', 'pizzería', 'ycloud', '+593900123001', '+593900123001', true, true) returning id into v_local;
+  -- Su cuenta: desde la fase 2, resolver a su favor le da SALDO, y el saldo va a la cuenta.
+  insert into customers (phone, name) values ('593900123200', 'Cliente de incidencias');
 
   -- Un pedido entregado con dos líneas, y su margen (10 %) sellado.
   execute v_crear_pedido using v_local into v_ped;
@@ -8303,11 +8305,13 @@ begin
     raise exception 'dos veces la misma línea no sumó bien (esperaba 900): %', v_r;
   end if;
 
-  -- ── 6. «No llegó»: el pedido entero; y nunca más que el total ────────────
+  -- ── 6. «No llegó» en EFECTIVO: no pagó, así que no hay nada que devolver ─
+  -- (fase 2, 2026-10-10: antes devolvía el pedido entero; con tarjeta lo
+  -- sigue devolviendo, ver el bloque «EL SALDO UMBANI»).
   execute v_crear_pedido using v_local into v_corto;
   update orders set status = 'completado' where id = v_corto;
-  if (public.customer_report_order(v_corto, '593900123200', 'no_llego', '[]', null) ->> 'sugeridoCents')::integer <> 1250 then
-    raise exception '«no llegó» no devolvió el pedido entero';
+  if (public.customer_report_order(v_corto, '593900123200', 'no_llego', '[]', null) ->> 'sugeridoCents')::integer <> 0 then
+    raise exception '«no llegó» en efectivo devolvió algo que el cliente nunca pagó';
   end if;
 
   -- ── 7. Pasadas 48 h, ya no ───────────────────────────────────────────────
@@ -8363,3 +8367,243 @@ end;
 $incidencias$;
 
 select '✅ incidencias: el cliente reclama una vez, en 48 h y solo lo suyo; la base calcula lo que le corresponde; resuelta no se reescribe' as resultado;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- EL SALDO UMBANI (2026-10-10, fase 2 de las incidencias, parte 1)
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Lo que el cliente no recibió bien se le devuelve como SALDO: lo pequeño al
+-- instante, con la escalera de confianza; lo demás al resolverlo el
+-- superadmin. Cuentas a mano: pizza 2 × $4,00 y cola $1,00, con $0,90 de
+-- margen (10 %) y $1,50 de envío = $11,40. La cola con su margen: $1,10
+-- (del local $1,00, de Umbani $0,10).
+create or replace function pg_temp.verif_pedido_entregado(p_local uuid, p_telefono text, p_pago text)
+returns uuid
+language plpgsql
+as $f$
+declare
+  v_id uuid;
+begin
+  insert into orders (business_id, contact_phone, source, status, fulfillment, subtotal, shipping, total, payment_method)
+  values (p_local, p_telefono, 'manual', 'preparacion', 'delivery', 9, 1.5, 11.4, p_pago) returning id into v_id;
+  insert into order_items (order_id, business_id, product_name, quantity, unit_price, line_total)
+  values (v_id, p_local, 'Pizza', 2, 4.00, 8.00), (v_id, p_local, 'Cola', 1, 1.00, 1.00);
+  -- Con tarjeta o transferencia, pagado antes de salir (si no, la base no deja entregarlo).
+  update orders set platform_markup = 0.90, total = 11.40,
+         payment_confirmed_at = case when p_pago = 'efectivo' then null else now() end
+   where id = v_id;
+  update orders set status = 'completado' where id = v_id;
+  return v_id;
+end;
+$f$;
+
+create or replace function pg_temp.verif_la_cola(p_pedido uuid)
+returns jsonb
+language sql
+as $f$
+  select jsonb_build_array(jsonb_build_object('item', id, 'cantidad', 1))
+    from order_items where order_id = p_pedido and product_name = 'Cola'
+$f$;
+
+do $saldo$
+declare
+  v_local uuid;
+  v_ana uuid; v_beto uuid; v_rosa uuid; v_rosa2 uuid; v_luis uuid;
+  v_p1 uuid; v_p2 uuid; v_p3 uuid; v_p4 uuid; v_p5 uuid; v_p6 uuid; v_p7 uuid;
+  v_r jsonb; v_s jsonb; v_e jsonb;
+  v_inc public.order_incidents%rowtype;
+  v_lotes integer;
+begin
+  insert into businesses (slug, name, type, whatsapp_provider, whatsapp_number, ycloud_number, takes_orders, storefront_enabled)
+  values ('verif-saldo', 'Saldo', 'pizzería', 'ycloud', '+593900555000', '+593900555000', true, true) returning id into v_local;
+  insert into customers (phone, name) values ('593900555001', 'Ana') returning id into v_ana;
+  insert into customers (phone, name) values ('593900555002', 'Beto') returning id into v_beto;
+  insert into customers (phone, name) values ('593900555003', 'Rosa') returning id into v_rosa;
+  insert into customers (phone, name) values ('593900555004', 'Rosa con otra cuenta') returning id into v_rosa2;
+  insert into customers (phone, name) values ('593900555005', 'Luis') returning id into v_luis;
+
+  -- Sin nada, saldo cero.
+  v_s := public.saldo_del_cliente(v_ana);
+  if (v_s ->> 'cents')::integer <> 0 or v_s -> 'proximo' <> 'null'::jsonb then
+    raise exception 'un cliente sin reclamos tenía saldo: %', v_s;
+  end if;
+
+  -- ── 1. AL INSTANTE: faltó la cola, historial limpio → saldo ya ───────────
+  v_p1 := pg_temp.verif_pedido_entregado(v_local, '593900555001', 'efectivo');
+  v_r := public.customer_report_order(v_p1, '593900555001', 'falta_producto', pg_temp.verif_la_cola(v_p1), null);
+  if v_r ->> 'result' <> 'ok' or v_r ->> 'estado' <> 'compensada' or (v_r ->> 'saldoCents')::integer <> 110 then
+    raise exception 'la cola que faltó no se devolvió al instante (esperaba 110): %', v_r;
+  end if;
+  select * into v_inc from order_incidents where id = (v_r ->> 'id')::uuid;
+  if v_inc.status <> 'compensada' or not v_inc.auto_approved or v_inc.compensation_cents <> 110
+     or v_inc.compensated_at is null or v_inc.customer_id <> v_ana
+     or v_inc.local_cents <> 100 or v_inc.umbani_cents <> 10 or v_inc.reparto_cents <> 0
+     or v_inc.escalon <> 1 or cardinality(v_inc.review_reasons) <> 0 then
+    raise exception 'la incidencia al instante no quedó como debía: %', row_to_json(v_inc);
+  end if;
+  v_s := public.saldo_del_cliente(v_ana);
+  if (v_s ->> 'cents')::integer <> 110 or (v_s -> 'proximo' ->> 'cents')::integer <> 110
+     or (v_s -> 'proximo' ->> 'venceEl')::timestamptz not between now() + interval '89 days' and now() + interval '91 days' then
+    raise exception 'el saldo no quedó con 110 que vencen a los 90 días: %', v_s;
+  end if;
+
+  -- ── 2. El segundo, seguido: a revisión, y sin saldo todavía ──────────────
+  v_p2 := pg_temp.verif_pedido_entregado(v_local, '593900555001', 'efectivo');
+  v_r := public.customer_report_order(v_p2, '593900555001', 'falta_producto', pg_temp.verif_la_cola(v_p2), null);
+  if v_r ->> 'estado' <> 'abierta' or (v_r ->> 'saldoCents')::integer <> 0 then
+    raise exception 'un segundo reclamo seguido salió al instante: %', v_r;
+  end if;
+  select * into v_inc from order_incidents where id = (v_r ->> 'id')::uuid;
+  if not ('al_instante_reciente' = any (v_inc.review_reasons)) or not ('reportes_seguidos' = any (v_inc.review_reasons))
+     or v_inc.escalon <> 2 then
+    raise exception 'el segundo reclamo no dijo por qué va a revisión: %', row_to_json(v_inc);
+  end if;
+  if (public.saldo_del_cliente(v_ana) ->> 'cents')::integer <> 110 then
+    raise exception 'un reclamo en revisión ya dio saldo';
+  end if;
+
+  -- ── 3. El superadmin lo resuelve a su favor: ahí recibe el saldo ─────────
+  v_r := public.resolve_incident((v_r ->> 'id')::uuid, 'resuelta', 'local', 110, 'El local olvidó la cola', 'superadmin');
+  if v_r ->> 'result' <> 'ok' or (v_r ->> 'saldoCents')::integer <> 110 then
+    raise exception 'resolver a su favor no le dio el saldo: %', v_r;
+  end if;
+  if (public.saldo_del_cliente(v_ana) ->> 'cents')::integer <> 220 then
+    raise exception 'el saldo no sumó los dos reclamos (esperaba 220): %', public.saldo_del_cliente(v_ana);
+  end if;
+
+  -- ── 4. La COMPENSADA solo se confirma: el monto ya no cambia ─────────────
+  select * into v_inc from order_incidents where order_id = v_p1;
+  if public.resolve_incident(v_inc.id, 'resuelta', 'local', 999, 'Otro monto', 'superadmin') ->> 'result' <> 'compensacion_ya_dada' then
+    raise exception 'se reescribió el monto de un saldo ya dado';
+  end if;
+  if public.resolve_incident(v_inc.id, 'resuelta', 'local', -1, 'El local la olvidó', 'superadmin') ->> 'result' <> 'ok' then
+    raise exception 'no se pudo confirmar quién responde de un saldo ya dado';
+  end if;
+  select * into v_inc from order_incidents where order_id = v_p1;
+  select count(*) into v_lotes from customer_credit_lots where incident_id = v_inc.id;
+  if v_inc.status <> 'resuelta' or v_inc.responsible <> 'local' or v_inc.compensation_cents <> 110 or v_lotes <> 1 then
+    raise exception 'confirmar una compensada no quedó bien (o dio saldo dos veces): % lotes=%', row_to_json(v_inc), v_lotes;
+  end if;
+
+  -- ── 5. «Vino mal»: sin foto, a revisión; con foto de OTRO pedido, no vale ─
+  v_p3 := pg_temp.verif_pedido_entregado(v_local, '593900555002', 'efectivo');
+  if public.customer_report_order(v_p3, '593900555002', 'vino_mal', pg_temp.verif_la_cola(v_p3), null,
+       'botpanel/x/reclamos/' || v_p1::text || '/foto') ->> 'result' <> 'foto_invalida' then
+    raise exception 'se aceptó la foto de otro pedido';
+  end if;
+  v_r := public.customer_report_order(v_p3, '593900555002', 'vino_mal', pg_temp.verif_la_cola(v_p3), null,
+    'botpanel/' || v_local::text || '/reclamos/' || v_p3::text || '/foto');
+  if v_r ->> 'estado' <> 'compensada' or (v_r ->> 'saldoCents')::integer <> 110 then
+    raise exception '«vino mal» con su foto y el historial limpio no salió al instante: %', v_r;
+  end if;
+  select * into v_inc from order_incidents where id = (v_r ->> 'id')::uuid;
+  if v_inc.photo_public_id is null then raise exception 'la foto no quedó guardada'; end if;
+
+  v_p4 := pg_temp.verif_pedido_entregado(v_local, '593900555005', 'efectivo');
+  v_r := public.customer_report_order(v_p4, '593900555005', 'vino_mal', pg_temp.verif_la_cola(v_p4), null);
+  select * into v_inc from order_incidents where id = (v_r ->> 'id')::uuid;
+  if v_r ->> 'estado' <> 'abierta' or not ('sin_foto' = any (v_inc.review_reasons)) then
+    raise exception '«vino mal» sin foto salió al instante: % %', v_r, row_to_json(v_inc);
+  end if;
+
+  -- ── 6. «No llegó» con TARJETA: el pedido entero, siempre a revisión ──────
+  v_p5 := pg_temp.verif_pedido_entregado(v_local, '593900555005', 'tarjeta');
+  v_r := public.customer_report_order(v_p5, '593900555005', 'no_llego', '[]', null);
+  select * into v_inc from order_incidents where id = (v_r ->> 'id')::uuid;
+  if v_r ->> 'estado' <> 'abierta' or (v_r ->> 'sugeridoCents')::integer <> 1140
+     or not ('no_llego' = any (v_inc.review_reasons))
+     or v_inc.local_cents <> 900 or v_inc.umbani_cents <> 90 or v_inc.reparto_cents <> 150 then
+    raise exception '«no llegó» con tarjeta no quedó como debía: % %', v_r, row_to_json(v_inc);
+  end if;
+  if public.resolve_incident(v_inc.id, 'resuelta', 'cliente', 1140, 'Dice que no llegó', 'superadmin') ->> 'result' <> 'cliente_sin_compensacion' then
+    raise exception 'se le devolvió algo a un cliente que era el responsable';
+  end if;
+  v_r := public.resolve_incident(v_inc.id, 'resuelta', 'repartidor', 1140, 'El repartidor no lo entregó', 'superadmin');
+  if (v_r ->> 'saldoCents')::integer <> 1140 or (public.saldo_del_cliente(v_luis) ->> 'cents')::integer <> 1140 then
+    raise exception '«no llegó» con tarjeta no le devolvió el pedido entero: % saldo=%', v_r, public.saldo_del_cliente(v_luis);
+  end if;
+
+  -- ── 7. «No llegó» en EFECTIVO: no pagó; queda lo del local para cobrarlo ─
+  v_p6 := pg_temp.verif_pedido_entregado(v_local, '593900555005', 'efectivo');
+  v_r := public.customer_report_order(v_p6, '593900555005', 'no_llego', '[]', null);
+  select * into v_inc from order_incidents where id = (v_r ->> 'id')::uuid;
+  if (v_r ->> 'sugeridoCents')::integer <> 0 or not ('sin_monto' = any (v_inc.review_reasons)) or v_inc.local_cents <> 900 then
+    raise exception '«no llegó» en efectivo: % %', v_r, row_to_json(v_inc);
+  end if;
+  if public.resolve_incident(v_inc.id, 'resuelta', 'repartidor', 0, 'Responde por la comida', 'superadmin') ->> 'result' <> 'ok'
+     or exists (select 1 from customer_credit_lots where incident_id = v_inc.id) then
+    raise exception 'un «no llegó» en efectivo dio saldo';
+  end if;
+
+  -- ── 8. La escalera: dos rechazos = escalón 3, y lo hereda otra cuenta ────
+  -- ─────── del mismo dispositivo ───────────────────────────────────────────
+  v_p7 := pg_temp.verif_pedido_entregado(v_local, '593900555003', 'efectivo');
+  v_r := public.customer_report_order(v_p7, '593900555003', 'falta_producto', pg_temp.verif_la_cola(v_p7), null);
+  -- Al instante… pero el superadmin no le cree: el saldo se queda, y cuenta como rechazo.
+  perform public.resolve_incident((v_r ->> 'id')::uuid, 'descartada', null, null, 'La cola sí iba en la bolsa', 'superadmin');
+  if (public.saldo_del_cliente(v_rosa) ->> 'cents')::integer <> 110 then
+    raise exception 'descartar una compensada le quitó el saldo';
+  end if;
+  v_p7 := pg_temp.verif_pedido_entregado(v_local, '593900555003', 'efectivo');
+  v_r := public.customer_report_order(v_p7, '593900555003', 'falta_producto', pg_temp.verif_la_cola(v_p7), null);
+  if public.resolve_incident((v_r ->> 'id')::uuid, 'resuelta', 'cliente', 0, 'Otra vez no le creemos', 'superadmin') ->> 'result' <> 'ok' then
+    raise exception 'no se pudo resolver diciendo que respondía el cliente';
+  end if;
+  v_e := public.escalera_del_cliente(v_rosa);
+  if (v_e ->> 'escalon')::integer <> 3 or (v_e ->> 'rechazos')::integer <> 2 then
+    raise exception 'dos rechazos no la subieron al escalón 3: %', v_e;
+  end if;
+  -- Dos cuentas que abrieron la tienda desde el MISMO teléfono (la huella del dispositivo).
+  insert into storefront_sessions (business_id, customer_id, token_hash, contact_phone, device_hash, claimed_at)
+  values (v_local, v_rosa, repeat('a', 64), '593900555003', repeat('d', 64), now()),
+         (v_local, v_rosa2, repeat('b', 64), '593900555004', repeat('d', 64), now());
+  v_e := public.escalera_del_cliente(v_rosa2);
+  if (v_e ->> 'escalon')::integer <> 3 then
+    raise exception 'una cuenta nueva desde el mismo teléfono limpió la escalera: %', v_e;
+  end if;
+  v_p7 := pg_temp.verif_pedido_entregado(v_local, '593900555004', 'efectivo');
+  v_r := public.customer_report_order(v_p7, '593900555004', 'falta_producto', pg_temp.verif_la_cola(v_p7), null);
+  select * into v_inc from order_incidents where id = (v_r ->> 'id')::uuid;
+  if v_r ->> 'estado' <> 'abierta' or not ('rechazos' = any (v_inc.review_reasons)) then
+    raise exception 'el escalón 3 recibió saldo al instante: % %', v_r, row_to_json(v_inc);
+  end if;
+
+  -- ── 9. Los números se cambian sin tocar código, y se acotan ──────────────
+  insert into server_settings (key, value) values ('reclamo_al_instante_tope_cents', '50')
+    on conflict (key) do update set value = excluded.value;
+  v_p7 := pg_temp.verif_pedido_entregado(v_local, '593900555002', 'tarjeta');
+  -- Beto ya tuvo uno al instante: con el tope en $0,50, además, pasa del tope.
+  v_r := public.customer_report_order(v_p7, '593900555002', 'falta_producto', pg_temp.verif_la_cola(v_p7), null);
+  select * into v_inc from order_incidents where id = (v_r ->> 'id')::uuid;
+  if not ('tope' = any (v_inc.review_reasons)) then
+    raise exception 'el tope cambiado en server_settings no se respetó: %', row_to_json(v_inc);
+  end if;
+  update server_settings set value = 'no-es-un-número' where key = 'reclamo_al_instante_tope_cents';
+  if public.parametro_entero('reclamo_al_instante_tope_cents', 500, 0, 100000) <> 500 then
+    raise exception 'un número mal escrito no volvió al de siempre';
+  end if;
+  update server_settings set value = '999999' where key = 'saldo_vence_dias';
+  if public.parametro_entero('saldo_vence_dias', 90, 1, 3650) not in (90, 3650) then
+    raise exception 'un número fuera de rango no se acotó';
+  end if;
+  delete from server_settings where key in ('reclamo_al_instante_tope_cents', 'saldo_vence_dias');
+
+  -- ── 10. Lo usado y lo vencido no cuentan; lo devuelto vuelve ─────────────
+  insert into customer_credit_uses (lot_id, order_id, business_id, cents)
+  select l.id, v_p2, v_local, 60 from customer_credit_lots l
+   join order_incidents i on i.id = l.incident_id where i.order_id = v_p1;
+  if (public.saldo_del_cliente(v_ana) ->> 'cents')::integer <> 160 then
+    raise exception 'lo usado no se descontó del saldo: %', public.saldo_del_cliente(v_ana);
+  end if;
+  update customer_credit_uses set reversed_at = now() where order_id = v_p2;
+  if (public.saldo_del_cliente(v_ana) ->> 'cents')::integer <> 220 then
+    raise exception 'lo devuelto no volvió al saldo: %', public.saldo_del_cliente(v_ana);
+  end if;
+  update customer_credit_lots l set created_at = now() - interval '100 days', expires_at = now() - interval '10 days'
+    from order_incidents i where i.id = l.incident_id and i.order_id = v_p1;
+  if (public.saldo_del_cliente(v_ana) ->> 'cents')::integer <> 110 then
+    raise exception 'un lote vencido siguió contando: %', public.saldo_del_cliente(v_ana);
+  end if;
+end;
+$saldo$;
+
+select '✅ saldo Umbani: al instante lo pequeño, la escalera con rechazos y dispositivos, efectivo sin saldo, lo usado y lo vencido no cuentan' as resultado;

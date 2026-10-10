@@ -1,5 +1,6 @@
 import type { Request, RequestHandler } from 'express'
 import { createRouter } from '../middleware/async'
+import { signedMediaUrl } from '../integrations/cloudinary'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // INCIDENCIAS (SUPERADMIN, 2026-10-06, fase 1)
@@ -10,8 +11,11 @@ import { createRouter } from '../middleware/async'
 // el repartidor que no apareció). El superadmin decide quién responde —el
 // local, el repartidor, el cliente o Umbani— y cuánto se compensa.
 //
-// ⚠️ Esta fase NO mueve dinero: la compensación queda decidida y anotada. El
-// saldo Umbani y el descuento en la liquidación llegan en la fase 2.
+// Fase 2 (2026-10-10): lo que el cliente no recibió bien se le devuelve como
+// SALDO UMBANI. Lo pequeño llega al instante (estado `compensada`) y aquí solo
+// se confirma quién responde; el resto se decide aquí, y al resolverlo se le
+// da el saldo. ⚠️ Sin esa confirmación, al responsable no se le cobra nada
+// (la liquidación del lunes es la parte 3).
 
 interface ModuloAuth { authAdmin: RequestHandler }
 const auth: ModuloAuth = require('../middleware/auth') as typeof import('../middleware/auth')
@@ -27,6 +31,9 @@ const RESPUESTA: Record<string, { status: number; error: string }> = {
   ya_resuelta: { status: 409, error: 'Esa incidencia ya se resolvió: no se reescribe' },
   datos_invalidos: { status: 400, error: 'Di quién responde: el local, el repartidor, el cliente o Umbani' },
   compensacion_invalida: { status: 400, error: 'La compensación no puede pasar del total del pedido' },
+  compensacion_ya_dada: { status: 409, error: 'El saldo ya se le dio al instante: aquí solo se confirma quién responde, el monto no cambia' },
+  cliente_sin_compensacion: { status: 400, error: 'Si responde el cliente, no hay nada que devolverle: deja la compensación en 0' },
+  sin_cuenta: { status: 409, error: 'No encontramos la cuenta de ese cliente para darle el saldo' },
 }
 const responder = (res: Parameters<RequestHandler>[1], resultado: unknown, ok: () => void) => {
   if (resultado === 'ok') return ok()
@@ -38,6 +45,11 @@ const quien = (req: Request) => `superadmin:${(req.user as { email?: string } | 
 router.get('/api/admin/incidencias', auth.authAdmin, async (req, res) => {
   const estado = req.query.estado === 'todas' ? 'todas' : 'abierta'
   const filas = await db.listIncidents(estado)
+  // La foto del cliente es privada: se ve con un enlace firmado que caduca solo.
+  const fotos = new Map<string, string | null>()
+  for (const i of filas) {
+    if (i.photo_public_id) fotos.set(i.id, await signedMediaUrl(i.photo_public_id).catch(() => null))
+  }
   return res.json({
     incidencias: filas.map(i => ({
       id: i.id,
@@ -53,6 +65,13 @@ router.get('/api/admin/incidencias', auth.authAdmin, async (req, res) => {
       resueltaPor: i.resolved_by,
       creadaEn: i.created_at,
       resueltaEn: i.resolved_at,
+      // Fase 2: el saldo y por qué no salió al instante (al cliente no se le dice).
+      alInstante: i.auto_approved,
+      saldoDadoEn: i.compensated_at,
+      reparto: { localCents: i.local_cents, umbaniCents: i.umbani_cents, carreraCents: i.reparto_cents },
+      escalon: i.escalon,
+      motivos: i.review_reasons,
+      fotoUrl: fotos.get(i.id) ?? null,
       pedido: {
         id: i.order_id,
         numero: i.orders?.order_number ?? null,
@@ -92,7 +111,7 @@ router.post('/api/admin/incidencias/:id/resolver', auth.authAdmin, async (req, r
     id, status: estado, responsible: typeof body.responsable === 'string' ? body.responsable : null,
     compensationCents: compensacion, note: String(body.nota ?? ''), actor: quien(req),
   })
-  return responder(res, r.result, () => res.json({ ok: true }))
+  return responder(res, r.result, () => res.json({ ok: true, saldoCents: Number(r.saldoCents) || 0 }))
 })
 
 export = router

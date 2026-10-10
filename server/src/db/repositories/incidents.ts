@@ -5,8 +5,11 @@ import type { Database } from '../tipos-generados'
 //
 // Las reglas —de quién es el pedido, el plazo de 48 h, una vez por pedido,
 // cuánto le corresponde al cliente— viven en PostgreSQL
-// (`migration-2026-10-06-incidencias.sql`). Aquí se piden. Esta fase no
-// mueve dinero: la compensación queda decidida y anotada.
+// (`migration-2026-10-06-incidencias.sql`). Aquí se piden.
+//
+// Fase 2 (2026-10-10, `migration-2026-10-10-saldo-umbani.sql`): lo que el
+// cliente no recibió bien se le devuelve como SALDO UMBANI, lo pequeño al
+// instante con la escalera de confianza. También vive en la base.
 
 const db: SupabaseClient<Database> = require('../client') as typeof import('../client')
 
@@ -33,12 +36,26 @@ export interface EstadoDelReclamo {
 const confirmOrderReceived = async (orderId: string, phone: string) =>
   leer(sinError(await db.rpc('customer_confirm_order', { p_order_id: orderId, p_phone: phone })))
 
-const reportOrderProblem = async (orderId: string, phone: string, kind: string, lines: unknown, note: string | null) =>
+const reportOrderProblem = async (
+  orderId: string, phone: string, kind: string, lines: unknown, note: string | null, photo: string | null = null,
+) =>
   leer(sinError(await db.rpc('customer_report_order', {
     p_order_id: orderId, p_phone: phone, p_kind: kind,
     p_lines: (Array.isArray(lines) ? lines : []) as Database['public']['Functions']['customer_report_order']['Args']['p_lines'],
     p_note: note ?? '',
+    // La foto la subió el servidor en la carpeta de este pedido; la base lo comprueba.
+    ...(photo ? { p_photo: photo } : {}),
   })))
+
+/** El saldo Umbani de una persona: lo que queda vigente y el próximo que vence. */
+const customerCreditBalance = async (customerId: string) => {
+  const datos = leer(sinError(await db.rpc('saldo_del_cliente', { p_customer_id: customerId })))
+  const proximo = leer(datos.proximo)
+  return {
+    cents: Number(datos.cents) || 0,
+    proximo: datos.proximo ? { cents: Number(proximo.cents) || 0, venceEl: String(proximo.venceEl ?? '') } : null,
+  }
+}
 
 /**
  * Lo que el cliente ve de cada pedido suyo: si dijo «todo bien», su reclamo
@@ -81,15 +98,21 @@ const claimStates = async (orders: { id: string; status: string; received_ok_at?
 
 // ── El superadmin ──────────────────────────────────────────────────────────
 
+/**
+ * `abierta` = lo que le toca al superadmin: las abiertas y las COMPENSADAS
+ * (saldo dado al instante, falta confirmar quién responde). Sin confirmarlo,
+ * al responsable no se le cobra nada el lunes.
+ */
 const listIncidents = async (estado: 'abierta' | 'todas', limite = 200) => {
   let consulta = db.from('order_incidents')
     .select(`id, kind, origin, status, responsible, lines, note, suggested_cents, compensation_cents, resolution_note,
-      resolved_by, created_at, resolved_at, order_id, business_id,
+      resolved_by, created_at, resolved_at, order_id, business_id, auto_approved, compensated_at,
+      local_cents, umbani_cents, reparto_cents, photo_public_id, escalon, review_reasons,
       orders!order_incidents_order_fk(order_number, total, payment_method, contact_name, contact_phone),
       businesses(name), couriers(name, cooperative_id, cooperatives(name))`)
     .order('created_at', { ascending: false })
     .limit(Math.min(Math.max(limite, 1), 500))
-  if (estado === 'abierta') consulta = consulta.eq('status', 'abierta')
+  if (estado === 'abierta') consulta = consulta.in('status', ['abierta', 'compensada'])
   const { data, error } = await consulta
   if (error) throw new Error(error.message)
   return data || []
@@ -122,6 +145,6 @@ const cooperativeIncidents = async (courierIds: string[]) => {
 }
 
 export {
-  confirmOrderReceived, reportOrderProblem, claimStates,
+  confirmOrderReceived, reportOrderProblem, claimStates, customerCreditBalance,
   listIncidents, registerIncident, resolveIncident, cooperativeIncidents,
 }

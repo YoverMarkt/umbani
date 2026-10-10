@@ -18,6 +18,7 @@ export const RESPUESTA_AL_CLIENTE: Record<string, { status: number; error: strin
   sin_lineas: { status: 400, error: 'Elige qué faltó o qué vino mal' },
   linea_invalida: { status: 400, error: 'Revisa lo que elegiste: no coincide con tu pedido' },
   nota_larga: { status: 400, error: 'La nota es muy larga: máximo 500 caracteres' },
+  foto_invalida: { status: 400, error: 'Esa foto no es de este pedido. Súbela otra vez.' },
 }
 const NO_SE_PUDO = { status: 409, error: 'No pudimos registrarlo. Inténtalo de nuevo.' }
 export const respuestaAlCliente = (resultado: unknown) => RESPUESTA_AL_CLIENTE[String(resultado)] || NO_SE_PUDO
@@ -35,7 +36,37 @@ export function leerReclamo(body: unknown) {
     tipo: String(datos.tipo ?? ''),
     lineas,
     nota: typeof datos.nota === 'string' ? datos.nota.slice(0, 600) : null,
+    // El identificador que devolvió la subida de la foto; la base comprueba que es de este pedido.
+    foto: typeof datos.foto === 'string' && datos.foto.trim() ? datos.foto.trim().slice(0, 300) : null,
   }
+}
+
+const dinero = (centavos: number) => `$${Math.floor(centavos / 100)},${String(centavos % 100).padStart(2, '0')}`
+
+/**
+ * Lo que la app le dice al cliente después de reportar (2026-10-10). Se
+ * escribe AQUÍ, como los errores, para que todas las apps digan lo mismo.
+ * ⚠️ Nunca le explica la regla: si no se aprobó al instante, «lo estamos
+ * revisando», sin decirle por qué (así no se aprende a esquivarla).
+ */
+export function respuestaDelReclamo(tipo: string, r: Record<string, unknown>) {
+  const estado = r.estado === 'compensada' ? 'compensada' : 'abierta'
+  const sugeridoCents = Number(r.sugeridoCents) || 0
+  const saldoCents = Number(r.saldoCents) || 0
+  const venceEl = typeof r.venceEl === 'string' && r.venceEl ? r.venceEl : null
+  let mensaje: string
+  if (estado === 'compensada' && saldoCents > 0) {
+    const hasta = venceEl
+      ? new Date(venceEl).toLocaleDateString('es-EC', { day: 'numeric', month: 'long', timeZone: 'America/Guayaquil' })
+      : null
+    mensaje = `Listo: te devolvimos ${dinero(saldoCents)} en saldo Umbani. Lo usas en tu próximo pedido, en cualquier local`
+      + (hasta ? `, hasta el ${hasta}.` : '.')
+  } else if (tipo === 'no_llego' && sugeridoCents === 0) {
+    mensaje = 'Como ibas a pagar al recibir, no se te cobró nada. Revisamos qué pasó con el repartidor.'
+  } else {
+    mensaje = 'Lo estamos revisando. Te avisamos apenas tengamos una respuesta.'
+  }
+  return { ok: true, estado, sugeridoCents, saldoCents, venceEl, mensaje }
 }
 
 /** Cada pedido de la lista con su `confirmacion`: «todo bien», su reclamo y hasta cuándo puede reclamar. */

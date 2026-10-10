@@ -166,8 +166,9 @@ describe('una cuenta de correo SIN teléfono no ve nada de nadie', () => {
   })
 
   it('«/yo» dice quién es y que aún no tiene número', async () => {
+    vi.spyOn(db, 'customerCreditBalance').mockResolvedValue({ cents: 0, proximo: null })
     const r = await correr(appV1, 'get', '/api/v1/yo', { headers: conCorreo() })
-    expect(r.body).toEqual({ telefono: null, correo: CORREO, ciudadId: null })
+    expect(r.body).toEqual({ telefono: null, correo: CORREO, ciudadId: null, saldo: { cents: 0, proximo: null } })
   })
 
   it('no abre la tienda de un local hasta poner su número', async () => {

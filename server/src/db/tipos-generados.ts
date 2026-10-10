@@ -1312,6 +1312,93 @@ export type Database = {
           },
         ]
       }
+      customer_credit_lots: {
+        Row: {
+          cents: number
+          created_at: string
+          customer_id: string
+          expires_at: string
+          id: string
+          incident_id: string
+        }
+        Insert: {
+          cents: number
+          created_at?: string
+          customer_id: string
+          expires_at: string
+          id?: string
+          incident_id: string
+        }
+        Update: {
+          cents?: number
+          created_at?: string
+          customer_id?: string
+          expires_at?: string
+          id?: string
+          incident_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_credit_lots_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_credit_lots_incident_id_fkey"
+            columns: ["incident_id"]
+            isOneToOne: true
+            referencedRelation: "order_incidents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      customer_credit_uses: {
+        Row: {
+          business_id: string
+          cents: number
+          created_at: string
+          id: string
+          lot_id: string
+          order_id: string
+          reversed_at: string | null
+        }
+        Insert: {
+          business_id: string
+          cents: number
+          created_at?: string
+          id?: string
+          lot_id: string
+          order_id: string
+          reversed_at?: string | null
+        }
+        Update: {
+          business_id?: string
+          cents?: number
+          created_at?: string
+          id?: string
+          lot_id?: string
+          order_id?: string
+          reversed_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_credit_uses_lot_id_fkey"
+            columns: ["lot_id"]
+            isOneToOne: false
+            referencedRelation: "customer_credit_lots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_credit_uses_pedido_fk"
+            columns: ["order_id", "business_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id", "business_id"]
+          },
+        ]
+      }
       customers: {
         Row: {
           app_sessions_valid_after: string | null
@@ -2105,58 +2192,85 @@ export type Database = {
       }
       order_incidents: {
         Row: {
+          auto_approved: boolean
           business_id: string
+          compensated_at: string | null
           compensation_cents: number | null
           courier_id: string | null
           created_at: string
+          customer_id: string | null
+          escalon: number | null
           id: string
           kind: string
           lines: Json
+          local_cents: number | null
           note: string | null
           order_id: string
           origin: string
+          photo_public_id: string | null
+          reparto_cents: number | null
           resolution_note: string | null
           resolved_at: string | null
           resolved_by: string | null
           responsible: string | null
+          review_reasons: string[]
           status: string
           suggested_cents: number
+          umbani_cents: number | null
         }
         Insert: {
+          auto_approved?: boolean
           business_id: string
+          compensated_at?: string | null
           compensation_cents?: number | null
           courier_id?: string | null
           created_at?: string
+          customer_id?: string | null
+          escalon?: number | null
           id?: string
           kind: string
           lines?: Json
+          local_cents?: number | null
           note?: string | null
           order_id: string
           origin: string
+          photo_public_id?: string | null
+          reparto_cents?: number | null
           resolution_note?: string | null
           resolved_at?: string | null
           resolved_by?: string | null
           responsible?: string | null
+          review_reasons?: string[]
           status?: string
           suggested_cents?: number
+          umbani_cents?: number | null
         }
         Update: {
+          auto_approved?: boolean
           business_id?: string
+          compensated_at?: string | null
           compensation_cents?: number | null
           courier_id?: string | null
           created_at?: string
+          customer_id?: string | null
+          escalon?: number | null
           id?: string
           kind?: string
           lines?: Json
+          local_cents?: number | null
           note?: string | null
           order_id?: string
           origin?: string
+          photo_public_id?: string | null
+          reparto_cents?: number | null
           resolution_note?: string | null
           resolved_at?: string | null
           resolved_by?: string | null
           responsible?: string | null
+          review_reasons?: string[]
           status?: string
           suggested_cents?: number
+          umbani_cents?: number | null
         }
         Relationships: [
           {
@@ -2171,6 +2285,13 @@ export type Database = {
             columns: ["courier_id"]
             isOneToOne: false
             referencedRelation: "couriers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_incidents_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
             referencedColumns: ["id"]
           },
           {
@@ -3842,6 +3963,10 @@ export type Database = {
       }
     }
     Functions: {
+      abonar_saldo: {
+        Args: { p_cents: number; p_customer_id: string; p_incident_id: string }
+        Returns: Json
+      }
       actor_de_la_peticion: { Args: never; Returns: string }
       advance_marketplace_conversation: {
         Args: {
@@ -3992,6 +4117,7 @@ export type Database = {
         Args: { p_business_id: string; p_customer_id: string }
         Returns: undefined
       }
+      cliente_del_telefono: { Args: { p_phone: string }; Returns: string }
       close_weekly_courier_settlements: {
         Args: { p_week_start: string }
         Returns: Json
@@ -4084,6 +4210,7 @@ export type Database = {
           p_note: string
           p_order_id: string
           p_phone: string
+          p_photo?: string
         }
         Returns: Json
       }
@@ -4113,6 +4240,10 @@ export type Database = {
         Returns: boolean
       }
       ensure_current_month_billing: { Args: never; Returns: number }
+      escalera_del_cliente: {
+        Args: { p_customer_id: string; p_nuevo?: boolean }
+        Returns: Json
+      }
       expire_card_payment: {
         Args: { p_client_transaction_id: string; p_detail?: string }
         Returns: boolean
@@ -4410,6 +4541,15 @@ export type Database = {
         Args: { p_order_id: string; p_percentage: number }
         Returns: number
       }
+      parametro_entero: {
+        Args: {
+          p_clave: string
+          p_defecto: number
+          p_maximo: number
+          p_minimo: number
+        }
+        Returns: number
+      }
       payments_to_reconcile: {
         Args: { p_environment: string; p_limite?: number }
         Returns: {
@@ -4564,6 +4704,7 @@ export type Database = {
         Args: { p_customer_id: string }
         Returns: number
       }
+      saldo_del_cliente: { Args: { p_customer_id: string }; Returns: Json }
       save_receipt_analysis: {
         Args: {
           p_analysis?: Json
