@@ -163,3 +163,22 @@ líneas (`order_items[].line_total`, lo que pagó el cliente) y el desglose
 cotización. El detalle, con la línea de tiempo de sus estados:
 `GET /api/v1/pedidos/{id}`. Un pedido de otro teléfono responde `404`, igual que
 uno que no existe.
+
+## 5b. Reportar un problema y el saldo Umbani (2026-10-10)
+
+**Todo empieza cuando el cliente reporta.** Si no dice nada, todo llegó bien:
+no le pidas confirmar. En un pedido entregado, durante 48 horas
+(`confirmacion.reclamableHasta`), la app ofrece «¿Algún problema con tu pedido?».
+
+1. **Qué pasó:** `falta_producto` y `vino_mal` (con qué líneas y cuántas
+   unidades) o `no_llego`.
+2. **La foto** (con «vino mal», sin ella no sale al instante): primero
+   `POST /api/v1/pedidos/{id}/reclamo/foto` (multipart, `file`) → `{ foto }`.
+3. **El reclamo:** `POST /api/v1/pedidos/{id}/reclamo` con
+   `{ tipo, lineas, nota, foto }` → `{ estado, sugeridoCents, saldoCents, venceEl, mensaje }`.
+   - `estado: 'compensada'`: el saldo YA está en su cuenta.
+   - `estado: 'abierta'`: lo revisa una persona.
+   Enseña `mensaje` **tal cual**: a propósito, nunca le explica la regla.
+4. **Su saldo:** `GET /api/v1/yo` trae `saldo: { cents, proximo: { cents, venceEl } }`.
+   No se cambia por efectivo, sirve en cualquier local y vence. Usarlo al pedir
+   llega en la parte 2 de la fase 2.

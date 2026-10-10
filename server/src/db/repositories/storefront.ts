@@ -663,12 +663,14 @@ const getAppOrderOwner = async (telefono: string, orderId: string) => {
   if (!digitos) return null
   const { data, error } = await db
     .from('orders')
-    .select('business_id,contact_phone,businesses(name,slug)')
+    .select('business_id,contact_phone,status,businesses(name,slug)')
     .eq('id', orderId)
     .in('contact_phone', [digitos, `+${digitos}`])
     .maybeSingle()
   if (error) throw new Error(error.message)
-  return data as { business_id: string; contact_phone: string; businesses: { name: string; slug: string } | null } | null
+  return data as {
+    business_id: string; contact_phone: string; status: string; businesses: { name: string; slug: string } | null
+  } | null
 }
 
 const getStorefrontOrder = async (input: {

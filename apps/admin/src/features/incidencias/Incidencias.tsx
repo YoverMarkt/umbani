@@ -13,7 +13,7 @@ import { Skeleton } from '@botpanel/ui/components/skeleton'
 import { Textarea } from '@botpanel/ui/components/textarea'
 import { getClients } from '../clients/api'
 import {
-  QUIEN_RESPONDE, RESPONSABLES, TIPOS, getIncidencias, registrarIncidencia, resolverIncidencia,
+  MOTIVOS, QUIEN_RESPONDE, RESPONSABLES, TIPOS, getIncidencias, registrarIncidencia, resolverIncidencia,
   type Incidencia, type Responsable, type TipoDeIncidencia,
 } from './api'
 
@@ -30,7 +30,9 @@ import {
 
 const dinero = (centavos: number | null | undefined) => `$${((centavos ?? 0) / 100).toFixed(2)}`
 const fecha = (iso: string) => new Date(iso).toLocaleString('es-EC', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
-const ESTADO = { abierta: 'Abierta', resuelta: 'Resuelta', descartada: 'Descartada' } as const
+const ESTADO = { abierta: 'Abierta', compensada: 'Saldo dado', resuelta: 'Resuelta', descartada: 'Descartada' } as const
+/** Las que le tocan al superadmin: decidir, o confirmar quién responde de un saldo ya dado. */
+const pendiente = (i: Incidencia) => i.estado === 'abierta' || i.estado === 'compensada'
 
 export default function Incidencias() {
   const qc = useQueryClient()
@@ -45,7 +47,9 @@ export default function Incidencias() {
   const [decision, setDecision] = useState({ estado: 'resuelta' as 'resuelta' | 'descartada', responsable: 'local' as Responsable, compensacion: '', nota: '' })
   const abrirResolver = (i: Incidencia) => {
     setResolviendo(i)
-    setDecision({ estado: 'resuelta', responsable: QUIEN_RESPONDE[i.tipo], compensacion: (i.sugeridoCents / 100).toFixed(2), nota: '' })
+    // Si el saldo ya se dio al instante, el monto es ese y no cambia.
+    const cents = i.estado === 'compensada' ? (i.compensacionCents ?? 0) : i.sugeridoCents
+    setDecision({ estado: 'resuelta', responsable: QUIEN_RESPONDE[i.tipo], compensacion: (cents / 100).toFixed(2), nota: '' })
   }
   const resolver = useMutation({
     mutationFn: () => resolverIncidencia(resolviendo!.id, {
@@ -54,7 +58,11 @@ export default function Incidencias() {
       compensacionCents: decision.estado === 'resuelta' ? Math.round((Number(decision.compensacion.replace(',', '.')) || 0) * 100) : null,
       nota: decision.nota.trim(),
     }),
-    onSuccess: () => { toast.success('Incidencia cerrada'); setResolviendo(null); refrescar() },
+    onSuccess: (r: { saldoCents?: number }) => {
+      toast.success(r?.saldoCents ? `Listo: el cliente recibió ${dinero(r.saldoCents)} de saldo Umbani` : 'Incidencia cerrada')
+      setResolviendo(null)
+      refrescar()
+    },
     onError: (e: Error) => toast.error(e.message),
   })
 
@@ -112,7 +120,7 @@ export default function Incidencias() {
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge variant="outline">{TIPOS[i.tipo]}</Badge>
-                      <Badge variant={i.estado === 'abierta' ? 'default' : 'secondary'}>{ESTADO[i.estado]}</Badge>
+                      <Badge variant={pendiente(i) ? 'default' : 'secondary'}>{ESTADO[i.estado]}</Badge>
                     </div>
                   </div>
 
@@ -137,9 +145,23 @@ export default function Incidencias() {
                     </ul>
                   )}
                   {i.nota && <p className="rounded-md bg-muted px-3 py-2 text-sm">«{i.nota}»</p>}
+                  {i.fotoUrl && (
+                    <a href={i.fotoUrl} target="_blank" rel="noreferrer" className="block w-fit">
+                      <img src={i.fotoUrl} alt="Foto que mandó el cliente" className="h-28 rounded-md border object-cover" />
+                    </a>
+                  )}
+                  {i.estado === 'abierta' && i.motivos.length > 0 && (
+                    <div className="text-sm">
+                      <span className="text-muted-foreground">No salió al instante: </span>
+                      {i.motivos.map(m => MOTIVOS[m] || m).join(' · ')}
+                      {i.escalon && i.escalon > 1 ? <span className="text-muted-foreground"> · escalón {i.escalon}</span> : null}
+                    </div>
+                  )}
 
                   <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-3 text-sm">
-                    {i.estado === 'abierta'
+                    {i.estado === 'compensada'
+                      ? <span>Saldo dado al instante: <strong className="tabular-nums">{dinero(i.compensacionCents)}</strong> · falta confirmar quién responde</span>
+                      : i.estado === 'abierta'
                       ? <span>Le corresponde, según la base: <strong className="tabular-nums">{dinero(i.sugeridoCents)}</strong></span>
                       : (
                         <span className="text-muted-foreground">
@@ -149,7 +171,9 @@ export default function Incidencias() {
                           {i.resolucion ? ` · «${i.resolucion}»` : ''}
                         </span>
                       )}
-                    {i.estado === 'abierta' && <Button size="sm" onClick={() => abrirResolver(i)}>Resolver</Button>}
+                    {pendiente(i) && (
+                      <Button size="sm" onClick={() => abrirResolver(i)}>{i.estado === 'compensada' ? 'Confirmar' : 'Resolver'}</Button>
+                    )}
                   </div>
                 </Card>
               ))}
@@ -161,7 +185,7 @@ export default function Incidencias() {
           <DialogHeader>
             <DialogTitle>Resolver {resolviendo?.pedido.numero ? `#${resolviendo.pedido.numero}` : 'la incidencia'}</DialogTitle>
             <DialogDescription>
-              {resolviendo ? TIPOS[resolviendo.tipo] : ''}. Una resuelta no se reescribe: de ella colgará dinero en la fase 2.
+              {resolviendo ? TIPOS[resolviendo.tipo] : ''}. Una resuelta no se reescribe: de ella cuelga el saldo del cliente y, el lunes, el cobro a quien responde.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3">
@@ -171,7 +195,9 @@ export default function Incidencias() {
                 <SelectTrigger id="inc-estado" className="mt-1 w-full"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="resuelta">Resolver: alguien responde</SelectItem>
-                  <SelectItem value="descartada">Descartar: no hubo problema</SelectItem>
+                  <SelectItem value="descartada">
+                    {resolviendo?.estado === 'compensada' ? 'Descartar: no se le cree (el saldo se queda)' : 'Descartar: no hubo problema'}
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -179,7 +205,12 @@ export default function Incidencias() {
               <>
                 <div>
                   <Label htmlFor="inc-responsable">Quién responde</Label>
-                  <Select value={decision.responsable} onValueChange={v => setDecision({ ...decision, responsable: v as Responsable })}>
+                  <Select value={decision.responsable} onValueChange={v => setDecision({
+                    ...decision,
+                    responsable: v as Responsable,
+                    // Si responde el cliente de lo que dijo no recibir, no hay nada que devolverle.
+                    ...(v === 'cliente' && resolviendo?.estado === 'abierta' ? { compensacion: '0.00' } : {}),
+                  })}>
                     <SelectTrigger id="inc-responsable" className="mt-1 w-full"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {(Object.keys(RESPONSABLES) as Responsable[]).map(r => <SelectItem key={r} value={r}>{RESPONSABLES[r]}</SelectItem>)}
@@ -189,9 +220,12 @@ export default function Incidencias() {
                 <div>
                   <Label htmlFor="inc-compensacion">Compensación al cliente ($)</Label>
                   <Input id="inc-compensacion" inputMode="decimal" value={decision.compensacion}
+                    disabled={resolviendo?.estado === 'compensada'}
                     onChange={e => setDecision({ ...decision, compensacion: e.target.value })} />
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Sugerido por la base: {dinero(resolviendo?.sugeridoCents)}. Nunca más que el total del pedido.
+                    {resolviendo?.estado === 'compensada'
+                      ? 'El saldo ya se le dio al instante: aquí solo confirmas quién responde.'
+                      : <>Sugerido por la base: {dinero(resolviendo?.sugeridoCents)}. Se le da como saldo Umbani al resolver. Nunca más que el total del pedido.</>}
                   </p>
                 </div>
               </>
@@ -202,7 +236,7 @@ export default function Incidencias() {
             </div>
           </div>
           <Button disabled={resolver.isPending || decision.nota.trim().length < 3} onClick={() => resolver.mutate()}>
-            {decision.estado === 'resuelta' ? 'Resolver' : 'Descartar'}
+            {decision.estado === 'descartada' ? 'Descartar' : resolviendo?.estado === 'compensada' ? 'Confirmar' : 'Resolver'}
           </Button>
         </DialogContent>
       </Dialog>

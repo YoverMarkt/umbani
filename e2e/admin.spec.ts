@@ -754,6 +754,8 @@ test('Incidencias: el reclamo del cliente, con el responsable propuesto por la t
     compensacionCents: null, resolucion: null, resueltaPor: null, creadaEn: '2026-10-06T12:00:00Z', resueltaEn: null,
     pedido: { id: 'p1', numero: 41, totalCents: 1250, pago: 'efectivo', cliente: 'Ana', telefono: '593991234567' },
     local: { id: 'b1', nombre: 'Monster Pizza' }, repartidor: { nombre: 'Andrés', cooperativa: 'Cooperativa Chone' },
+    alInstante: false, saldoDadoEn: null, reparto: { localCents: 400, umbaniCents: 40, carreraCents: 0 },
+    escalon: 2, motivos: ['reportes_seguidos'], fotoUrl: null,
   }] } }))
   await page.route('**/api/admin/incidencias/inc-1/resolver', async route => {
     decisiones.push(route.request().postDataJSON())
@@ -765,6 +767,8 @@ test('Incidencias: el reclamo del cliente, con el responsable propuesto por la t
   await expect(page.getByText('#41 · Monster Pizza')).toBeVisible()
   await expect(page.getByText('«Faltó una pizza»')).toBeVisible()
   await expect(page.getByText('Andrés (Cooperativa Chone)')).toBeVisible()
+  // Por qué no salió al instante (el cliente no lo ve; el superadmin sí).
+  await expect(page.getByText('Varios reportes en los últimos 90 días')).toBeVisible()
 
   await page.getByRole('button', { name: 'Resolver' }).click()
   const ventana = page.getByRole('dialog', { name: /Resolver #41/ })
@@ -778,3 +782,35 @@ test('Incidencias: el reclamo del cliente, con el responsable propuesto por la t
   await expect.poll(() => decisiones.length).toBe(1)
   expect(decisiones[0]).toEqual({ estado: 'resuelta', responsable: 'local', compensacionCents: 440, nota: 'El local olvidó la pizza' })
 })
+
+test('Incidencias: el saldo ya dado al instante solo se confirma, con el monto bloqueado', async ({ page }) => {
+  await seedAdminSession(page)
+  await mockAdminApi(page)
+  const decisiones: unknown[] = []
+  await page.route('**/api/admin/incidencias?estado=*', route => route.fulfill({ json: { incidencias: [{
+    id: 'inc-2', tipo: 'falta_producto', origen: 'cliente', estado: 'compensada', responsable: null,
+    lineas: [{ nombre: 'Cola', cantidad: 1, centavos: 150 }], nota: null, sugeridoCents: 150,
+    compensacionCents: 150, resolucion: null, resueltaPor: null, creadaEn: '2026-10-10T12:00:00Z', resueltaEn: null,
+    pedido: { id: 'p2', numero: 57, totalCents: 1300, pago: 'efectivo', cliente: 'Ana', telefono: '593991234567' },
+    local: { id: 'b1', nombre: 'Monster Pizza' }, repartidor: null,
+    alInstante: true, saldoDadoEn: '2026-10-10T12:00:01Z', reparto: { localCents: 130, umbaniCents: 20, carreraCents: 0 },
+    escalon: 1, motivos: [], fotoUrl: null,
+  }] } }))
+  await page.route('**/api/admin/incidencias/inc-2/resolver', async route => {
+    decisiones.push(route.request().postDataJSON())
+    return route.fulfill({ json: { ok: true, saldoCents: 0 } })
+  })
+
+  await page.goto(`${adminUrl}#/incidencias`)
+  await expect(page.getByText('Saldo dado', { exact: true })).toBeVisible()
+  await expect(page.getByText('falta confirmar quién responde')).toBeVisible()
+  await page.getByRole('button', { name: 'Confirmar' }).click()
+  const ventana = page.getByRole('dialog', { name: /Resolver #57/ })
+  await expect(ventana.getByLabel('Compensación al cliente ($)')).toHaveValue('1.50')
+  await expect(ventana.getByLabel('Compensación al cliente ($)')).toBeDisabled()
+  await ventana.getByLabel('Qué pasó (queda anotado)').fill('El local olvidó la cola')
+  await ventana.getByRole('button', { name: 'Confirmar' }).click()
+  await expect.poll(() => decisiones.length).toBe(1)
+  expect(decisiones[0]).toEqual({ estado: 'resuelta', responsable: 'local', compensacionCents: 150, nota: 'El local olvidó la cola' })
+})
+

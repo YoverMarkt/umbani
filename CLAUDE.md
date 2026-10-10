@@ -203,7 +203,7 @@ Cada una existe porque algo falló. Lo que parece complejidad de más suele ser 
 - **Los motorizados (tope de efectivo, carrera retenida, su liquidación, apagado por defecto)** → [DECISIONES.md](DECISIONES.md#los-motorizados)
 - **Las ciudades (Chone y Portoviejo): sin ciudad un local no aparece, falla cerrado, el motorizado reparte en la suya** → [DECISIONES.md](DECISIONES.md#las-ciudades)
 - **Las cooperativas de reparto (la tercera flota, la regla del reparto en un solo sitio, el teléfono del repartidor como lo ve WhatsApp)** → [DECISIONES.md](DECISIONES.md#las-cooperativas-de-reparto)
-- **Las incidencias y el «¿Llegó todo bien?» (fase 1 sin dinero; 48 h; la base calcula lo que le corresponde)** → [DECISIONES.md](DECISIONES.md#las-incidencias-y-el-llegó-todo-bien)
+- **Las incidencias y el saldo Umbani (todo empieza cuando el cliente reporta; lo pequeño al instante con la escalera de confianza; efectivo + no llegó = no pagó; el saldo es de la persona y no se cambia por efectivo)** → [DECISIONES.md](DECISIONES.md#las-incidencias-y-el-llegó-todo-bien)
 - **Cuánto tarda el negocio (prep_time)** → [DECISIONES.md](DECISIONES.md#cuánto-tarda-el-negocio)
 - **Pedidos programados (retirados)** → [DECISIONES.md](DECISIONES.md#pedidos-programados-retirados-el-2026-08-07)
 - **Cómo se suma el margen al precio** → [DECISIONES.md](DECISIONES.md#el-margen-se-suma-al-precio-no-se-le-quita-al-dueño)

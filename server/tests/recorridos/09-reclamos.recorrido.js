@@ -5,13 +5,15 @@ import {
 } from './actores.mjs'
 
 // ═══════════════════════════════════════════════════════════════════════════
-// «¿LLEGÓ TODO BIEN?» Y LOS RECLAMOS, DE PUNTA A PUNTA (2026-10-06, fase 1)
+// LOS RECLAMOS Y EL SALDO UMBANI, DE PUNTA A PUNTA (2026-10-06 / 2026-10-10)
 // ═══════════════════════════════════════════════════════════════════════════
 //
-// Como las grandes: al recibir, el cliente dice «Todo bien» o reporta qué
-// faltó, qué vino mal o que no llegó, una vez y en 48 horas. La base calcula
-// lo que le corresponde —lo que pagó por eso— y el superadmin decide quién
-// responde. Esta fase no mueve dinero.
+// Como las grandes: el cliente reporta qué faltó, qué vino mal o que no
+// llegó, una vez y en 48 horas. La base calcula lo que le corresponde —lo que
+// pagó por eso— y se le devuelve como SALDO UMBANI (fase 2): lo pequeño al
+// instante si su historial está limpio; lo demás, cuando el superadmin decide
+// quién responde. ⚠️ El ORDEN de las pruebas importa (vitest las corre en el
+// orden del archivo): el primer reclamo del cliente es el que sale al instante.
 
 let cliente
 let local
@@ -36,14 +38,26 @@ afterAll(async () => {
   await cerrarSql()
 })
 
-async function pedidoEntregado(cantidad) {
-  const [primero] = productosSimples(carta)
+/** Algo barato (sale al instante) y algo caro (pasa del tope de $5: a revisión). `priceFrom` ya lleva el margen. */
+function deLaCarta(cumple, que) {
+  const producto = productosSimples(carta).find(p => cumple(Number(p.priceFrom)))
+  if (!producto) throw new Error(`La carta del staging no tiene ${que}: revisa la siembra`)
+  return producto
+}
+const barato = () => deLaCarta(precio => precio <= 3, 'un producto simple de $3 o menos')
+const caro = () => deLaCarta(precio => precio >= 5, 'un producto simple de $5 o más')
+
+async function pedidoEntregado(cantidad, producto = caro()) {
   const pedido = await exigir(201, cliente.pedir_({
-    items: [{ productId: primero.id, quantity: cantidad }], fulfillment: 'delivery', paymentMethod: 'efectivo', addressId,
+    items: [{ productId: producto.id, quantity: cantidad }], fulfillment: 'delivery', paymentMethod: 'efectivo', addressId,
   }))
   await llevarHastaEntregar(local, pedido.id)
   return pedido
 }
+
+/** Su saldo, como lo ve la app: `GET /api/v1/yo`. */
+const saldoDeLaApp = async () =>
+  (await exigir(200, http('GET', '/api/v1/yo', { token: sesionDeLaAppPara('000000000000') }))).saldo
 
 describe('«¿Llegó todo bien?»', () => {
   it('sin entregar no se reclama; entregado, su pedido dice hasta cuándo puede', async () => {
@@ -58,6 +72,34 @@ describe('«¿Llegó todo bien?»', () => {
     const visto = await cliente.pedido(entregado.id)
     expect(visto.confirmacion).toMatchObject({ todoBien: false, reclamo: null })
     expect(new Date(visto.confirmacion.reclamableHasta).getTime()).toBeGreaterThan(Date.now() + 47 * 3600_000)
+  })
+
+  it('AL INSTANTE: el primer reclamo, pequeño y con el historial limpio, ya es saldo en su app', async () => {
+    const antes = await saldoDeLaApp()
+    const pedido = await pedidoEntregado(1, barato())
+    const linea = (await cliente.pedido(pedido.id)).order_items[0]
+    const r = await exigir(201, cliente.pedir('POST', `/api/store/:slug/orders/${pedido.id}/reclamo`, {
+      tipo: 'falta_producto', lineas: [{ item: linea.id, cantidad: 1 }],
+    }))
+    expect(r).toMatchObject({ estado: 'compensada', saldoCents: r.sugeridoCents })
+    expect(r.saldoCents).toBeGreaterThan(0)
+    expect(r.mensaje).toMatch(/^Listo: te devolvimos \$\d+,\d{2} en saldo Umbani/)
+    const ahora = await saldoDeLaApp()
+    expect(ahora.cents - antes.cents).toBe(r.saldoCents)
+    expect(new Date(ahora.proximo.venceEl).getTime()).toBeGreaterThan(Date.now() + 89 * 24 * 3600_000)
+
+    // Al superadmin le queda confirmar quién responde; el monto ya no cambia.
+    const { incidencias } = await exigir(200, admin.pedir('GET', '/api/admin/incidencias'))
+    const suya = incidencias.find(i => i.pedido.id === pedido.id)
+    expect(suya).toMatchObject({ estado: 'compensada', alInstante: true, compensacionCents: r.saldoCents, motivos: [] })
+    expect((await admin.pedir('POST', `/api/admin/incidencias/${suya.id}/resolver`, {
+      estado: 'resuelta', responsable: 'local', compensacionCents: r.saldoCents + 100, nota: 'Otro monto',
+    })).status).toBe(409)
+    const confirmada = await exigir(200, admin.pedir('POST', `/api/admin/incidencias/${suya.id}/resolver`, {
+      estado: 'resuelta', responsable: 'local', compensacionCents: r.saldoCents, nota: 'El local olvidó la bebida',
+    }))
+    expect(confirmada.saldoCents).toBe(0)
+    expect((await saldoDeLaApp()).cents).toBe(ahora.cents)
   })
 
   it('faltó una unidad: la base le reconoce lo que pagó por ella, lo mismo que vio en su pedido', async () => {
@@ -78,9 +120,16 @@ describe('«¿Llegó todo bien?»', () => {
     const { incidencias } = await exigir(200, admin.pedir('GET', '/api/admin/incidencias'))
     const suya = incidencias.find(i => i.pedido.id === pedido.id)
     expect(suya).toMatchObject({ tipo: 'falta_producto', origen: 'cliente', estado: 'abierta', sugeridoCents: r.sugeridoCents })
-    await exigir(200, admin.pedir('POST', `/api/admin/incidencias/${suya.id}/resolver`, {
+    // No salió al instante, y el superadmin ve por qué (el cliente, no).
+    expect(suya.motivos).toEqual(expect.arrayContaining(['reportes_seguidos', 'al_instante_reciente', 'tope']))
+    expect(r.mensaje).toBe('Lo estamos revisando. Te avisamos apenas tengamos una respuesta.')
+    const antes = await saldoDeLaApp()
+    const resuelta = await exigir(200, admin.pedir('POST', `/api/admin/incidencias/${suya.id}/resolver`, {
       estado: 'resuelta', responsable: 'local', compensacionCents: r.sugeridoCents, nota: 'El local olvidó una unidad',
     }))
+    // Al resolverlo a su favor, el saldo.
+    expect(resuelta.saldoCents).toBe(r.sugeridoCents)
+    expect((await saldoDeLaApp()).cents - antes.cents).toBe(r.sugeridoCents)
     expect((await cliente.pedido(pedido.id)).confirmacion.reclamo).toMatchObject({ estado: 'resuelta', compensacionCents: r.sugeridoCents })
     // Resuelta no se reescribe.
     expect((await admin.pedir('POST', `/api/admin/incidencias/${suya.id}/resolver`, { estado: 'descartada', nota: 'Cambio' })).status).toBe(409)
@@ -95,12 +144,14 @@ describe('«¿Llegó todo bien?»', () => {
     expect(ajeno.status).toBe(404)
   })
 
-  it('«No llegó», por la app: le corresponde el pedido entero', async () => {
+  it('«No llegó» en EFECTIVO, por la app: no pagó, así que no hay saldo; lo revisa una persona', async () => {
     const pedido = await pedidoEntregado(1)
     const r = await exigir(201, http('POST', `/api/v1/pedidos/${pedido.id}/reclamo`, {
       token: sesionDeLaAppPara('000000000000'), cuerpo: { tipo: 'no_llego' },
     }))
-    expect(r.sugeridoCents).toBe(centavos(pedido.total))
+    expect(r).toMatchObject({ estado: 'abierta', sugeridoCents: 0, saldoCents: 0 })
+    expect(r.mensaje).toBe('Como ibas a pagar al recibir, no se te cobró nada. Revisamos qué pasó con el repartidor.')
+    expect(centavos(pedido.total)).toBeGreaterThan(0)
     const { pedidos } = await exigir(200, http('GET', '/api/v1/pedidos', { token: sesionDeLaAppPara('000000000000') }))
     expect(pedidos.find(p => p.id === pedido.id).confirmacion.reclamo).toMatchObject({ tipo: 'no_llego', estado: 'abierta' })
   })

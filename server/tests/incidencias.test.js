@@ -37,14 +37,14 @@ afterEach(() => {
   else process.env.JWT_SECRET = anterior
 })
 
-async function correr(r, method, path, { headers = {}, body = {}, params = {}, query = {}, sesionDeTienda } = {}) {
+async function correr(r, method, path, { headers = {}, body = {}, params = {}, query = {}, sesionDeTienda, file } = {}) {
   const layer = r.stack.find(l => l.route?.path === path && l.route?.methods?.[method])
   if (!layer) throw new Error(`Ruta no encontrada: ${method} ${path}`)
   // La sesión de tienda la pone su middleware —el PRIMERO de estas rutas—;
   // aquí se salta y se simula (los manejadores van envueltos, sin su nombre).
   const todos = layer.route.stack.map(l => l.handle)
   const handlers = sesionDeTienda ? todos.slice(1) : todos
-  const req = { headers, body, params, query, ip: '1.1.1.1', storefront: sesionDeTienda }
+  const req = { headers, body, params, query, ip: '1.1.1.1', storefront: sesionDeTienda, file }
   const out = { status: 200, body: undefined }
   const res = { status(c) { out.status = c; return this }, json(v) { out.body = v; return this }, setHeader() {} }
   for (const h of handlers) {
@@ -72,7 +72,7 @@ describe('lo que se le dice al cliente', () => {
     expect(leido.lineas).toHaveLength(50)
     expect(leido.lineas[0]).toEqual({ item: 'x', cantidad: '1' })
     expect(leido.nota).toHaveLength(600)
-    expect(reclamos.leerReclamo(null)).toEqual({ tipo: '', lineas: [], nota: null })
+    expect(reclamos.leerReclamo(null)).toEqual({ tipo: '', lineas: [], nota: null, foto: null })
   })
 })
 
@@ -118,7 +118,10 @@ describe('en la tienda (la mini app)', () => {
     const r = await correr(tienda, 'post', '/api/store/:slug/orders/:id/reclamo', {
       sesionDeTienda: sesion, params: { id: PEDIDO }, body: { tipo: 'falta_producto', lineas: [{ item: 'a', cantidad: 1 }], nota: 'Faltó' },
     })
-    expect(r).toEqual({ status: 201, body: { ok: true, sugeridoCents: 660 } })
+    expect(r).toEqual({ status: 201, body: {
+      ok: true, estado: 'abierta', sugeridoCents: 660, saldoCents: 0, venceEl: null,
+      mensaje: 'Lo estamos revisando. Te avisamos apenas tengamos una respuesta.',
+    } })
     expect(reclamar).toHaveBeenCalledWith(PEDIDO, '593991234567', 'falta_producto', [{ item: 'a', cantidad: '1' }], 'Faltó')
     reclamar.mockResolvedValue({ result: 'fuera_de_plazo' })
     expect((await correr(tienda, 'post', '/api/store/:slug/orders/:id/reclamo', { sesionDeTienda: sesion, params: { id: PEDIDO }, body: { tipo: 'no_llego' } })).status).toBe(409)
@@ -138,7 +141,7 @@ describe('en la app (v1)', () => {
     expect((await correr(appV1, 'post', '/api/v1/pedidos/:id/reclamo', { headers: app(), params: { id: 'x' }, body: { tipo: 'no_llego' } })).status).toBe(404)
     expect(reclamar).not.toHaveBeenCalled()
     const r = await correr(appV1, 'post', '/api/v1/pedidos/:id/reclamo', { headers: app(), params: { id: PEDIDO }, body: { tipo: 'no_llego' } })
-    expect(r).toEqual({ status: 201, body: { ok: true, sugeridoCents: 1250 } })
+    expect(r).toMatchObject({ status: 201, body: { ok: true, estado: 'abierta', sugeridoCents: 1250, saldoCents: 0 } })
     expect(reclamar.mock.calls[0][1]).toBe('593991234567')
     vi.spyOn(db, 'confirmOrderReceived').mockResolvedValue({ result: 'ya_reclamado' })
     expect((await correr(appV1, 'post', '/api/v1/pedidos/:id/todo-bien', { headers: app(), params: { id: PEDIDO } })).status).toBe(409)
@@ -235,7 +238,8 @@ describe('el repositorio, ejecutado', () => {
     const q = consulta({ data: [{ id: INC }], error: null })
     vi.spyOn(client, 'from').mockReturnValue(q)
     expect(await db.listIncidents('abierta')).toEqual([{ id: INC }])
-    expect(q.eq).toHaveBeenCalledWith('status', 'abierta')
+    // Lo que le toca al superadmin: también las compensadas (falta confirmar quién responde).
+    expect(q.in).toHaveBeenCalledWith('status', ['abierta', 'compensada'])
     expect(await db.listIncidents('todas', 9999)).toEqual([{ id: INC }])
     expect(await db.cooperativeIncidents(['m1'])).toEqual([{ id: INC }])
     expect(await db.cooperativeIncidents([])).toEqual([])
@@ -245,3 +249,158 @@ describe('el repositorio, ejecutado', () => {
     await expect(db.cooperativeIncidents(['m1'])).rejects.toThrow('caída')
   })
 })
+
+// ═══════════════════════════════════════════════════════════════════════════
+// FASE 2: EL SALDO UMBANI (2026-10-10)
+// ═══════════════════════════════════════════════════════════════════════════
+// Las reglas (al instante, la escalera, el saldo) se prueban en PostgreSQL
+// real (bloque «EL SALDO UMBANI» de verify:schema) y de punta a punta en
+// `recorridos/09-reclamos`. Aquí: lo que se le dice, la foto, y lo que ve el
+// superadmin.
+const cloudinary = require('../dist/integrations/cloudinary')
+
+describe('fase 2: lo que se le dice al cliente al reportar', () => {
+  it('saldo al instante: cuánto, que vale en cualquier local, y hasta cuándo', () => {
+    const r = reclamos.respuestaDelReclamo('falta_producto', {
+      result: 'ok', estado: 'compensada', sugeridoCents: 150, saldoCents: 150, venceEl: '2027-01-08T17:00:00Z',
+    })
+    expect(r).toEqual({
+      ok: true, estado: 'compensada', sugeridoCents: 150, saldoCents: 150, venceEl: '2027-01-08T17:00:00Z',
+      mensaje: 'Listo: te devolvimos $1,50 en saldo Umbani. Lo usas en tu próximo pedido, en cualquier local, hasta el 8 de enero.',
+    })
+  })
+
+  it('iba a pagar al recibir y no llegó: no pagó, y se le dice así', () => {
+    expect(reclamos.respuestaDelReclamo('no_llego', { result: 'ok', estado: 'abierta', sugeridoCents: 0, saldoCents: 0 }).mensaje)
+      .toBe('Como ibas a pagar al recibir, no se te cobró nada. Revisamos qué pasó con el repartidor.')
+  })
+
+  it('a revisión: «lo estamos revisando», sin decirle la regla', () => {
+    const r = reclamos.respuestaDelReclamo('falta_producto', { result: 'ok', estado: 'abierta', sugeridoCents: 900, saldoCents: 0 })
+    expect(r).toMatchObject({ estado: 'abierta', saldoCents: 0, venceEl: null, mensaje: 'Lo estamos revisando. Te avisamos apenas tengamos una respuesta.' })
+    expect(r.mensaje).not.toMatch(/tope|escal|rechaz|30|90/)
+  })
+
+  it('el cuerpo trae la foto, recortada y sin espacios; lo que no es texto no cuenta', () => {
+    expect(reclamos.leerReclamo({ tipo: 'vino_mal', foto: '  botpanel/a/reclamos/b/c  ' }).foto).toBe('botpanel/a/reclamos/b/c')
+    expect(reclamos.leerReclamo({ tipo: 'vino_mal', foto: 42 }).foto).toBeNull()
+    expect(reclamos.leerReclamo({ tipo: 'vino_mal', foto: 'x'.repeat(400) }).foto).toHaveLength(300)
+  })
+})
+
+describe('fase 2: en la app', () => {
+  it('el reclamo manda la foto a la base, y el saldo al instante se le dice', async () => {
+    const reclamar = vi.spyOn(db, 'reportOrderProblem').mockResolvedValue({
+      result: 'ok', estado: 'compensada', sugeridoCents: 220, saldoCents: 220, venceEl: '2027-01-08T17:00:00Z',
+    })
+    const foto = `botpanel/${LOCAL}/reclamos/${PEDIDO}/abc`
+    const r = await correr(appV1, 'post', '/api/v1/pedidos/:id/reclamo', {
+      headers: app(), params: { id: PEDIDO }, body: { tipo: 'vino_mal', lineas: [{ item: 'a', cantidad: 1 }], foto },
+    })
+    expect(r).toMatchObject({ status: 201, body: { estado: 'compensada', saldoCents: 220 } })
+    expect(r.body.mensaje).toContain('$2,20')
+    expect(reclamar).toHaveBeenCalledWith(PEDIDO, '593991234567', 'vino_mal', [{ item: 'a', cantidad: '1' }], null, foto)
+  })
+
+  it('«/yo» trae su saldo; si no se pudo leer, null y lo demás sigue', async () => {
+    vi.spyOn(db, 'resolveMarketplaceCustomer').mockResolvedValue({ id: 'c1', phone: '593991234567', city_id: null })
+    const saldo = vi.spyOn(db, 'customerCreditBalance').mockResolvedValue({ cents: 150, proximo: { cents: 150, venceEl: '2027-01-08' } })
+    const r = await correr(appV1, 'get', '/api/v1/yo', { headers: app() })
+    expect(r.body).toMatchObject({ telefono: '593991234567', saldo: { cents: 150, proximo: { cents: 150 } } })
+    expect(saldo).toHaveBeenCalledWith('c1')
+    saldo.mockRejectedValue(new Error('caída'))
+    expect((await correr(appV1, 'get', '/api/v1/yo', { headers: app() })).body).toMatchObject({ telefono: '593991234567', saldo: null })
+  })
+})
+
+describe('fase 2: la foto del reclamo', () => {
+  const RUTA = '/api/v1/pedidos/:id/reclamo/foto'
+  const foto = { buffer: Buffer.from([0xff, 0xd8, 0xff]), mimetype: 'image/jpeg', size: 3, originalname: 'f.jpg' }
+
+  it('sin sesión 401; un id raro o sin foto, no se sube nada', async () => {
+    const subir = vi.spyOn(cloudinary, 'uploadPrivateMedia')
+    expect((await correr(appV1, 'post', RUTA, { params: { id: PEDIDO }, file: foto })).status).toBe(401)
+    expect((await correr(appV1, 'post', RUTA, { headers: app(), params: { id: 'x' }, file: foto })).status).toBe(404)
+    expect((await correr(appV1, 'post', RUTA, { headers: app(), params: { id: PEDIDO } })).status).toBe(400)
+    expect((await correr(appV1, 'post', RUTA, { headers: app(), params: { id: PEDIDO }, file: { ...foto, mimetype: 'video/mp4' } })).status).toBe(400)
+    expect(subir).not.toHaveBeenCalled()
+  })
+
+  it('el pedido tiene que ser SUYO y estar entregado: si no, la nube ni se entera', async () => {
+    const subir = vi.spyOn(cloudinary, 'uploadPrivateMedia')
+    const dueno = vi.spyOn(db, 'getAppOrderOwner').mockResolvedValue(null)
+    expect((await correr(appV1, 'post', RUTA, { headers: app(), params: { id: PEDIDO }, file: foto })).status).toBe(404)
+    expect(dueno).toHaveBeenCalledWith('593991234567', PEDIDO)
+    dueno.mockResolvedValue({ business_id: LOCAL, contact_phone: '593991234567', status: 'en_camino', businesses: null })
+    expect((await correr(appV1, 'post', RUTA, { headers: app(), params: { id: PEDIDO }, file: foto })).status).toBe(409)
+    expect(subir).not.toHaveBeenCalled()
+  })
+
+  it('entregado y suyo: se sube en privado, en la carpeta de ESE pedido', async () => {
+    vi.spyOn(db, 'getAppOrderOwner').mockResolvedValue({ business_id: LOCAL, contact_phone: '593991234567', status: 'completado', businesses: null })
+    const configurada = vi.spyOn(cloudinary, 'isConfigured').mockResolvedValue(false)
+    expect((await correr(appV1, 'post', RUTA, { headers: app(), params: { id: PEDIDO }, file: foto })).status).toBe(503)
+    configurada.mockResolvedValue(true)
+    const subir = vi.spyOn(cloudinary, 'uploadPrivateMedia').mockResolvedValue({ url: 'u', public_id: `botpanel/${LOCAL}/reclamos/${PEDIDO}/abc`, resource_type: 'image' })
+    const r = await correr(appV1, 'post', RUTA, { headers: app(), params: { id: PEDIDO }, file: foto })
+    expect(r).toEqual({ status: 201, body: { foto: `botpanel/${LOCAL}/reclamos/${PEDIDO}/abc` } })
+    expect(subir).toHaveBeenCalledWith(foto.buffer, LOCAL, `reclamos/${PEDIDO}`)
+    subir.mockRejectedValue(new Error('cloudinary caído'))
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    expect((await correr(appV1, 'post', RUTA, { headers: app(), params: { id: PEDIDO }, file: foto })).status).toBe(502)
+  })
+
+  it('las fotos del staging van a su propia carpeta, lejos de las de producción', () => {
+    expect(cloudinary.raizDeLaNube({ UMBANI_ENTORNO: 'staging' })).toBe('botpanel-pruebas')
+    expect(cloudinary.raizDeLaNube({})).toBe('botpanel')
+  })
+})
+
+describe('fase 2: el superadmin', () => {
+  it('ve si el saldo salió al instante, por qué no, el escalón y la foto (con enlace que caduca)', async () => {
+    vi.spyOn(db, 'listIncidents').mockResolvedValue([{
+      id: INC, kind: 'vino_mal', origin: 'cliente', status: 'abierta', responsible: null, lines: [], note: null,
+      suggested_cents: 900, compensation_cents: null, resolution_note: null, resolved_by: null,
+      created_at: '2026-10-10T12:00:00Z', resolved_at: null, order_id: PEDIDO, business_id: LOCAL,
+      auto_approved: false, compensated_at: null, local_cents: 800, umbani_cents: 100, reparto_cents: 0,
+      photo_public_id: 'botpanel/x/reclamos/y/z', escalon: 2, review_reasons: ['tope', 'reportes_seguidos'],
+      orders: null, businesses: null, couriers: null,
+    }])
+    const firmar = vi.spyOn(cloudinary, 'signedMediaUrl').mockResolvedValue('https://firmada')
+    const r = await correr(adminInc, 'get', '/api/admin/incidencias', { headers: admin() })
+    expect(r.body.incidencias[0]).toMatchObject({
+      alInstante: false, escalon: 2, motivos: ['tope', 'reportes_seguidos'], fotoUrl: 'https://firmada',
+      reparto: { localCents: 800, umbaniCents: 100, carreraCents: 0 },
+    })
+    expect(firmar).toHaveBeenCalledWith('botpanel/x/reclamos/y/z')
+  })
+
+  it('al resolver dice cuánto saldo recibió el cliente, y los rechazos nuevos se explican', async () => {
+    const resolver = vi.spyOn(db, 'resolveIncident').mockResolvedValue({ result: 'ok', saldoCents: 440 })
+    const body = { estado: 'resuelta', responsable: 'local', compensacionCents: 440, nota: 'El local la olvidó' }
+    expect((await correr(adminInc, 'post', '/api/admin/incidencias/:id/resolver', { headers: admin(), params: { id: INC }, body })).body)
+      .toEqual({ ok: true, saldoCents: 440 })
+    for (const [resultado, estado] of [['compensacion_ya_dada', 409], ['cliente_sin_compensacion', 400], ['sin_cuenta', 409]]) {
+      resolver.mockResolvedValue({ result: resultado })
+      const r = await correr(adminInc, 'post', '/api/admin/incidencias/:id/resolver', { headers: admin(), params: { id: INC }, body })
+      expect(r.status, resultado).toBe(estado)
+      expect(r.body.error, resultado).not.toBe('No se pudo. Inténtalo de nuevo.')
+    }
+  })
+})
+
+describe('fase 2: el repositorio', () => {
+  it('la foto viaja a la base solo si la hay; el saldo se lee de la base', async () => {
+    const rpc = vi.spyOn(client, 'rpc').mockResolvedValue({ data: { result: 'ok' }, error: null })
+    await db.reportOrderProblem(PEDIDO, '593', 'vino_mal', [], null, 'botpanel/a/reclamos/b/c')
+    expect(rpc).toHaveBeenLastCalledWith('customer_report_order', {
+      p_order_id: PEDIDO, p_phone: '593', p_kind: 'vino_mal', p_lines: [], p_note: '', p_photo: 'botpanel/a/reclamos/b/c',
+    })
+    rpc.mockResolvedValue({ data: { cents: 150, proximo: { cents: 150, venceEl: '2027-01-08' } }, error: null })
+    expect(await db.customerCreditBalance('c1')).toEqual({ cents: 150, proximo: { cents: 150, venceEl: '2027-01-08' } })
+    expect(rpc).toHaveBeenLastCalledWith('saldo_del_cliente', { p_customer_id: 'c1' })
+    rpc.mockResolvedValue({ data: { cents: 0, proximo: null }, error: null })
+    expect(await db.customerCreditBalance('c1')).toEqual({ cents: 0, proximo: null })
+  })
+})
+

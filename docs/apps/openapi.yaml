@@ -239,7 +239,12 @@ paths:
       summary: Quién es la sesión (su correo y su teléfono) y la ciudad que eligió
       security: [{ sesionApp: [] }]
       responses:
-        '200': { description: '{ telefono, correo, ciudadId } — telefono null si entró con correo y aún no lo puso (PUT /api/v1/yo/telefono); ciudadId null si nunca eligió' }
+        '200':
+          description: |
+            `{ telefono, correo, ciudadId, saldo }` — telefono null si entró con correo y aún no lo puso
+            (PUT /api/v1/yo/telefono); ciudadId null si nunca eligió. `saldo` (2026-10-10) es su SALDO
+            UMBANI: `{ cents, proximo: { cents, venceEl } | null }` — lo que le queda vigente y el lote
+            que vence antes. No se cambia por efectivo. `saldo: null` = no se pudo leer: no lo enseñes.
         '401': { description: Sesión vencida }
   /api/v1/ciudades:
     get:
@@ -412,11 +417,38 @@ paths:
                       item: { type: string, description: El `id` de la línea del pedido }
                       cantidad: { type: integer, minimum: 1 }
                 nota: { type: string, maxLength: 500 }
+                foto: { type: string, description: 'El `foto` que devolvió POST /api/v1/pedidos/{id}/reclamo/foto. Con «vino mal», sin foto no sale al instante.' }
       responses:
-        '201': { description: '{ ok: true, sugeridoCents } — lo que calculó la base que le corresponde; Umbani lo revisa' }
-        '400': { description: 'Tipo inválido, sin líneas, una línea que no es del pedido o se pasa de su cantidad, o nota larga' }
+        '201':
+          description: |
+            Registrado. Desde el 2026-10-10 lo que no recibió bien se le devuelve como SALDO UMBANI:
+            `{ ok, estado, sugeridoCents, saldoCents, venceEl, mensaje }`. `estado: 'compensada'` = el saldo
+            ya está en su cuenta (`saldoCents`, vence en `venceEl`); `'abierta'` = lo revisa una persona.
+            Enseña `mensaje` TAL CUAL: no le explica al cliente por qué no salió al instante, a propósito.
+        '400': { description: 'Tipo inválido, sin líneas, una línea que no es del pedido o se pasa de su cantidad, nota larga, o una foto que no es de este pedido' }
         '404': { description: No existe o no es de este teléfono }
         '409': { description: 'Todavía no se entregó, ya reclamó este pedido, o pasaron más de 48 horas' }
+  /api/v1/pedidos/{id}/reclamo/foto:
+    post:
+      summary: Sube la foto de un reclamo (una imagen, en multipart), antes de mandar el reclamo
+      description: |
+        La sube el servidor, en PRIVADO, en la carpeta de ESE pedido; devuelve su identificador para
+        mandarlo en `foto` al reclamar. Solo un pedido tuyo y ya entregado. Campo `file`, hasta 5 MB.
+      security: [{ sesionApp: [] }]
+      parameters: [{ $ref: '#/components/parameters/id' }]
+      requestBody:
+        content:
+          multipart/form-data:
+            schema: { type: object, required: [file], properties: { file: { type: string, format: binary } } }
+      responses:
+        '201': { description: '{ foto } — para mandarlo en el reclamo' }
+        '400': { description: Sin foto, o no es una imagen }
+        '404': { description: No existe o no es de este teléfono }
+        '409': { description: Todavía no se entregó }
+        '413': { description: La imagen pasa de 5 MB }
+        '429': { description: Demasiadas fotos seguidas }
+        '502': { description: No se pudo guardar; reintentar }
+        '503': { description: No se pueden recibir fotos ahora mismo }
   /api/v1/motorizado/yo:
     get:
       summary: El motorizado de la sesión y su semana en curso

@@ -10,7 +10,7 @@ import { canOrder, reglaDeMargen } from '../../services/storefront'
 import { avisarAlDuenoDelPedido } from '../../services/owner-order-notice'
 import { tarjetaDisponible } from '../../services/pago-con-tarjeta'
 import { pedidoParaElCliente, porcentajePorProducto } from '../../lib/precio-para-el-cliente'
-import { conConfirmacion, leerReclamo, respuestaAlCliente } from '../../services/reclamos'
+import { conConfirmacion, leerReclamo, respuestaAlCliente, respuestaDelReclamo } from '../../services/reclamos'
 import { db, orderLimiter, readStatus } from './comun'
 
 export function registrarPedidos(router: Router): void {
@@ -289,9 +289,11 @@ export function registrarPedidos(router: Router): void {
   })
 
   router.post('/api/store/:slug/orders/:id/reclamo', requireStorefrontSession, pedidoDeLaSesion, async (req, res) => {
+    // La tienda web queda como está (2026-10-10): no sube fotos, pero el saldo
+    // al instante le llega igual que en la app.
     const { tipo, lineas, nota } = leerReclamo(req.body)
     const r = await db.reportOrderProblem(String(req.params.id), req.storefront!.contactPhone, tipo, lineas, nota)
-    if (r.result === 'ok') return res.status(201).json({ ok: true, sugeridoCents: Number(r.sugeridoCents) || 0 })
+    if (r.result === 'ok') return res.status(201).json(respuestaDelReclamo(tipo, r))
     const e = respuestaAlCliente(r.result)
     return res.status(e.status).json({ error: e.error })
   })
