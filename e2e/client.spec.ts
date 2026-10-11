@@ -303,6 +303,26 @@ test('el pedido con saldo Umbani dice cuánto cobrar en la puerta', async ({ pag
   await expect(page.getByText('Saldo Umbani', { exact: true })).toBeVisible()
 })
 
+// Anular una venta (2026-10-11): el local ya no anula un pedido de la app
+// entregado (se ahorraba la comisión); lo de mostrador, sí.
+test('en Ventas, un pedido de la app no se anula desde el panel; lo de mostrador, sí', async ({ page }) => {
+  await seedClientSession(page)
+  await mockClientApi(page)
+  const venta = (id: string, source: string) => ({
+    id, contact_phone: '+593999000111', contact_name: 'Cliente', total: 8, status: 'completada', source,
+    sold_at: '2026-10-11T10:00:00.000Z', sale_items: [{ product_id: 'p', product_name: `Pizza ${id}`, quantity: 1, unit_price: 8, line_total: 8 }],
+  })
+  await page.route('**/api/client/sales?**', route => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify([venta('de-la-app', 'tienda'), venta('de-mostrador', 'mostrador')]),
+  }))
+  await page.goto(`${clientUrl}#/sales?phone=%2B593999000111`)
+
+  await expect(page.getByText('Es un pedido de la app: si hubo un problema, escríbele a Umbani para anularlo.')).toBeVisible()
+  // Un solo botón: el de la venta de mostrador.
+  await expect(page.getByRole('button', { name: 'Anular venta' })).toHaveCount(1)
+})
+
 // Regresión del pedido perdido: la alarma existía y era sorda a `orders`.
 // Aquí se comprueba que un pedido que entra ESTANDO el panel abierto enciende
 // el banner solo, sin recargar, y lleva a donde se atiende.

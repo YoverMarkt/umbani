@@ -7,7 +7,8 @@ import { createRouter } from '../middleware/async'
 //
 // Solo lee y marca. Ningún importe se calcula aquí: el libro, los saldos y el
 // cierre semanal viven en PostgreSQL. Lo único que escribe es «pagada» o
-// «cobrada», con la referencia de la transferencia.
+// «cobrada», con la referencia de la transferencia, y —desde el 2026-10-11—
+// la anulación de una venta, con su motivo.
 
 interface ModuloAuth { authAdmin: RequestHandler }
 const auth: ModuloAuth = require('../middleware/auth') as typeof import('../middleware/auth')
@@ -66,6 +67,31 @@ router.post('/api/admin/pagos/liquidaciones/:id/marcar', auth.authAdmin, async (
   }
   if (r.result !== 'updated') return res.status(409).json({ error: 'Esa liquidación ya no está pendiente' })
   return res.json({ status: r.status })
+})
+
+// ── Anular una venta (2026-10-11) ──────────────────────────────────────────
+//
+// Las ventas de la app solo las anula Umbani (decisión del dueño, «como las
+// grandes»): el local se ahorraba la comisión anulando desde su panel. Aquí,
+// con motivo; la base lo anota en el registro de dinero con quién fue y ajusta
+// el libro sola.
+const RESPUESTA_ANULAR: Record<string, [number, string]> = {
+  motivo_invalido: [400, 'Escribe el motivo (de 3 a 300 letras)'],
+  not_found: [404, 'Ese local no tiene un pedido con ese número'],
+  sin_venta: [409, 'Ese pedido no se entregó: no hay venta que anular'],
+  ya_anulada: [409, 'Esa venta ya estaba anulada'],
+}
+router.post('/api/admin/pagos/ventas/anular', auth.authAdmin, async (req, res) => {
+  const body = (req.body || {}) as Record<string, unknown>
+  const localId = String(body.localId ?? '').trim()
+  const numero = Number(body.numero)
+  if (!UUID.test(localId) || !Number.isInteger(numero) || numero < 1) {
+    return res.status(400).json({ error: 'Elige el local y escribe el número del pedido' })
+  }
+  const r = await db.voidSaleByPlatform(localId, numero, String(body.motivo ?? ''))
+  if (r.result === 'ok') return res.json({ ok: true, numero: r.numero, total: r.total })
+  const [estado, error] = RESPUESTA_ANULAR[String(r.result)] || [500, 'No se pudo anular. Inténtalo de nuevo.']
+  return res.status(estado).json({ error })
 })
 
 // ── El registro de quién mueve dinero (2026-09-29) ──────────────────────────

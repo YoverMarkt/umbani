@@ -24589,3 +24589,246 @@ begin
   return null;
 end;
 $$;
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- ANULAR UNA VENTA DE LA APP: SOLO UMBANI (2026-10-11)
+-- Ver `migration-2026-10-11-anular-venta-solo-umbani.sql`: el porqué está allí.
+-- El local ya no anula un pedido de la app entregado (se ahorraba la comisión);
+-- lo hace Umbani con motivo y queda en el registro de dinero.
+-- ════════════════════════════════════════════════════════════════════════════
+
+-- ── 1. La regla, en la base ─────────────────────────────────────────────────
+-- Solo deja pasar a «anulada» una venta de la app si la anula Umbani: la
+-- marca `umbani.anula_umbani` la pone ÚNICAMENTE `anular_venta_por_umbani`, y
+-- vive lo que dura su transacción (`set_config(…, true)`).
+create or replace function public.sales_anular_solo_umbani()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if new.status = 'anulada' and old.status is distinct from 'anulada'
+     and coalesce(old.source, 'manual') not in ('mostrador', 'manual')
+     and coalesce(current_setting('umbani.anula_umbani', true), '') <> 'si' then
+    raise exception using errcode = '42501',
+      message = 'Los pedidos de la app solo los anula Umbani.';
+  end if;
+  return new;
+end;
+$$;
+
+revoke all on function public.sales_anular_solo_umbani() from public, anon, authenticated;
+
+drop trigger if exists sales_anular_solo_umbani on public.sales;
+create trigger sales_anular_solo_umbani
+  before update of status on public.sales
+  for each row execute function public.sales_anular_solo_umbani();
+
+
+-- ── 2. Umbani anula: con motivo y con rastro ────────────────────────────────
+-- Por el número del pedido en su local, que es como lo dice el dueño o el
+-- cliente. El libro se ajusta solo (`sales_void_ledger`): sin liquidar, sale
+-- de la semana; ya liquidada, deja un reverso en la siguiente.
+create or replace function public.anular_venta_por_umbani(
+  p_business_id uuid, p_order_number integer, p_motivo text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_motivo text := btrim(coalesce(p_motivo, ''));
+  v_o public.orders%rowtype;
+  v_s public.sales%rowtype;
+begin
+  if char_length(v_motivo) < 3 or char_length(v_motivo) > 300 then
+    return jsonb_build_object('result', 'motivo_invalido');
+  end if;
+
+  select * into v_o from public.orders
+   where business_id = p_business_id and order_number = p_order_number;
+  if v_o.id is null then
+    return jsonb_build_object('result', 'not_found');
+  end if;
+
+  select * into v_s from public.sales
+   where order_id = v_o.id and business_id = p_business_id
+  for update;
+  if v_s.id is null then
+    return jsonb_build_object('result', 'sin_venta');
+  end if;
+  if v_s.status = 'anulada' then
+    return jsonb_build_object('result', 'ya_anulada');
+  end if;
+
+  perform set_config('umbani.anula_umbani', 'si', true);
+  update public.sales set status = 'anulada' where id = v_s.id;
+  perform set_config('umbani.anula_umbani', '', true);
+
+  perform public.anotar_movimiento_de_dinero(
+    p_business_id, 'venta_anulada', 'sales', v_s.id::text,
+    jsonb_build_object('numero', v_o.order_number, 'total', v_s.total,
+                       'metodo', v_o.payment_method, 'motivo', v_motivo));
+
+  return jsonb_build_object('result', 'ok', 'numero', v_o.order_number, 'total', v_s.total);
+end;
+$$;
+
+revoke all on function public.anular_venta_por_umbani(uuid, integer, text) from public, anon, authenticated;
+grant execute on function public.anular_venta_por_umbani(uuid, integer, text) to service_role;
+
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- LA MARCA DE LA TARJETA, ENTERA (2026-10-11)
+-- Ver `migration-2026-10-11-marca-de-la-tarjeta.sql`: 80 letras, no 30.
+-- ════════════════════════════════════════════════════════════════════════════
+
+create or replace function public.settle_card_payment(
+  p_client_transaction_id text,
+  p_provider_transaction_id text,
+  p_status_code integer,
+  p_captured_cents integer,
+  p_currency text,
+  p_authorization_code text default null,
+  p_card_brand text default null,
+  p_last_digits text default null,
+  p_detail text default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_pago    public.payments%rowtype;
+  v_order   public.orders%rowtype;
+  v_modo    text;
+  v_id      text := nullif(btrim(coalesce(p_provider_transaction_id, '')), '');
+  v_ultimos text := nullif(regexp_replace(coalesce(p_last_digits, ''), '[^0-9]', '', 'g'), '');
+  -- 80, no 30 (2026-10-11): «Discover Banco Diners Club del Ecuador» se quedaba
+  -- en «Discover Banco Diners Club del». Solo es lo que se enseña; no toca dinero.
+  v_marca   text := left(nullif(btrim(coalesce(p_card_brand, '')), ''), 80);
+  v_detalle text := left(nullif(btrim(coalesce(p_detail, '')), ''), 300);
+  v_motivo  text;
+begin
+  select * into v_pago
+  from public.payments
+  where client_transaction_id = btrim(coalesce(p_client_transaction_id, ''))
+  for update;
+
+  if not found then
+    return jsonb_build_object('result', 'not_found');
+  end if;
+
+  -- Ya resuelto: se contesta lo que hay, sin tocar nada.
+  if v_pago.status not in ('iniciado', 'confirmando') then
+    return jsonb_build_object('result', 'final', 'status', v_pago.status,
+                              'order_id', v_pago.order_id, 'business_id', v_pago.business_id);
+  end if;
+
+  if v_id is not null and v_pago.provider_transaction_id is not null
+     and v_pago.provider_transaction_id <> v_id then
+    return jsonb_build_object('result', 'mismatch', 'order_id', v_pago.order_id,
+                              'business_id', v_pago.business_id);
+  end if;
+
+  if v_ultimos is not null then
+    v_ultimos := right(v_ultimos, 4);
+  end if;
+
+  -- ── Sin respuesta firme (1 = pendiente en PayPhone): no se toca nada ────
+  -- La tarea del servidor volverá a preguntar. Marcarlo rechazado dejaría
+  -- reintentar al cliente con el primer cobro todavía vivo.
+  if coalesce(p_status_code, 0) not in (2, 3) then
+    return jsonb_build_object('result', 'pending', 'order_id', v_pago.order_id,
+                              'business_id', v_pago.business_id);
+  end if;
+
+  -- ── No aprobado: el pedido sigue esperando, el cliente puede reintentar ──
+  if p_status_code = 2 then
+    update public.payments
+       set status = 'rechazado',
+           status_detail = coalesce(v_detalle, 'PayPhone no aprobó el cobro'),
+           provider_transaction_id = coalesce(provider_transaction_id, v_id),
+           card_brand = coalesce(v_marca, card_brand),
+           card_last_digits = coalesce(v_ultimos, card_last_digits),
+           updated_at = now()
+     where id = v_pago.id;
+    return jsonb_build_object('result', 'rejected', 'order_id', v_pago.order_id,
+                              'business_id', v_pago.business_id);
+  end if;
+
+  -- ── Aprobado: ¿cuadra al centavo y el pedido sigue para cobrarse? ────────
+  select * into v_order from public.orders where id = v_pago.order_id for update;
+  select card_mode into v_modo from public.businesses where id = v_pago.business_id;
+
+  v_motivo := case
+    when p_captured_cents is null or p_captured_cents <> v_pago.amount_cents
+      then format('Descuadre: PayPhone cobró %s centavos y se esperaban %s',
+                  coalesce(p_captured_cents::text, '?'), v_pago.amount_cents)
+    when upper(coalesce(p_currency, '')) <> v_pago.currency
+      then 'Descuadre: moneda ' || coalesce(p_currency, '?')
+    when v_order.id is null then 'El pedido ya no existe'
+    -- Lo que FALTA por cobrar: el total menos lo pagado con saldo (2026-10-10).
+    when round(coalesce(v_order.total, 0) * 100)::integer - coalesce(v_order.credit_cents, 0)
+         <> v_pago.amount_cents
+      then format('Descuadre: faltaban %s centavos por cobrar y el cobro es de %s',
+                  round(coalesce(v_order.total, 0) * 100)::integer - coalesce(v_order.credit_cents, 0),
+                  v_pago.amount_cents)
+    when v_order.status <> 'esperando_pago' then 'El pedido pasó a ' || v_order.status
+    when v_order.payment_confirmed_at is not null then 'El pedido ya estaba pagado'
+    when exists (select 1 from public.payments
+                 where order_id = v_pago.order_id and status = 'aprobado') then 'Ya se pagó con otro intento'
+    when v_modo is distinct from v_pago.environment then 'El local cambió de modo de cobro'
+    else null
+  end;
+
+  if v_motivo is not null then
+    update public.payments
+       set status = 'por_devolver',
+           status_detail = v_motivo,
+           provider_transaction_id = coalesce(provider_transaction_id, v_id),
+           captured_cents = p_captured_cents,
+           authorization_code = left(nullif(btrim(coalesce(p_authorization_code, '')), ''), 60),
+           card_brand = v_marca,
+           card_last_digits = v_ultimos,
+           next_check_at = now(),
+           updated_at = now()
+     where id = v_pago.id;
+    return jsonb_build_object('result', 'refund', 'reason', v_motivo,
+                              'order_id', v_pago.order_id, 'business_id', v_pago.business_id);
+  end if;
+
+  update public.payments
+     set status = 'aprobado',
+         status_detail = null,
+         provider_transaction_id = coalesce(provider_transaction_id, v_id),
+         captured_cents = p_captured_cents,
+         authorization_code = left(nullif(btrim(coalesce(p_authorization_code, '')), ''), 60),
+         card_brand = v_marca,
+         card_last_digits = v_ultimos,
+         approved_at = now(),
+         updated_at = now()
+   where id = v_pago.id;
+
+  update public.orders
+     set payment_confirmed_at = now(),
+         status = 'pendiente',
+         updated_at = now()
+   where id = v_order.id;
+
+  insert into public.order_events (business_id, order_id, from_status, to_status, note)
+  values (v_order.business_id, v_order.id, 'esperando_pago', 'pendiente',
+          left('Pagado con tarjeta' || coalesce(' · ' || v_marca, '')
+               || coalesce(' ···' || v_ultimos, ''), 200));
+
+  return jsonb_build_object(
+    'result', 'approved',
+    'order_id', v_order.id,
+    'business_id', v_order.business_id,
+    'order_number', v_order.order_number
+  );
+end;
+$$;

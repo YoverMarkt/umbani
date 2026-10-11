@@ -575,6 +575,56 @@ test('Pagos → Registro dice quién movió dinero y qué cambió', async ({ pag
   await expect(page.getByText('apagada → de verdad')).toBeVisible()
 })
 
+// Anular una venta (2026-10-11): un pedido de la app ya entregado solo lo
+// anula Umbani, con motivo, y queda en el Registro.
+test('Pagos → Anular una venta: con local, número y motivo, y el Registro lo dice', async ({ page }) => {
+  await mockAdminApi(page)
+  await page.route('**/api/admin/pagos', route => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ saldos: [], liquidaciones: [], cobros: [], cuentas: {} }),
+  }))
+  await page.route('**/api/admin/pagos/registro', route => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      movimientos: [
+        {
+          id: 2, created_at: '2026-10-11T15:10:00Z', actor: 'superadmin:dueno@umbani.test',
+          business_id: 'biz-e2e', business_name: 'Negocio E2E', action: 'venta_anulada',
+          target_table: 'sales', target_id: 's1', detail: { numero: 41, total: 8, metodo: 'efectivo', motivo: 'El cliente lo devolvió' },
+        },
+        {
+          id: 1, created_at: '2026-10-11T12:00:00Z', actor: 'sistema',
+          business_id: 'biz-e2e', business_name: 'Negocio E2E', action: 'pago_confirmado',
+          target_table: 'orders', target_id: 'o1', detail: { numero: 40, total: 8, metodo: 'tarjeta', saldoCents: 110 },
+        },
+      ],
+    }),
+  }))
+  let enviado: Record<string, unknown> | null = null
+  await page.route('**/api/admin/pagos/ventas/anular', async route => {
+    enviado = route.request().postDataJSON() as Record<string, unknown>
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ok: true, numero: 41, total: 8 }) })
+  })
+  await seedAdminSession(page)
+  await page.goto(`${adminUrl}#/pagos`)
+
+  await page.getByRole('button', { name: 'Anular una venta' }).click()
+  const dialogo = page.getByRole('dialog', { name: 'Anular una venta' })
+  await expect(dialogo.getByRole('button', { name: 'Anular la venta' })).toBeDisabled()
+  await dialogo.getByRole('combobox', { name: 'Local' }).click()
+  await page.getByRole('option', { name: 'Negocio E2E' }).click()
+  await dialogo.getByLabel('Número del pedido').fill('41')
+  await dialogo.getByLabel('Motivo').fill('El cliente lo devolvió')
+  await dialogo.getByRole('button', { name: 'Anular la venta' }).click()
+  await expect.poll(() => enviado).toEqual({ localId: 'biz-e2e', numero: 41, motivo: 'El cliente lo devolvió' })
+  await expect(page.getByText('Venta del pedido #41 anulada')).toBeVisible()
+
+  await page.getByRole('tab', { name: 'Registro' }).click()
+  await expect(page.getByText('Venta anulada por Umbani')).toBeVisible()
+  await expect(page.getByText('Pedido #41 · $8.00 · «El cliente lo devolvió»')).toBeVisible()
+  await expect(page.getByText('Pedido #40 · $8.00 · tarjeta · $1.10 con saldo')).toBeVisible()
+})
+
 // Los locales de DEMOSTRACIÓN (2026-09-30): se ven, con su etiqueta, pero no
 // suman a lo que Umbani debe y su liquidación no se paga.
 test('Pagos aparta los locales de demostración: etiqueta, sin sumar y sin pagar', async ({ page }) => {

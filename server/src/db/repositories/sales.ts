@@ -57,11 +57,25 @@ const getSalesWithItems = async (
   return data || []
 }
 
+/**
+ * Umbani anula una venta (2026-10-11): las de la app solo puede anularlas
+ * Umbani, con motivo, y queda en el registro de dinero con quién fue. Por el
+ * número del pedido en su local, que es como lo dice el dueño o el cliente.
+ */
+const voidSaleByPlatform = async (businessId: string, orderNumber: number, motivo: string) => {
+  const { data, error } = await db.rpc('anular_venta_por_umbani', {
+    p_business_id: businessId, p_order_number: orderNumber, p_motivo: motivo,
+  })
+  if (error) throw new Error(error.message)
+  return (data || {}) as { result?: string; numero?: number; total?: number }
+}
+
 export = {
   getSaleById,
   getSalesByContact,
   getSaleCustomers,
   getCustomerSales,
   voidSale,
+  voidSaleByPlatform,
   getSalesWithItems,
 }

@@ -268,6 +268,7 @@ describe('migración de la capa de datos', () => {
       'getSaleCustomers',
       'getCustomerSales',
       'voidSale',
+      'voidSaleByPlatform',
       'getSalesWithItems',
       'recordConsultations',
       'getConsultationsInRange',

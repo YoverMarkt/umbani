@@ -72,6 +72,7 @@ function que(m: MovimientoDeDinero): string {
   if (a === 'tarjeta_del_local') return 'Tarjeta del local'
   if (a === 'pago_confirmado') return 'Pago confirmado'
   if (a === 'pedido_pagado_cancelado') return 'Pedido YA PAGADO cancelado'
+  if (a === 'venta_anulada') return 'Venta anulada por Umbani'
   if (a === 'factura_creada') return 'Factura creada'
   if (a.startsWith('factura_')) return `Factura ${ESTADO[a.slice(8)] ?? a.slice(8)}`
   if (a === 'margen_creado') return 'Regla de margen creada'
@@ -107,8 +108,12 @@ function detalle(m: MovimientoDeDinero): string {
     return `${dinero(d.cobrado_cents ?? d.monto_cents)}${d.payphone ? ` · PayPhone ${texto(d.payphone)}` : ''}${modo}`
   }
   if (a === 'pago_confirmado' || a === 'pedido_pagado_cancelado') {
-    return `Pedido #${texto(d.numero)} · ${dolares(d.total)} · ${texto(d.metodo)}`
+    // Lo pagado con saldo Umbani (2026-10-10): sin esto, un pedido de $8 con
+    // $1,10 de saldo parecería cobrado entero con la tarjeta.
+    const saldo = Number(d.saldoCents) > 0 ? ` · ${dinero(d.saldoCents)} con saldo` : ''
+    return `Pedido #${texto(d.numero)} · ${dolares(d.total)} · ${texto(d.metodo)}${saldo}`
   }
+  if (a === 'venta_anulada') return `Pedido #${texto(d.numero)} · ${dolares(d.total)} · «${texto(d.motivo)}»`
   if (a === 'factura_creada') return dolares(d.monto)
   if (a.startsWith('factura_')) return `${dolares(antes.monto)} → ${dolares(despues.monto)}`
   if (a.startsWith('margen_')) {

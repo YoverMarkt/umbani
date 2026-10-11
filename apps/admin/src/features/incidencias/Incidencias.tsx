@@ -25,8 +25,9 @@ import {
 // quién responde. Llegan los reclamos de los clientes (faltó algo, vino mal,
 // no llegó) y aquí se registran los que el cliente no ve (comida caída,
 // cliente ausente, accidente, el repartidor que no apareció).
-// ⚠️ Fase 1: la compensación queda decidida y anotada, NO mueve dinero. El
-// saldo Umbani y el descuento en la liquidación llegan en la fase 2.
+// ⚠️ Fase 2 (2026-10-10): la compensación es SALDO UMBANI —lo pequeño, al
+// instante— y se usa al pedir. Cobrársela al responsable en la liquidación
+// del lunes es la parte 3.
 
 const dinero = (centavos: number | null | undefined) => `$${((centavos ?? 0) / 100).toFixed(2)}`
 const fecha = (iso: string) => new Date(iso).toLocaleString('es-EC', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
@@ -89,8 +90,8 @@ export default function Incidencias() {
           <h1 className="text-2xl font-bold text-foreground">Incidencias</h1>
           <p className="text-sm text-muted-foreground">
             Lo que el cliente reporta en «¿Llegó todo bien?» y lo que registras tú. Primero se le resuelve al
-            cliente; después se decide quién responde. Por ahora la compensación queda anotada: el saldo Umbani y el
-            descuento en la liquidación del lunes llegan en la fase 2.
+            cliente —lo pequeño, al instante, como saldo Umbani— y después se decide quién responde. Cobrárselo al
+            responsable en la liquidación del lunes llega en la parte 3.
           </p>
         </div>
         <div className="flex items-center gap-2">
