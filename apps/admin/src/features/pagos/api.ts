@@ -90,6 +90,14 @@ export const marcarLiquidacion = (id: string, referencia: string) =>
     body: JSON.stringify({ referencia }),
   })
 
+// ── Anular una venta (2026-10-11) ───────────────────────────────────────────
+// Los pedidos de la app ya entregados solo los anula Umbani, con motivo.
+export const anularVenta = (datos: { localId: string; numero: number; motivo: string }) =>
+  api<{ ok: true; numero: number; total: number }>('/api/admin/pagos/ventas/anular', {
+    method: 'POST',
+    body: JSON.stringify(datos),
+  })
+
 // ── El registro de quién mueve dinero (2026-09-29) ──────────────────────────
 //
 // Lo escribe la base con disparadores; aquí solo se lee. `actor` es

@@ -60,8 +60,8 @@ ESPERADO=$(docker exec -i "$CONTENEDOR" psql -U postgres -d botpanel -t -A -c "
           on t.table_schema = c.table_schema and t.table_name = c.table_name
         -- ⚠️ VISTAS TAMBIÉN, y no es un detalle (2026-09-19). El otro lado de
         -- la comparación lee el catálogo de PostgREST, que expone vistas igual
-        -- que tablas. Contando aquí solo `BASE TABLE` se comparaban peras con
-        -- manzanas: `marketplace_cajones_de_negocio` —una vista que schema.sql
+        -- que tablas. Contando aquí solo «BASE TABLE» se comparaban peras con
+        -- manzanas: «marketplace_cajones_de_negocio» —una vista que schema.sql
         -- SÍ crea— salía eternamente como «producción la tiene y schema.sql
         -- no». Un detector que grita en falso se acaba ignorando, que es
         -- justo lo que no puede pasarle al guardián del esquema.

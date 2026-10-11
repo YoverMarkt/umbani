@@ -6960,7 +6960,10 @@ begin
   end if;
 
   -- ── 7. Venta anulada YA liquidada: reverso que resta en la siguiente ─────
+  -- Una venta de la app solo la anula Umbani (2026-10-11): como su función.
+  perform set_config('umbani.anula_umbani', 'si', true);
   update sales set status = 'anulada' where id = v_venta;
+  perform set_config('umbani.anula_umbani', '', true);
   if (select total_cents || '|' || local_cents from order_ledger where order_id = v_tarjeta and kind = 'reverso')
      <> '-1518|-1198' then
     raise exception 'anular una venta ya liquidada no dejó su reverso';
@@ -8948,7 +8951,10 @@ begin
   end if;
 
   -- Anular la venta YA liquidada deja un reverso que también resta el saldo.
+  -- Una venta de la app solo la anula Umbani (2026-10-11): como su función.
+  perform set_config('umbani.anula_umbani', 'si', true);
   update sales set status = 'anulada' where id = v_venta;
+  perform set_config('umbani.anula_umbani', '', true);
   select * into v_l from order_ledger where order_id = v_efe and kind = 'reverso';
   if v_l.credit_cents <> -300 or v_l.en_mano_cents <> -1218 then
     raise exception 'el reverso no deshizo lo pagado con saldo: %', row_to_json(v_l);
@@ -8961,3 +8967,102 @@ returns date language sql stable set search_path = public, pg_temp
 as $x$ select date '2026-09-28' $x$;
 
 select '✅ usar el saldo: paga lo que falta con cualquier método, entero entra pagado, vuelve al cancelar, el escalón 3 paga por adelantado, y el local, la tarjeta y el repartidor cuadran al centavo' as resultado;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- ANULAR UNA VENTA DE LA APP: SOLO UMBANI (2026-10-11)
+-- ═══════════════════════════════════════════════════════════════════════════
+-- El local anulaba cualquier venta entregada y, en efectivo, se ahorraba la
+-- comisión. Ahora las de la app solo las anula Umbani, con motivo y rastro;
+-- las de mostrador las sigue anulando el local.
+do $anular$
+declare
+  v_local uuid; v_app uuid; v_app2 uuid; v_mostrador uuid; v_sin_venta uuid;
+  v_venta_app uuid; v_venta_app2 uuid; v_venta_mostrador uuid;
+  v_r jsonb; v_falló boolean; v_n_app integer; v_n_sin integer;
+begin
+  insert into businesses (slug, name, type, whatsapp_provider, whatsapp_number, ycloud_number, takes_orders, storefront_enabled)
+  values ('verif-anular', 'Anular', 'pizzería', 'ycloud', '+593900777000', '+593900777000', true, true) returning id into v_local;
+  -- Solo la transferencia nace encendida: aquí se pide en efectivo.
+  update business_payment_methods set enabled = true where business_id = v_local;
+  insert into orders (business_id, contact_phone, source, status, subtotal, total, payment_method)
+  values (v_local, '593900777001', 'storefront', 'completado', 10, 10, 'efectivo') returning id into v_app;
+  insert into orders (business_id, contact_phone, source, status, subtotal, total, payment_method)
+  values (v_local, '593900777001', 'storefront', 'completado', 10, 10, 'efectivo') returning id into v_app2;
+  insert into orders (business_id, contact_phone, source, status, subtotal, total, payment_method)
+  values (v_local, 'mostrador', 'manual', 'completado', 10, 10, 'efectivo') returning id into v_mostrador;
+  insert into orders (business_id, contact_phone, source, status, subtotal, total, payment_method)
+  values (v_local, '593900777001', 'storefront', 'pendiente', 10, 10, 'efectivo') returning id into v_sin_venta;
+  select order_number into v_n_app from orders where id = v_app;
+  select order_number into v_n_sin from orders where id = v_sin_venta;
+  insert into sales (business_id, order_id, total, status, source, sold_at)
+  values (v_local, v_app, 10, 'completada', 'tienda', now()) returning id into v_venta_app;
+  insert into sales (business_id, order_id, total, status, source, sold_at)
+  values (v_local, v_app2, 10, 'completada', 'tienda', now()) returning id into v_venta_app2;
+  insert into sales (business_id, order_id, total, status, source, sold_at)
+  values (v_local, v_mostrador, 10, 'completada', 'mostrador', now()) returning id into v_venta_mostrador;
+
+  -- ── 1. El local (la escritura de siempre) NO anula una venta de la app ───
+  v_falló := false;
+  begin update sales set status = 'anulada' where id = v_venta_app;
+  exception when insufficient_privilege then v_falló := true; end;
+  if not v_falló then raise exception 'el local anuló una venta de la app'; end if;
+
+  -- ── 2. La de mostrador, sí: es suya ──────────────────────────────────────
+  update sales set status = 'anulada' where id = v_venta_mostrador;
+  if (select status from sales where id = v_venta_mostrador) <> 'anulada' then
+    raise exception 'el local no pudo anular su venta de mostrador';
+  end if;
+
+  -- ── 3. Umbani anula: con motivo, y queda en el registro de dinero ────────
+  if public.anular_venta_por_umbani(v_local, v_n_app, 'no') ->> 'result' <> 'motivo_invalido' then
+    raise exception 'se anuló sin un motivo de verdad';
+  end if;
+  if public.anular_venta_por_umbani(v_local, 999999, 'Pedido de prueba') ->> 'result' <> 'not_found' then
+    raise exception 'un número que no existe no respondió not_found';
+  end if;
+  if public.anular_venta_por_umbani(v_local, v_n_sin, 'Pedido de prueba') ->> 'result' <> 'sin_venta' then
+    raise exception 'un pedido sin entregar se pudo «anular»';
+  end if;
+  v_r := public.anular_venta_por_umbani(v_local, v_n_app, 'El cliente devolvió el pedido');
+  if v_r ->> 'result' <> 'ok' or (select status from sales where id = v_venta_app) <> 'anulada' then
+    raise exception 'Umbani no pudo anular la venta de la app: %', v_r;
+  end if;
+  if not exists (select 1 from money_audit_log where action = 'venta_anulada' and target_id = v_venta_app::text
+                  and detail ->> 'motivo' = 'El cliente devolvió el pedido') then
+    raise exception 'la anulación de Umbani no quedó en el registro de dinero';
+  end if;
+  if public.anular_venta_por_umbani(v_local, v_n_app, 'Otra vez') ->> 'result' <> 'ya_anulada' then
+    raise exception 'se anuló dos veces la misma venta';
+  end if;
+
+  -- ── 4. La marca no se queda puesta: después, el local sigue sin poder ────
+  v_falló := false;
+  begin update sales set status = 'anulada' where id = v_venta_app2;
+  exception when insufficient_privilege then v_falló := true; end;
+  if not v_falló then raise exception 'la marca de Umbani se quedó puesta y el local anuló otra venta'; end if;
+end;
+$anular$;
+
+select '✅ anular: las ventas de la app solo las anula Umbani (con motivo y rastro); las de mostrador, el local' as resultado;
+
+-- ── La marca de la tarjeta, entera (2026-10-11) ───────────────────────────
+-- PayPhone dice marca y banco; se guardaban 30 letras y quedaba cortada.
+do $marca$
+declare
+  v_local uuid; v_pedido uuid; v_r jsonb;
+begin
+  insert into businesses (slug, name, type, whatsapp_provider, whatsapp_number, ycloud_number, takes_orders, storefront_enabled, card_mode)
+  values ('verif-marca', 'Marca', 'pizzería', 'ycloud', '+593900778000', '+593900778000', true, true, 'pruebas') returning id into v_local;
+  insert into orders (business_id, contact_phone, source, status, subtotal, total, payment_method)
+  values (v_local, '593900778001', 'storefront', 'esperando_pago', 3.5, 3.5, 'tarjeta') returning id into v_pedido;
+  insert into payments (business_id, order_id, provider, method, environment, client_transaction_id, amount_cents, currency, status)
+  values (v_local, v_pedido, 'payphone', 'tarjeta', 'pruebas', 'marcalarga0001', 350, 'USD', 'iniciado');
+  v_r := public.settle_card_payment('marcalarga0001', 'ML-0001', 3, 350, 'USD', 'A1', 'Discover Banco Diners Club del Ecuador', '4242');
+  if v_r ->> 'result' <> 'approved' then raise exception 'el cobro de prueba no se aprobó: %', v_r; end if;
+  if (select card_brand from payments where client_transaction_id = 'marcalarga0001') <> 'Discover Banco Diners Club del Ecuador' then
+    raise exception 'la marca de la tarjeta se guardó cortada: %', (select card_brand from payments where client_transaction_id = 'marcalarga0001');
+  end if;
+end;
+$marca$;
+
+select '✅ la marca de la tarjeta se guarda entera' as resultado;

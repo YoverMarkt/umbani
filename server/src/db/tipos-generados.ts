@@ -4000,6 +4000,14 @@ export type Database = {
         }
         Returns: undefined
       }
+      anular_venta_por_umbani: {
+        Args: {
+          p_business_id: string
+          p_motivo: string
+          p_order_number: number
+        }
+        Returns: Json
+      }
       apply_business_menu: {
         Args: { p_business_id: string; p_menu: Json }
         Returns: Json

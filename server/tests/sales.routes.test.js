@@ -116,6 +116,17 @@ describe('rutas de ventas', () => {
     expect(listed.body).toEqual([{ id: 'sale-a' }])
   })
 
+  it('un pedido de la APP no lo anula el local: la base dice que no y se le explica (2026-10-11)', async () => {
+    vi.spyOn(db, 'voidSale').mockResolvedValue({
+      error: { code: '42501', message: 'Los pedidos de la app solo los anula Umbani.' },
+    })
+    const response = await dispatch('post', '/api/client/sales/:id/void', {
+      auth: authorization(), params: { id: 'sale-a' },
+    })
+    expect(response.status).toBe(403)
+    expect(response.body.error).toMatch(/solo Umbani puede anularlo/)
+  })
+
   it('no confirma una anulación rechazada por Supabase', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     vi.spyOn(db, 'voidSale').mockResolvedValue({

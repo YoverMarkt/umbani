@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@botpanel/ui/component
 import { AlertTriangle, CheckCircle2 } from 'lucide-react'
 import { getPagos, marcarLiquidacion } from './api'
 import Registro from './Registro'
+import AnularVenta from './AnularVenta'
 import type { CobroConTarjeta, CuentaBancaria, Liquidacion, ResumenDelCuadre } from './api'
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -163,11 +164,14 @@ export default function Pagos() {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-2xl font-semibold text-foreground">Pagos</h1>
-        <p className="text-sm text-muted-foreground">
-          Lo que Umbani cobró con tarjeta, lo que debe a cada local y lo que cada local debe. Cada lunes se liquida la semana anterior.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <h1 className="text-2xl font-semibold text-foreground">Pagos</h1>
+          <p className="text-sm text-muted-foreground">
+            Lo que Umbani cobró con tarjeta, lo que debe a cada local y lo que cada local debe. Cada lunes se liquida la semana anterior.
+          </p>
+        </div>
+        <AnularVenta />
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">

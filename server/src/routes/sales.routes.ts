@@ -71,6 +71,14 @@ router.post(
     async (req, res) => {
     try {
       const { error } = await db.voidSale(getClientBusinessId(req), req.params.id)
+      // ⚠️ Un pedido de la APP ya entregado solo lo anula Umbani (2026-10-11):
+      // lo exige la base (`sales_anular_solo_umbani`). Antes, anularlo aquí le
+      // ahorraba al local la comisión, sin dejar rastro.
+      if (error && (error as { code?: string }).code === '42501') {
+        return res.status(403).json({
+          error: 'Este pedido es de la app: solo Umbani puede anularlo. Si hubo un problema, escríbenos.',
+        })
+      }
       if (error) {
         console.error('❌ anular venta:', error.message || 'Error desconocido')
         return res.status(500).json({ error: 'No se pudo anular la venta' })

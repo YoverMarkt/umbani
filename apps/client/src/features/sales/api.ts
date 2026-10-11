@@ -18,6 +18,11 @@ export type Sale = {
   contact_name: string | null
   total: number | string
   status: 'completada' | 'anulada'
+  /**
+   * De dónde salió: `tienda` (la app), `mostrador`, `manual`… Las de la app ya
+   * entregadas solo las anula Umbani (2026-10-11).
+   */
+  source?: string | null
   sold_at: string
   sale_items?: SaleItem[]
   items?: SaleItem[]

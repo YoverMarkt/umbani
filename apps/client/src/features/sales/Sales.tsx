@@ -31,6 +31,9 @@ export default function Sales() {
   )
 }
 
+// Lo que el local puede anular él mismo: lo que tecleó (mostrador o manual).
+const anulaElLocal = (venta: salesApi.Sale) => ['mostrador', 'manual'].includes(String(venta.source ?? 'manual'))
+
 // ── Ventas por contacto (ver + anular) ──
 function SalesByContact({ prefillPhone = '' }: { prefillPhone?: string }) {
   const qc = useQueryClient()
@@ -68,7 +71,15 @@ function SalesByContact({ prefillPhone = '' }: { prefillPhone?: string }) {
             <div className="text-sm text-muted-foreground mt-1">
               {(s.sale_items ?? s.items ?? []).map((i, idx) => <div key={idx}>{i.quantity} × {i.product_name} — {money(i.line_total)}</div>)}
             </div>
-            {s.status === 'completada' && (
+            {/* ⚠️ Un pedido de la APP ya entregado solo lo anula Umbani
+                (2026-10-11), como en las grandes: anularlo aquí le ahorraba al
+                local la comisión. Lo exige la base; aquí solo se dice. */}
+            {s.status === 'completada' && !anulaElLocal(s) && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                Es un pedido de la app: si hubo un problema, escríbele a Umbani para anularlo.
+              </p>
+            )}
+            {s.status === 'completada' && anulaElLocal(s) && (
               <ConfirmAction
                 trigger={<Button variant="outline" size="sm" className="mt-2">Anular venta</Button>}
                 title="Anular venta"

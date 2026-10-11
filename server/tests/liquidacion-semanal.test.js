@@ -87,10 +87,12 @@ describe('el camino real', () => {
       '/api/admin/pagos/liquidaciones/:id/marcar',
       // El registro de quién mueve dinero (2026-09-29): solo lectura.
       '/api/admin/pagos/registro',
+      // Anular una venta de la app (2026-10-11): solo Umbani, con motivo.
+      '/api/admin/pagos/ventas/anular',
     ])
     for (const layer of rutas) expect(layer.route.stack.length, layer.route.path).toBeGreaterThanOrEqual(2)
     const fuente = fs.readFileSync('src/routes/admin-pagos.routes.ts', 'utf8')
-    expect(fuente.match(/router\.(get|post)\([^)]*auth\.authAdmin/g)).toHaveLength(3)
+    expect(fuente.match(/router\.(get|post)\([^)]*auth\.authAdmin/g)).toHaveLength(4)
     expect(admin.stack.some(l => l.handle === pagos)).toBe(true)
   })
 
