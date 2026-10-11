@@ -92,7 +92,17 @@ export type Order = {
   /** Lo que le queda al comercio por los productos, sin envío. */
   merchant_subtotal?: number | string | null
   currency?: string
-  payment_method?: 'transferencia' | 'efectivo' | 'pago_al_retirar' | 'tarjeta' | null
+  /**
+   * `saldo` (2026-10-10): el cliente lo pagó ENTERO con su saldo Umbani. Ya
+   * está pagado; no hay nada que cobrarle.
+   */
+  payment_method?: 'transferencia' | 'efectivo' | 'pago_al_retirar' | 'tarjeta' | 'saldo' | null
+  /**
+   * Lo que el cliente pagó con su saldo Umbani, en centavos (2026-10-10). El
+   * total NO cambia: lo que se le cobra es total − esto, y esta parte la pone
+   * Umbani (el lunes se le reconoce al local).
+   */
+  credit_cents?: number | null
   /** Lo que el cliente escribió para ESTE pedido: «llame al llegar». */
   delivery_notes?: string | null
   payment_proof_url?: string | null

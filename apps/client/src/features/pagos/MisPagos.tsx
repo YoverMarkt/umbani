@@ -41,6 +41,8 @@ type Pedido = {
   tuyoCents: number
   comisionCents: number
   cobro: 'tu' | 'umbani'
+  /** Lo que el cliente pagó con saldo Umbani: lo puso Umbani (2026-10-10). */
+  saldoCents?: number
 }
 type Deposito = {
   id: string
@@ -69,6 +71,7 @@ const METODO: Record<string, { texto: string; icono: typeof CreditCard }> = {
   transferencia: { texto: 'Transferencia', icono: Landmark },
   efectivo: { texto: 'Efectivo', icono: Banknote },
   pago_al_retirar: { texto: 'Al retirar', icono: Banknote },
+  saldo: { texto: 'Saldo Umbani', icono: Wallet },
 }
 
 const ESTADO: Record<Deposito['estado'], { texto: string; tono: string }> = {
@@ -182,7 +185,14 @@ export default function MisPagos() {
                         <TableCell className="text-right tabular-nums">{dinero(p.totalCents)}</TableCell>
                         <TableCell className="text-right tabular-nums">{dinero(p.comisionCents)}</TableCell>
                         <TableCell className="text-right font-semibold tabular-nums">{dinero(p.tuyoCents)}</TableCell>
-                        <TableCell className="text-sm">{p.cobro === 'tu' ? 'Tú' : 'Umbani'}</TableCell>
+                        <TableCell className="text-sm">
+                          {p.cobro === 'tu' ? 'Tú' : 'Umbani'}
+                          {/* El saldo Umbani (2026-10-10): esa parte no la cobró
+                              el local; la puso Umbani y se le reconoce aquí. */}
+                          {(p.saldoCents ?? 0) > 0 && p.cobro === 'tu' && (
+                            <div className="text-xs text-muted-foreground">Umbani puso {dinero(p.saldoCents ?? 0)} de saldo</div>
+                          )}
+                        </TableCell>
                       </TableRow>
                     )
                   })}

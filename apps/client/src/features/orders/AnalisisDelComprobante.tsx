@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Receipt, ShieldAlert, TriangleAlert } from 'lucide-react'
 import { money, getReceiptAnalysis, type Order, type ReceiptAnalysis } from './api'
+import { saldoDelPedido } from './dinero-del-pedido'
 import { Badge } from '@botpanel/ui/components/badge'
 
 // Lo que leyó el análisis de un comprobante, en la tarjeta del pedido (vivía en
@@ -74,9 +75,13 @@ export function AnalisisDelComprobante({ pedido }: { pedido: Order }) {
   const detectado = analisis.amount === null || analisis.amount === undefined
     ? null
     : Number(analisis.amount)
+  // Lo que TENÍA que transferir: el total menos lo que pagó con su saldo
+  // Umbani (2026-10-10). Compararlo con el total marcaría «no cuadra» a quien
+  // transfirió justo lo que le pedimos.
+  const { porCobrar } = saldoDelPedido(pedido)
   // Se comparan en centavos para no arrastrar el error del coma flotante.
   const cuadra = detectado !== null
-    && Math.round(detectado * 100) === Math.round(Number(pedido.total) * 100)
+    && Math.round(detectado * 100) === Math.round(porCobrar * 100)
   const senales = (analisis.flags || []).filter(senal => senal.points > 0)
 
   return (
@@ -111,7 +116,7 @@ export function AnalisisDelComprobante({ pedido }: { pedido: Order }) {
         <>
           {/* El valor va primero y aparte: es lo que el dueño mira. */}
           <div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
-            <span className="text-muted-foreground">Esperado {money(pedido.total)}</span>
+            <span className="text-muted-foreground">Esperado {money(porCobrar)}</span>
             <span aria-hidden="true" className="text-muted-foreground">·</span>
             <span
               className={

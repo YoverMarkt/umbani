@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '../tipos-generados'
+import { porCobrarCents, saldoUsadoCents } from '../../lib/por-cobrar'
 
 // LOS MOTORIZADOS
 //
@@ -173,6 +174,10 @@ const setFleetCourierActive = async (businessId: string, courierId: string, acti
  * El efectivo de cada repartidor del local: lo que va a cobrar en los pedidos
  * que lleva ahora, y lo que ya cobró HOY. Es lo que el local le pide al final
  * del turno. Centavos enteros; `desde` es el inicio del día en Ecuador.
+ *
+ * ⚠️ Lo COBRADO, no el total (2026-10-10): lo que el cliente pagó con su saldo
+ * Umbani no pasó por la mano del repartidor. Pedirle el total le haría deber
+ * un efectivo que nunca recibió.
  */
 const fleetCash = async (businessId: string, courierIds: string[], desde: string) => {
   const porRepartidor = new Map<string, { enCursoCents: number; cobradoHoyCents: number; entregasHoy: number }>()
@@ -181,13 +186,13 @@ const fleetCash = async (businessId: string, courierIds: string[], desde: string
   const efectivo = 'payment_method.is.null,payment_method.in.(efectivo,pago_al_retirar)'
   const centavos = (v: unknown) => Math.round((Number(v) || 0) * 100)
 
-  const enCurso = await db.from('orders').select('courier_id, total')
+  const enCurso = await db.from('orders').select('courier_id, total, credit_cents')
     .eq('business_id', businessId).in('courier_id', courierIds).or(efectivo)
     .not('status', 'in', '("completado","cancelado","rechazado","expirado")')
   if (enCurso.error) throw new Error(enCurso.error.message)
   for (const p of enCurso.data || []) {
     const fila = porRepartidor.get(String(p.courier_id))
-    if (fila) fila.enCursoCents += centavos(p.total)
+    if (fila) fila.enCursoCents += porCobrarCents(p)
   }
 
   // Entregado HOY = su venta es de hoy (la venta nace al entregar).
@@ -196,13 +201,13 @@ const fleetCash = async (businessId: string, courierIds: string[], desde: string
   if (ventas.error) throw new Error(ventas.error.message)
   const totalDe = new Map((ventas.data || []).map(v => [String(v.order_id), centavos(v.total)]))
   if (totalDe.size) {
-    const suyos = await db.from('orders').select('id, courier_id')
+    const suyos = await db.from('orders').select('id, courier_id, credit_cents')
       .eq('business_id', businessId).in('id', [...totalDe.keys()]).in('courier_id', courierIds).or(efectivo)
     if (suyos.error) throw new Error(suyos.error.message)
     for (const p of suyos.data || []) {
       const fila = porRepartidor.get(String(p.courier_id))
       if (!fila) continue
-      fila.cobradoHoyCents += totalDe.get(String(p.id)) || 0
+      fila.cobradoHoyCents += Math.max(0, (totalDe.get(String(p.id)) || 0) - saldoUsadoCents(p))
       fila.entregasHoy += 1
     }
   }

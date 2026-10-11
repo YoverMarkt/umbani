@@ -4,12 +4,12 @@ import { rutaDeReparto } from '@/lib/ubicacion'
 import { api } from '../../api/client'
 import { toast } from 'sonner'
 import {
-  Banknote, Bike, Clock, CreditCard, Landmark, MapPin, Navigation, ShoppingBag, Check, X, FileText, RotateCcw,
+  Banknote, Bike, Clock, CreditCard, Landmark, MapPin, Navigation, ShoppingBag, Check, X, FileText, RotateCcw, Wallet,
 } from 'lucide-react'
 import {
   ACTIVOS, ESTADO_COLOR, ESTADO_TEXTO, confirmOrderPayment, getOrderProof, money, marcarLineaPreparada, requestNewProof, siguientePaso, type Order, type OrderStatus,
 } from './api'
-import { desgloseDelPedido, elPedidoSeCobra } from './dinero-del-pedido'
+import { desgloseDelPedido, elPedidoSeCobra, saldoDelPedido } from './dinero-del-pedido'
 import { Alert, AlertDescription, AlertTitle } from '@botpanel/ui/components/alert'
 import { Badge } from '@botpanel/ui/components/badge'
 import { Button } from '@botpanel/ui/components/button'
@@ -73,6 +73,8 @@ export function TarjetaPedido({ pedido, ocupado, onCambiar, onRefrescar }: {
   // dos reglas que no se negocian y por qué esto tiene que cuadrar con
   // Finanzas están en `dinero-del-pedido.ts`.
   const { servicio, porLosProductos, reparto, servicioVaEncima } = desgloseDelPedido(pedido)
+  // El saldo Umbani (2026-10-10): lo pagado con saldo y lo que FALTA cobrar.
+  const { saldo, porCobrar } = saldoDelPedido(pedido)
   const seCobra = elPedidoSeCobra(pedido.status)
 
   // ── La checklist: cuántas líneas están ya en la bolsa ────────────────────
@@ -372,7 +374,9 @@ export function TarjetaPedido({ pedido, ocupado, onCambiar, onRefrescar }: {
             ? <Banknote className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
             : pedido.payment_method === 'tarjeta'
               ? <CreditCard className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-              : <Landmark className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />}
+              : pedido.payment_method === 'saldo'
+                ? <Wallet className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                : <Landmark className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />}
           <div className="min-w-0">
             <div className="font-medium text-foreground">
               {pedido.payment_method === 'efectivo'
@@ -383,8 +387,35 @@ export function TarjetaPedido({ pedido, ocupado, onCambiar, onRefrescar }: {
                     ? 'Paga al retirar'
                     : pedido.payment_method === 'tarjeta'
                       ? 'Tarjeta'
-                      : 'Pago por coordinar'}
+                      : pedido.payment_method === 'saldo'
+                        ? 'Saldo Umbani'
+                        : 'Pago por coordinar'}
             </div>
+            {/* ⚠️ El saldo Umbani (2026-10-10). El total no cambia, pero lo que
+                se COBRA sí: sin esta línea, quien lleva el pedido le pediría el
+                total entero a un cliente que ya pagó una parte. Esa parte la
+                pone Umbani y el lunes se le reconoce al local. */}
+            {pedido.payment_method === 'saldo'
+              ? (
+                  <span className="mt-0.5 flex items-center gap-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                    <Check className="h-3 w-3" />
+                    Ya está pagado: no hay nada que cobrar
+                  </span>
+                )
+              : saldo > 0 && (
+                  <span className="mt-0.5 block text-xs text-muted-foreground">
+                    Pagó {money(saldo)} con saldo Umbani.{' '}
+                    {pedido.payment_method === 'tarjeta'
+                      ? `Con tarjeta: ${money(porCobrar)}.`
+                      : pedido.payment_method === 'transferencia'
+                        ? `Te transfiere ${money(porCobrar)}.`
+                        : (
+                            <strong className="font-semibold text-foreground">
+                              Cobra {money(porCobrar)}{pedido.payment_method === 'pago_al_retirar' ? ' al retirar' : ' en efectivo'}.
+                            </strong>
+                          )}
+                  </span>
+                )}
             {/* Con tarjeta el pago lo confirma PayPhone, no el dueño: aquí
                 solo se dice si ya está cobrado. Mientras no lo esté, el pedido
                 no se puede preparar (lo impide la base). */}

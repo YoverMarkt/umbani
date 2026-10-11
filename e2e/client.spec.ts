@@ -269,6 +269,40 @@ test('un pedido recorre confirmación, preparación y reparto sin generar cobros
   await avanzar('Marcar entregado', 'completado')
 })
 
+// El saldo Umbani (2026-10-10): el total del pedido no cambia, pero lo que el
+// local COBRA sí. Sin decirlo en la tarjeta, quien lleva el pedido le pediría
+// el total entero a un cliente que ya pagó una parte con su saldo.
+test('el pedido con saldo Umbani dice cuánto cobrar en la puerta', async ({ page }) => {
+  await seedClientSession(page)
+  await mockClientApi(page)
+  const pedido = (id: string, extra: Record<string, unknown>) => ({
+    id, contact_phone: '+593999000111', contact_name: `Cliente ${id}`, status: 'pendiente',
+    subtotal: 8, discount: 0, total: 8, currency: 'USD', created_at: '2026-10-10T10:00:00.000Z',
+    order_items: [{ id: `${id}-linea`, product_id: 'p', product_name: 'Pizza', quantity: 1, unit_price: 8, line_total: 8 }],
+    ...extra,
+  })
+  await page.route('**/api/client/orders**', route => {
+    const path = new URL(route.request().url()).pathname
+    if (path === '/api/client/orders' && route.request().method() === 'GET') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([
+          pedido('parte-con-saldo', { payment_method: 'efectivo', credit_cents: 110 }),
+          pedido('todo-con-saldo', { payment_method: 'saldo', credit_cents: 800, payment_confirmed_at: '2026-10-10T10:00:00.000Z' }),
+        ]),
+      })
+    }
+    return route.fallback()
+  })
+  await page.goto(`${clientUrl}#/orders`)
+
+  await expect(page.getByText('Pagó $1.10 con saldo Umbani.')).toBeVisible()
+  await expect(page.getByText('Cobra $6.90 en efectivo.')).toBeVisible()
+  await expect(page.getByText('Ya está pagado: no hay nada que cobrar')).toBeVisible()
+  await expect(page.getByText('Saldo Umbani', { exact: true })).toBeVisible()
+})
+
 // Regresión del pedido perdido: la alarma existía y era sorda a `orders`.
 // Aquí se comprueba que un pedido que entra ESTANDO el panel abierto enciende
 // el banner solo, sin recargar, y lleva a donde se atiende.

@@ -63,6 +63,19 @@ describe('Mis pagos', () => {
     expect(JSON.stringify(r.body)).not.toMatch(/payphone/i)
   })
 
+  it('lo pagado con saldo Umbani se ve en el pedido: esa parte la puso Umbani', async () => {
+    vi.spyOn(db, 'getSettlementBalances').mockResolvedValue([])
+    vi.spyOn(db, 'listSettlements').mockResolvedValue([])
+    vi.spyOn(db, 'getBusinessById').mockResolvedValue({ id: 'b1', slug: 'b1', name: 'Local', is_demo: false })
+    vi.spyOn(db, 'listLedger').mockResolvedValue([
+      { orders: { order_number: 8 }, sold_at: '2026-10-10T20:00:00Z', kind: 'venta', payment_method: 'efectivo',
+        total_cents: 1518, local_cents: 1198, reparto_cents: 200, reparto_para: 'local', umbani_cents: 120,
+        en_mano: 'local', credit_cents: 300, en_mano_cents: 1218 },
+    ])
+    const r = await pedir({ role: 'client', businessId: 'b1', urole: 'owner' })
+    expect(r.body.pedidos[0]).toMatchObject({ numero: 8, totalCents: 1518, tuyoCents: 1398, cobro: 'tu', saldoCents: 300 })
+  })
+
   it('sin pedidos todavía, todo en cero', async () => {
     vi.spyOn(db, 'getSettlementBalances').mockResolvedValue([])
     vi.spyOn(db, 'listLedger').mockResolvedValue([])
