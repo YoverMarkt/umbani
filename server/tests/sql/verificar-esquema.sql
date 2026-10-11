@@ -8607,3 +8607,357 @@ end;
 $saldo$;
 
 select '✅ saldo Umbani: al instante lo pequeño, la escalera con rechazos y dispositivos, efectivo sin saldo, lo usado y lo vencido no cuentan' as resultado;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- USAR EL SALDO UMBANI AL PEDIR (2026-10-10, fase 2 de las incidencias, parte 2)
+-- ═══════════════════════════════════════════════════════════════════════════
+-- El saldo paga el pedido como cualquier otro pago, también con efectivo. El
+-- TOTAL no cambia: lo que se cobra es total − saldo, y eso es lo que cobra la
+-- tarjeta, lo que recibe el repartidor y lo que el local tiene en la mano. La
+-- parte del saldo la pone Umbani, y el cierre del lunes se la reconoce.
+
+-- Un lote de `p_cents` que vence en `p_dias` días, con su incidencia: un lote
+-- siempre sale de una.
+create or replace function pg_temp.verif_dar_saldo(p_local uuid, p_cliente uuid, p_cents integer, p_dias integer)
+returns uuid
+language plpgsql
+as $f$
+declare
+  v_pedido uuid;
+  v_inc uuid;
+  v_lote uuid;
+begin
+  insert into orders (business_id, contact_phone, source, status, subtotal, total)
+  values (p_local, '593900666999', 'manual', 'completado', 1, 1) returning id into v_pedido;
+  insert into order_incidents (business_id, order_id, kind, origin)
+  values (p_local, v_pedido, 'otro', 'superadmin') returning id into v_inc;
+  insert into customer_credit_lots (customer_id, incident_id, cents, expires_at)
+  values (p_cliente, v_inc, p_cents, now() + make_interval(days => p_dias)) returning id into v_lote;
+  return v_lote;
+end;
+$f$;
+
+-- Una pizza de la tienda, para retirar, con o sin saldo.
+create or replace function pg_temp.verif_pedir(
+  p_local uuid, p_cliente uuid, p_telefono text, p_producto uuid, p_pago text, p_saldo boolean
+)
+returns jsonb
+language sql
+as $f$
+  select public.create_storefront_order(
+    p_local, p_cliente, p_telefono, 'Cliente', null, 'pickup',
+    jsonb_build_array(jsonb_build_object('product_id', p_producto, 'quantity', 1)),
+    null, p_pago, null, null, p_saldo)
+$f$;
+
+-- El mensaje con el que la base rechaza un pedido, o null si lo acepta.
+create or replace function pg_temp.verif_rechazo(
+  p_local uuid, p_cliente uuid, p_telefono text, p_producto uuid, p_pago text, p_saldo boolean
+)
+returns text
+language plpgsql
+as $f$
+declare
+  v_mensaje text;
+begin
+  perform pg_temp.verif_pedir(p_local, p_cliente, p_telefono, p_producto, p_pago, p_saldo);
+  return null;
+exception when others then
+  get stacked diagnostics v_mensaje = message_text;
+  return v_mensaje;
+end;
+$f$;
+
+do $usar$
+declare
+  v_local uuid; v_pizza uuid;
+  v_ana uuid; v_bea uuid; v_caro uuid; v_dani uuid; v_eva uuid; v_fede uuid; v_rosa uuid;
+  v_r jsonb; v_o public.orders%rowtype; v_l public.order_ledger%rowtype;
+  v_total integer; v_ped uuid; v_ref text; v_falló boolean;
+  v_pronto uuid; v_tarde uuid; v_rechazo text;
+  v_moto_local uuid; v_moto uuid;
+begin
+  -- Sin tarifa de servicio: las cuentas son las de la carta.
+  delete from server_settings where key = 'service_fee';
+  insert into businesses (slug, name, type, whatsapp_provider, whatsapp_number, ycloud_number,
+                          takes_orders, storefront_enabled, card_mode)
+  values ('verif-usar-saldo', 'Usar saldo', 'pizzería', 'ycloud', '+593900666000', '+593900666000',
+          true, true, 'pruebas') returning id into v_local;
+  -- Solo la transferencia nace encendida: aquí se pide con todos.
+  update business_payment_methods set enabled = true where business_id = v_local;
+  insert into products (business_id, name, price) values (v_local, 'Pizza', 5.00) returning id into v_pizza;
+  insert into customers (phone, name) values ('593900666001', 'Ana') returning id into v_ana;
+  insert into customers (phone, name) values ('593900666002', 'Bea') returning id into v_bea;
+  insert into customers (phone, name) values ('593900666003', 'Caro') returning id into v_caro;
+  insert into customers (phone, name) values ('593900666004', 'Dani') returning id into v_dani;
+  insert into customers (phone, name) values ('593900666005', 'Eva') returning id into v_eva;
+  insert into customers (phone, name) values ('593900666006', 'Fede') returning id into v_fede;
+  insert into customers (phone, name) values ('593900666007', 'Rosa') returning id into v_rosa;
+
+  -- ── 1. Sin pedirlo, el saldo NO se toca (la tienda web no lo pinta) ──────
+  perform pg_temp.verif_dar_saldo(v_local, v_ana, 1000, 30);
+  v_r := pg_temp.verif_pedir(v_local, v_ana, '593900666001', v_pizza, 'efectivo', false);
+  select * into v_o from orders where id = (v_r ->> 'id')::uuid;
+  v_total := round(v_o.total * 100)::integer;
+  if v_total < 500 then raise exception 'el pedido de prueba no vale lo que su carta: %', v_total; end if;
+  if v_o.credit_cents <> 0 or (v_r ->> 'credit_cents')::int <> 0
+     or (public.saldo_del_cliente(v_ana) ->> 'cents')::int <> 1000 then
+    raise exception 'sin pedirlo se gastó el saldo: % %', row_to_json(v_o), public.saldo_del_cliente(v_ana);
+  end if;
+
+  -- ── 2. EFECTIVO con saldo: paga lo que falta y el TOTAL no cambia ────────
+  perform pg_temp.verif_dar_saldo(v_local, v_bea, 250, 30);
+  v_r := pg_temp.verif_pedir(v_local, v_bea, '593900666002', v_pizza, 'efectivo', true);
+  v_ped := (v_r ->> 'id')::uuid;
+  select * into v_o from orders where id = v_ped;
+  if v_o.credit_cents <> 250 or (v_r ->> 'credit_cents')::int <> 250
+     or v_o.payment_method <> 'efectivo' or v_o.status <> 'pendiente'
+     or round(v_o.total * 100)::int <> v_total or v_o.payment_confirmed_at is not null then
+    raise exception 'el saldo no pagó una parte del pedido en efectivo (o tocó el total): %', row_to_json(v_o);
+  end if;
+  if (public.saldo_del_cliente(v_bea) ->> 'cents')::int <> 0 then
+    raise exception 'el saldo gastado siguió contando: %', public.saldo_del_cliente(v_bea);
+  end if;
+
+  -- ── 3. Cancelado: el saldo VUELVE (lo hace la base, no una puerta) ───────
+  perform public.set_order_status(v_local, v_ped, 'cancelado');
+  if exists (select 1 from customer_credit_uses where order_id = v_ped and reversed_at is null)
+     or (public.saldo_del_cliente(v_bea) ->> 'cents')::int <> 250 then
+    raise exception 'cancelar el pedido no devolvió el saldo: %', public.saldo_del_cliente(v_bea);
+  end if;
+
+  -- ── 4. Lo cubre TODO: entra pagado, y se gasta primero lo que vence antes ─
+  -- Caro tiene $3,00 que vencen en 5 días y $10,00 que vencen en 60. Pide con
+  -- TARJETA, pero el saldo alcanza: no se cobra nada con la tarjeta.
+  v_tarde := pg_temp.verif_dar_saldo(v_local, v_caro, 1000, 60);
+  v_pronto := pg_temp.verif_dar_saldo(v_local, v_caro, 300, 5);
+  v_r := pg_temp.verif_pedir(v_local, v_caro, '593900666003', v_pizza, 'tarjeta', true);
+  v_ped := (v_r ->> 'id')::uuid;
+  select * into v_o from orders where id = v_ped;
+  if v_o.payment_method <> 'saldo' or v_o.status <> 'pendiente' or v_o.payment_confirmed_at is null
+     or v_o.credit_cents <> v_total then
+    raise exception 'el saldo que cubre todo no dejó el pedido pagado: %', row_to_json(v_o);
+  end if;
+  if (select cents from customer_credit_uses where order_id = v_ped and lot_id = v_pronto) <> 300
+     or (select cents from customer_credit_uses where order_id = v_ped and lot_id = v_tarde) <> v_total - 300 then
+    raise exception 'no se gastó primero el saldo que vence antes';
+  end if;
+  if (public.saldo_del_cliente(v_caro) ->> 'cents')::int <> 1300 - v_total then
+    raise exception 'el saldo que sobró no es el que debía: %', public.saldo_del_cliente(v_caro);
+  end if;
+  if not exists (select 1 from order_events where order_id = v_ped
+                  and from_status = 'esperando_pago' and to_status = 'pendiente'
+                  and note = 'Pagado con saldo Umbani') then
+    raise exception 'el pago con saldo no quedó en el historial del pedido';
+  end if;
+  if public.start_card_payment(v_local, v_ped, '593900666003', 'pruebas') ->> 'result' <> 'not_card' then
+    raise exception 'se pudo cobrar con tarjeta un pedido ya pagado con saldo';
+  end if;
+  if not exists (select 1 from money_audit_log where target_id = v_ped::text and action = 'pago_confirmado'
+                  and detail ->> 'metodo' = 'saldo' and (detail ->> 'saldoCents')::int = v_total) then
+    raise exception 'el registro de dinero no anotó el pago con saldo';
+  end if;
+
+  -- ── 5. TARJETA con saldo: PayPhone cobra lo que FALTA, al centavo ────────
+  perform pg_temp.verif_dar_saldo(v_local, v_dani, 200, 30);
+  v_r := pg_temp.verif_pedir(v_local, v_dani, '593900666004', v_pizza, 'tarjeta', true);
+  v_ped := (v_r ->> 'id')::uuid;
+  select * into v_o from orders where id = v_ped;
+  if v_o.payment_method <> 'tarjeta' or v_o.status <> 'esperando_pago' or v_o.credit_cents <> 200 then
+    raise exception 'tarjeta con parte de saldo no quedó esperando el resto: %', row_to_json(v_o);
+  end if;
+  v_r := public.start_card_payment(v_local, v_ped, '593900666004', 'pruebas');
+  if v_r ->> 'result' <> 'ok' or (v_r ->> 'amount_cents')::int <> v_total - 200 then
+    raise exception 'la tarjeta no cobra lo que falta (esperaba %): %', v_total - 200, v_r;
+  end if;
+  v_ref := v_r ->> 'client_transaction_id';
+  -- Si PayPhone cobrara el total entero, no cuadra: no se confirma.
+  if public.settle_card_payment(v_ref, 'USAR-1', 3, v_total, 'USD') ->> 'result' <> 'refund' then
+    raise exception 'se confirmó un cobro del total entero sobre un pedido con saldo';
+  end if;
+  v_ref := public.start_card_payment(v_local, v_ped, '593900666004', 'pruebas') ->> 'client_transaction_id';
+  if public.claim_card_payment(v_ref, 'USAR-2') ->> 'result' <> 'confirm' then
+    raise exception 'la base no dejó confirmar lo que falta por cobrar';
+  end if;
+  v_r := public.settle_card_payment(v_ref, 'USAR-2', 3, v_total - 200, 'USD', 'A1', 'Visa', '4242');
+  select * into v_o from orders where id = v_ped;
+  if v_r ->> 'result' <> 'approved' or v_o.status <> 'pendiente' or v_o.payment_confirmed_at is null then
+    raise exception 'lo que faltaba, cobrado al centavo, no dejó el pedido pagado: % %', v_r, row_to_json(v_o);
+  end if;
+
+  -- ── 6. Las reglas de la fila: nunca más que el total; `saldo` solo entero ─
+  v_falló := false;
+  begin update orders set payment_method = 'saldo' where id = v_ped;
+  exception when check_violation then v_falló := true; end;
+  if not v_falló then raise exception 'un pedido con saldo PARCIAL se marcó «pagado con saldo»'; end if;
+  v_falló := false;
+  begin update orders set credit_cents = v_total + 1 where id = v_ped;
+  exception when check_violation then v_falló := true; end;
+  if not v_falló then raise exception 'se guardó más saldo que el total del pedido'; end if;
+
+  -- ── 7. Quien usa saldo dice cómo paga el resto ───────────────────────────
+  perform pg_temp.verif_dar_saldo(v_local, v_fede, 100, 30);
+  v_rechazo := pg_temp.verif_rechazo(v_local, v_fede, '593900666006', v_pizza, null, true);
+  if v_rechazo is distinct from 'Elige cómo pagar el resto' then
+    raise exception 'un pedido con saldo parcial y sin método se aceptó: %', v_rechazo;
+  end if;
+  if exists (select 1 from customer_credit_uses u join customer_credit_lots l on l.id = u.lot_id
+              where l.customer_id = v_fede) then
+    raise exception 'el pedido rechazado dejó gastado el saldo';
+  end if;
+
+  -- ── 8. Entregado: el libro dice que lo pagado con saldo lo pone Umbani ───
+  -- Eva paga en efectivo con $3,00 de saldo: el local tiene en la mano el resto.
+  perform pg_temp.verif_dar_saldo(v_local, v_eva, 300, 30);
+  v_ped := (pg_temp.verif_pedir(v_local, v_eva, '593900666005', v_pizza, 'efectivo', true) ->> 'id')::uuid;
+  perform public.set_order_status(v_local, v_ped, 'preparacion');
+  perform public.set_order_status(v_local, v_ped, 'completado');
+  select * into v_l from order_ledger where order_id = v_ped and kind = 'venta';
+  if v_l.id is null or v_l.credit_cents <> 300 or v_l.en_mano <> 'local'
+     or v_l.en_mano_cents <> v_total - 300 or v_l.total_cents <> v_total
+     or v_l.local_cents + v_l.reparto_cents + v_l.umbani_cents <> v_total then
+    raise exception 'el libro del pedido con saldo no cuadra: %', row_to_json(v_l);
+  end if;
+  if (select en_mano_cents from public.settlement_balances(v_local)) <> v_total - 300 then
+    raise exception 'el saldo en curso cuenta lo pagado con saldo como si lo tuviera el local: %',
+      (select row_to_json(b) from public.settlement_balances(v_local) b);
+  end if;
+
+  -- «No llegó» pagando en efectivo: no pagó la comida, pero SÍ su saldo.
+  v_r := public.customer_report_order(v_ped, '593900666005', 'no_llego', '[]', null);
+  if (v_r ->> 'sugeridoCents')::int <> 300 then
+    raise exception '«no llegó» en efectivo con saldo no devuelve lo pagado con saldo: %', v_r;
+  end if;
+
+  -- Tarjeta con saldo, entregada: PayPhone solo cobró (y solo se lleva) lo que pasó por la tarjeta.
+  select id into v_ped from orders where business_id = v_local and customer_id = v_dani and source = 'storefront';
+  perform public.set_order_status(v_local, v_ped, 'preparacion');
+  perform public.set_order_status(v_local, v_ped, 'completado');
+  select * into v_l from order_ledger where order_id = v_ped and kind = 'venta';
+  if v_l.en_mano <> 'umbani' or v_l.credit_cents <> 200 or v_l.en_mano_cents <> v_total - 200
+     or v_l.provider_fee_cents <> round((v_total - 200) * public.comision_payphone_bps() / 10000.0)::int then
+    raise exception 'el libro de la tarjeta con saldo no cuadra: %', row_to_json(v_l);
+  end if;
+
+  -- Pagado entero con saldo: nadie cobró nada, todo lo pone Umbani.
+  select id into v_ped from orders where business_id = v_local and customer_id = v_caro and source = 'storefront';
+  perform public.set_order_status(v_local, v_ped, 'preparacion');
+  perform public.set_order_status(v_local, v_ped, 'completado');
+  select * into v_l from order_ledger where order_id = v_ped and kind = 'venta';
+  if v_l.en_mano <> 'umbani' or v_l.payment_method <> 'saldo' or v_l.credit_cents <> v_total
+     or v_l.en_mano_cents <> 0 or v_l.provider_fee_cents <> 0 then
+    raise exception 'el libro del pedido pagado con saldo no cuadra: %', row_to_json(v_l);
+  end if;
+
+  -- ── 9. ESCALÓN 3: solo por adelantado, salvo que el saldo lo cubra todo ──
+  -- Dos reclamos rechazados.
+  for v_ped in
+    insert into orders (business_id, contact_phone, source, status, subtotal, total)
+    values (v_local, '593900666007', 'manual', 'completado', 5, 5), (v_local, '593900666007', 'manual', 'completado', 5, 5)
+    returning id
+  loop
+    insert into order_incidents (business_id, order_id, kind, origin, status, resolved_at)
+    values (v_local, v_ped, 'falta_producto', 'cliente', 'descartada', now());
+  end loop;
+  if (public.escalera_del_cliente(v_rosa) ->> 'escalon')::int <> 3 then
+    raise exception 'la prueba no dejó a Rosa en el escalón 3: %', public.escalera_del_cliente(v_rosa);
+  end if;
+  if pg_temp.verif_rechazo(v_local, v_rosa, '593900666007', v_pizza, 'efectivo', false)
+       is distinct from 'Para este pedido elige tarjeta o transferencia.'
+     or pg_temp.verif_rechazo(v_local, v_rosa, '593900666007', v_pizza, 'pago_al_retirar', false)
+       is distinct from 'Para este pedido elige tarjeta o transferencia.'
+     or pg_temp.verif_rechazo(v_local, v_rosa, '593900666007', v_pizza, null, false)
+       is distinct from 'Para este pedido elige tarjeta o transferencia.' then
+    raise exception 'el escalón 3 pudo pedir sin pagar por adelantado';
+  end if;
+  v_r := pg_temp.verif_pedir(v_local, v_rosa, '593900666007', v_pizza, 'transferencia', false);
+  perform public.set_order_status(v_local, (v_r ->> 'id')::uuid, 'cancelado');
+  perform pg_temp.verif_dar_saldo(v_local, v_rosa, 2000, 30);
+  v_r := pg_temp.verif_pedir(v_local, v_rosa, '593900666007', v_pizza, 'efectivo', true);
+  if (select payment_method from orders where id = (v_r ->> 'id')::uuid) <> 'saldo' then
+    raise exception 'el escalón 3 no pudo pagar entero con su saldo';
+  end if;
+
+  -- ── 10. El repartidor cobra lo que FALTA ─────────────────────────────────
+  insert into businesses (slug, name, type, whatsapp_provider, whatsapp_number, ycloud_number,
+                          takes_orders, storefront_enabled, delivery_by, city_id)
+  values ('verif-usar-saldo-moto', 'Usar saldo moto', 'pizzería', 'ycloud', '+593900666100', '+593900666100',
+          true, true, 'umbani', pg_temp.chone()) returning id into v_moto_local;
+  insert into couriers (phone, name, city_id, cash_limit_cents)
+  values ('593900666101', 'Toño', pg_temp.chone(), 1100) returning id into v_moto;
+  -- $15,18 en efectivo, con $5,00 pagados con saldo: cobra $10,18.
+  insert into orders (business_id, contact_phone, source, status, fulfillment, subtotal, shipping, total, payment_method)
+  values (v_moto_local, '593900666102', 'manual', 'preparacion', 'delivery', 11.98, 2, 15.18, 'efectivo')
+  returning id into v_ped;
+  update orders set platform_markup = 1.20, credit_cents = 500 where id = v_ped;
+  if not (select bool_or((p ->> 'cobrarCents')::int = 1018 and (p ->> 'totalCents')::int = 1518)
+            from jsonb_array_elements(public.courier_orders(v_moto)) p) then
+    raise exception 'la app del repartidor no dice cuánto cobrar: %', public.courier_orders(v_moto);
+  end if;
+  -- Con tope de $11,00 lo puede llevar: va a cobrar $10,18, no $15,18.
+  if public.courier_take_order(v_moto, v_ped) ->> 'result' <> 'ok' then
+    raise exception 'el tope de efectivo contó lo pagado con saldo';
+  end if;
+  if public.courier_cash_in_hand(v_moto) <> 1018 then
+    raise exception 'el efectivo por cobrar cuenta lo pagado con saldo: %', public.courier_cash_in_hand(v_moto);
+  end if;
+  perform public.courier_advance_order(v_moto, v_ped, 'en_camino');
+  perform public.courier_advance_order(v_moto, v_ped, 'completado');
+  if (public.courier_balance(v_moto) ->> 'efectivoCobradoCents')::int <> 1018
+     or public.courier_cash_in_hand(v_moto) <> 1018 then
+    raise exception 'el efectivo cobrado del repartidor no es lo que cobró: % / %',
+      public.courier_balance(v_moto), public.courier_cash_in_hand(v_moto);
+  end if;
+end;
+$usar$;
+
+-- ── El cierre del lunes reconoce al local lo pagado con saldo ─────────────
+-- Dos pedidos de $15,18 ($11,98 del local + $2,00 de carrera + $1,20 de
+-- comisión) con $3,00 de saldo cada uno: uno con tarjeta y otro en efectivo.
+-- Sin saldo el local tendría $15,18 en la mano y cobraría $12,78; con saldo
+-- tiene $12,18 y cobra $15,78: los $3,00 que puso Umbani.
+create or replace function public.liquidacion_semanal_desde()
+returns date language sql stable set search_path = public, pg_temp
+as $x$ select date '2026-02-02' $x$;
+
+do $usar_cierre$
+declare
+  v_local uuid; v_tarjeta uuid; v_efe uuid; v_venta uuid;
+  v_s public.settlements%rowtype; v_l public.order_ledger%rowtype;
+begin
+  insert into businesses (slug, name, type, whatsapp_provider, whatsapp_number, ycloud_number,
+                          takes_orders, storefront_enabled, card_mode)
+  values ('verif-usar-saldo-cierre', 'Cierre con saldo', 'pizzería', 'ycloud', '+593900666200', '+593900666200',
+          true, true, 'pruebas') returning id into v_local;
+  insert into orders (business_id, contact_phone, source, status, subtotal, shipping, total, payment_method, payment_confirmed_at)
+  values (v_local, '593900666201', 'manual', 'pendiente', 11.98, 2, 15.18, 'tarjeta', now()) returning id into v_tarjeta;
+  insert into orders (business_id, contact_phone, source, status, subtotal, shipping, total, payment_method)
+  values (v_local, '593900666201', 'manual', 'pendiente', 11.98, 2, 15.18, 'efectivo') returning id into v_efe;
+  update orders set platform_markup = 1.20, credit_cents = 300 where business_id = v_local;
+
+  insert into sales (business_id, order_id, total, shipping, platform_markup, status, source, sold_at)
+  values (v_local, v_tarjeta, 15.18, 2, 1.20, 'completada', 'storefront', '2026-02-04 15:00-05');
+  insert into sales (business_id, order_id, total, shipping, platform_markup, status, source, sold_at)
+  values (v_local, v_efe, 15.18, 2, 1.20, 'completada', 'storefront', '2026-02-05 15:00-05')
+  returning id into v_venta;
+
+  perform public.close_weekly_settlements('2026-02-02');
+  select * into v_s from settlements where business_id = v_local and period_start = '2026-02-02';
+  if v_s.derecho_cents <> 2796 or v_s.en_mano_cents <> 1218 or v_s.neto_cents <> 1578 or v_s.status <> 'por_pagar' then
+    raise exception 'el cierre no le reconoce al local lo pagado con saldo: %', row_to_json(v_s);
+  end if;
+
+  -- Anular la venta YA liquidada deja un reverso que también resta el saldo.
+  update sales set status = 'anulada' where id = v_venta;
+  select * into v_l from order_ledger where order_id = v_efe and kind = 'reverso';
+  if v_l.credit_cents <> -300 or v_l.en_mano_cents <> -1218 then
+    raise exception 'el reverso no deshizo lo pagado con saldo: %', row_to_json(v_l);
+  end if;
+end;
+$usar_cierre$;
+
+create or replace function public.liquidacion_semanal_desde()
+returns date language sql stable set search_path = public, pg_temp
+as $x$ select date '2026-09-28' $x$;
+
+select '✅ usar el saldo: paga lo que falta con cualquier método, entero entra pagado, vuelve al cancelar, el escalón 3 paga por adelantado, y el local, la tarjeta y el repartidor cuadran al centavo' as resultado;
