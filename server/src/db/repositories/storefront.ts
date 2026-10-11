@@ -454,6 +454,11 @@ const createStorefrontOrder = async (input: {
   scheduledFor?: string | null
   /** Instrucciones del cliente para ESTE pedido: «llame al llegar». */
   deliveryNotes?: string | null
+  /**
+   * Pagar con el saldo Umbani (2026-10-10). Solo la app lo pide: la tienda web
+   * no pinta el saldo. Lo que se usa lo decide la base.
+   */
+  useCredit?: boolean
 }) => db.rpc('create_storefront_order', {
   p_business_id: input.businessId,
   p_customer_id: input.customerId,
@@ -466,6 +471,8 @@ const createStorefrontOrder = async (input: {
   p_scheduled_for: input.scheduledFor || null,
   p_payment_method: input.paymentMethod || null,
   p_notes: input.deliveryNotes || null,
+  // Solo cuando se pide: sin él la RPC se comporta como siempre.
+  ...(input.useCredit === true ? { p_use_credit: true } : {}),
 })
 
 /**
@@ -495,7 +502,9 @@ const createStorefrontOrder = async (input: {
 const getOrderMoney = async (businessId: string, orderId: string) => {
   const { data, error } = await db
     .from('orders')
-    .select('subtotal,shipping,total,status,payment_method')
+    // `credit_cents` (2026-10-10): lo pagado con saldo Umbani. La ruta lo
+    // convierte en lo que falta por pagar; sin él cobraría el total entero.
+    .select('subtotal,shipping,total,status,payment_method,credit_cents')
     .eq('business_id', businessId)
     .eq('id', orderId)
     .maybeSingle()
@@ -506,6 +515,7 @@ const getOrderMoney = async (businessId: string, orderId: string) => {
     total: number | string | null
     status: string | null
     payment_method: string | null
+    credit_cents: number | null
   }
 }
 
@@ -608,7 +618,7 @@ const bindStorefrontSession = async (sessionId: string, deviceHash: string) => {
 // pagó el CLIENTE. `line_total` en la base es el precio del LOCAL.
 // ⚠️ `received_ok_at` y el `id` de cada línea (2026-10-06): el cliente dice
 // «Todo bien» o reporta QUÉ línea faltó, y para eso necesita su identificador.
-const CAMPOS_DEL_SEGUIMIENTO = 'id,order_number,status,total,shipping,service_fee,currency,fulfillment,created_at,payment_confirmed_at,payment_method,received_ok_at,order_items(id,product_name,variant_name,extras_names,item_note,quantity,line_total,order_item_options(option_group_name,option_name,quantity,group_sort))' as const
+const CAMPOS_DEL_SEGUIMIENTO = 'id,order_number,status,total,shipping,service_fee,credit_cents,currency,fulfillment,created_at,payment_confirmed_at,payment_method,received_ok_at,order_items(id,product_name,variant_name,extras_names,item_note,quantity,line_total,order_item_options(option_group_name,option_name,quantity,group_sort))' as const
 
 /**
  * Los pedidos de UN cliente en ESTE negocio, para su pestaña de Cuenta.

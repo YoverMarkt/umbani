@@ -5,6 +5,7 @@ import type { Router } from 'express'
 import multer from 'multer'
 import type { RequestHandler } from 'express'
 import { MEDIA_LIMITS, mapMulterError, validateMediaFile } from '../../lib/media'
+import { porCobrar } from '../../lib/por-cobrar'
 import { isConfigured, uploadPrivateMedia } from '../../integrations/cloudinary'
 import { requireStorefrontSession } from '../../middleware/storefront'
 import { pagosConTarjeta } from '../../services/pago-con-tarjeta'
@@ -186,7 +187,10 @@ export function registrarPagos(router: Router): void {
               analisis,
               esperado: pedido
                 ? {
-                  total: Number(pedido.total ?? 0),
+                  // Lo que FALTABA por pagar: sin lo pagado con saldo Umbani
+                  // (2026-10-10). Comparar con el total marcaría «faltan $X»
+                  // a quien transfirió justo lo que le pedimos.
+                  total: porCobrar(pedido),
                   createdAt: pedido.created_at ?? null,
                   clienteNombre: pedido.contact_name ?? null,
                 }

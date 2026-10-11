@@ -311,6 +311,19 @@ describe('fase 2: en la app', () => {
     saldo.mockRejectedValue(new Error('caída'))
     expect((await correr(appV1, 'get', '/api/v1/yo', { headers: app() })).body).toMatchObject({ telefono: '593991234567', saldo: null })
   })
+
+  it('«/yo» dice si solo puede pagar por adelantado (escalón 3), sin explicar por qué', async () => {
+    vi.spyOn(db, 'resolveMarketplaceCustomer').mockResolvedValue({ id: 'c1', phone: '593991234567', city_id: null })
+    vi.spyOn(db, 'customerCreditBalance').mockResolvedValue({ cents: 0, proximo: null })
+    const escalon = vi.spyOn(db, 'customerPaysUpfrontOnly').mockResolvedValue(true)
+    const r = await correr(appV1, 'get', '/api/v1/yo', { headers: app() })
+    expect(r.body).toMatchObject({ soloPagoPorAdelantado: true })
+    expect(escalon).toHaveBeenCalledWith('c1')
+    expect(JSON.stringify(r.body)).not.toMatch(/rechaz|escal|reclam/i)
+    // Si no se puede leer, `false`: la base lo exige igual al pedir.
+    escalon.mockRejectedValue(new Error('caída'))
+    expect((await correr(appV1, 'get', '/api/v1/yo', { headers: app() })).body).toMatchObject({ soloPagoPorAdelantado: false })
+  })
 })
 
 describe('fase 2: la foto del reclamo', () => {
@@ -401,6 +414,14 @@ describe('fase 2: el repositorio', () => {
     expect(rpc).toHaveBeenLastCalledWith('saldo_del_cliente', { p_customer_id: 'c1' })
     rpc.mockResolvedValue({ data: { cents: 0, proximo: null }, error: null })
     expect(await db.customerCreditBalance('c1')).toEqual({ cents: 0, proximo: null })
+  })
+
+  it('«solo por adelantado» es el escalón 3 de la escalera que calcula la base', async () => {
+    const rpc = vi.spyOn(client, 'rpc').mockResolvedValue({ data: { escalon: 3, motivos: ['rechazos'] }, error: null })
+    expect(await db.customerPaysUpfrontOnly('c1')).toBe(true)
+    expect(rpc).toHaveBeenLastCalledWith('escalera_del_cliente', { p_customer_id: 'c1' })
+    rpc.mockResolvedValue({ data: { escalon: 2, motivos: ['reportes_seguidos'] }, error: null })
+    expect(await db.customerPaysUpfrontOnly('c1')).toBe(false)
   })
 })
 

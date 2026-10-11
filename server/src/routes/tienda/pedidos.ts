@@ -10,6 +10,7 @@ import { canOrder, reglaDeMargen } from '../../services/storefront'
 import { avisarAlDuenoDelPedido } from '../../services/owner-order-notice'
 import { tarjetaDisponible } from '../../services/pago-con-tarjeta'
 import { pedidoParaElCliente, porcentajePorProducto } from '../../lib/precio-para-el-cliente'
+import { porCobrarCents, saldoUsadoCents } from '../../lib/por-cobrar'
 import { conConfirmacion, leerReclamo, respuestaAlCliente, respuestaDelReclamo } from '../../services/reclamos'
 import { db, orderLimiter, readStatus } from './comun'
 
@@ -134,6 +135,9 @@ export function registrarPedidos(router: Router): void {
       // parámetro y la columna `scheduled_for` sigue en la base: quitarlos
       // exigiría recrear la función del dinero por un campo que nadie llena.
       scheduledFor: null,
+      // El saldo Umbani (2026-10-10): SOLO si la app lo pide. La tienda web no
+      // pinta el saldo y no lo manda. Cuánto se usa lo decide la base.
+      useCredit: body.usarSaldo === true,
     })
 
     if (result.error) {
@@ -153,26 +157,6 @@ export function registrarPedidos(router: Router): void {
     if (contactName && contactName.trim().length >= 2) {
       void db.setCustomerDisplayName(businessId, customerId, contactName.trim())
         .catch(() => { /* el pedido ya está: recordar el nombre no puede fallarlo */ })
-    }
-
-    // ── El aviso al DUEÑO, si lo tiene encendido ────────────────────────────
-    //
-    // ⚠️ Nace APAGADO (`notify_owner_whatsapp`) y por eso esto casi siempre no
-    // gasta nada: son dos mensajes por pedido y Meta los cobra. El dueño se
-    // entera igual por la alarma del panel, que es gratis; esto es para quien
-    // no lo tiene abierto.
-    //
-    // ⚠️ Sin `await`, como el resto de esta zona: el pedido YA está creado y el
-    // cliente tiene que ver su confirmación ahora. Un proveedor externo lento no
-    // puede retrasar la pantalla de «pedido recibido».
-    //
-    // ⚠️ Con TARJETA no: ese pedido todavía no existe para el local — no suena
-    // su alarma ni avanza hasta que PayPhone confirma el cobro. El aviso sale
-    // desde `pago-con-tarjeta.ts` en ese momento, cuando el dinero ya está.
-    if (paymentMethod !== 'tarjeta') {
-      void avisarAlDuenoDelPedido(businessId, (result.data as { id?: string } | null)?.id).catch(() => {
-        /* el pedido ya está: un aviso de cortesía no puede tumbarlo */
-      })
     }
 
     // ── El aviso que cierra el ciclo mini app → WhatsApp ─────────────────────
@@ -213,11 +197,48 @@ export function registrarPedidos(router: Router): void {
     // corto. Lo vigila la prueba de que los dos números coinciden.
     const creado = (result.data || {}) as Record<string, unknown>
     const oficial = await db.getOrderMoney(businessId, String(creado.id || ''))
+
+    // ── El aviso al DUEÑO, si lo tiene encendido ────────────────────────────
+    //
+    // ⚠️ Nace APAGADO (`notify_owner_whatsapp`) y por eso esto casi siempre no
+    // gasta nada: son dos mensajes por pedido y Meta los cobra. El dueño se
+    // entera igual por la alarma del panel, que es gratis; esto es para quien
+    // no lo tiene abierto.
+    //
+    // ⚠️ Sin `await`, como el resto de esta zona: el pedido YA está creado y el
+    // cliente tiene que ver su confirmación ahora. Un proveedor externo lento no
+    // puede retrasar la pantalla de «pedido recibido».
+    //
+    // ⚠️ Con TARJETA no: ese pedido todavía no existe para el local — no suena
+    // su alarma ni avanza hasta que PayPhone confirma el cobro. El aviso sale
+    // desde `pago-con-tarjeta.ts` en ese momento, cuando el dinero ya está.
+    //
+    // ⚠️ Se mira el método que QUEDÓ (2026-10-10), no el que se pidió: si el
+    // saldo Umbani cubrió el pedido entero, la base lo dejó en `saldo` y ya
+    // está pagado — PayPhone no va a confirmar nada, y sin esto el dueño no se
+    // enteraría nunca por WhatsApp.
+    if ((oficial?.payment_method ?? paymentMethod) !== 'tarjeta') {
+      void avisarAlDuenoDelPedido(businessId, String(creado.id || '') || null).catch(() => {
+        /* el pedido ya está: un aviso de cortesía no puede tumbarlo */
+      })
+    }
+
     // ⚠️ Con tarjeta NO se pide comprobante: no hay transferencia que fotografiar.
     if (oficial?.status === 'esperando_pago' && oficial.payment_method !== 'tarjeta') {
       void pedirComprobantePorChat(businessId, String(creado.id || ''))
     }
-    return res.status(201).json(oficial ? { ...creado, ...oficial } : creado)
+
+    // El saldo Umbani (2026-10-10), con un solo nombre hacia el cliente, como
+    // en el seguimiento: lo que pagó con saldo y lo que FALTA por pagar con el
+    // método que eligió. El total no cambia.
+    const respuesta: Record<string, unknown> = oficial ? { ...creado, ...oficial } : { ...creado }
+    const dinero = oficial ?? { total: creado.total, credit_cents: creado.credit_cents }
+    delete respuesta.credit_cents
+    return res.status(201).json({
+      ...respuesta,
+      saldoUsadoCents: saldoUsadoCents(dinero),
+      aPagarCents: porCobrarCents(dinero),
+    })
   })
 
   // ── Seguimiento del pedido ────────────────────────────────────────────────

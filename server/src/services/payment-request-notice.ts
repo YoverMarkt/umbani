@@ -36,6 +36,7 @@
  * pedirlo—, que es exactamente el duplicado que todo esto evita.
  */
 import { avisaAlClientePorWhatsApp } from '../config/avisos-al-cliente'
+import { porCobrar } from '../lib/por-cobrar'
 
 const db = require('../db') as typeof import('../db')
 // Por PROPIEDAD y no desestructurando, igual que `order-status-notice`:
@@ -135,7 +136,8 @@ export const crearAvisoDeComprobante = (dependencias: PideComprobanteDependencia
       await dependencias.enviar(negocio, telefono, textoPideComprobante({
         negocio: String(negocio.name || 'el local'),
         orderNumber: pedido.order_number ?? null,
-        total: pedido.total ?? null,
+        // Lo que hay que TRANSFERIR: el total menos lo pagado con saldo Umbani.
+        total: porCobrar(pedido),
         moneda: pedido.currency ?? null,
       }))
 

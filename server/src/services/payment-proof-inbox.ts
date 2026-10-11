@@ -41,6 +41,7 @@
 // respuesta igual. Un fallo va al registro de errores y la conversación sigue.
 
 import type { ResultadoVision } from './receipt-vision'
+import { porCobrar } from '../lib/por-cobrar'
 
 /**
  * Lo justo que hace falta del pedido. Se declara aquí en vez de importar el
@@ -109,8 +110,10 @@ export interface ComprobanteDependencias {
      * madre o del negocio es lo normal. Se marca para que el dueño lo vea.
      */
     contact_name?: string | null
-    /** Lo que hay que cobrar: con esto se compara el monto del comprobante. */
+    /** El precio del pedido. Lo que se transfiere es esto menos `credit_cents`. */
     total?: number | null
+    /** Lo pagado con saldo Umbani (2026-10-10): no se transfiere. */
+    credit_cents?: number | null
     /** Cuándo se pidió: con esto se detecta una captura vieja reciclada. */
     created_at?: string | null
     businesses?: { name?: string | null } | null
@@ -373,7 +376,8 @@ export const crearBuzonDeComprobantes = (dependencias: ComprobanteDependencias) 
           businessId: localDelPedido,
           analisis,
           esperado: {
-            total: Number(pedido.total ?? 0),
+            // Lo que FALTABA por pagar: sin lo pagado con saldo Umbani.
+            total: porCobrar(pedido),
             createdAt: pedido.created_at ?? null,
             clienteNombre: pedido.contact_name ?? null,
           },
@@ -421,7 +425,8 @@ export const crearBuzonDeComprobantes = (dependencias: ComprobanteDependencias) 
           // pagar dos veces por mirar la misma imagen.
           analisis,
           esperado: {
-            total: Number(pedido.total ?? 0),
+            // Lo que FALTABA por pagar: sin lo pagado con saldo Umbani.
+            total: porCobrar(pedido),
             createdAt: pedido.created_at ?? null,
             clienteNombre: pedido.contact_name ?? null,
           },

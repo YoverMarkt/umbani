@@ -563,7 +563,9 @@ describe('el camino real: lo nuevo está conectado', () => {
 
   it('con tarjeta NO se pide comprobante por el chat ni se avisa al dueño antes del cobro', () => {
     expect(tienda).toMatch(/oficial\.payment_method !== 'tarjeta'/)
-    expect(tienda).toMatch(/if \(paymentMethod !== 'tarjeta'\) \{\s*void avisarAlDuenoDelPedido/)
+    // El método que QUEDÓ (2026-10-10): con el saldo cubriéndolo entero, la
+    // base lo deja en `saldo` y ya está pagado, así que sí se avisa.
+    expect(tienda).toMatch(/if \(\(oficial\?\.payment_method \?\? paymentMethod\) !== 'tarjeta'\) \{\s*void avisarAlDuenoDelPedido/)
   })
 
   it('⚠️ el salto a PayPhone lleva el ORIGEN, o PayPhone responde «NO AUTORIZADO»', () => {

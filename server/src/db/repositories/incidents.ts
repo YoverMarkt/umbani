@@ -58,6 +58,16 @@ const customerCreditBalance = async (customerId: string) => {
 }
 
 /**
+ * ¿Esta persona solo puede pagar POR ADELANTADO? Es el escalón 3 de la escalera
+ * (dos reclamos rechazados). La base lo exige igual al crear el pedido
+ * (2026-10-10); esto es para que la app no le ofrezca el efectivo.
+ */
+const customerPaysUpfrontOnly = async (customerId: string): Promise<boolean> => {
+  const datos = leer(sinError(await db.rpc('escalera_del_cliente', { p_customer_id: customerId })))
+  return (Number(datos.escalon) || 1) >= 3
+}
+
+/**
  * Lo que el cliente ve de cada pedido suyo: si dijo «todo bien», su reclamo
  * y hasta cuándo puede reclamar. De TODOS los pedidos de una lista a la vez:
  * tres consultas, no tres por pedido.
@@ -145,6 +155,6 @@ const cooperativeIncidents = async (courierIds: string[]) => {
 }
 
 export {
-  confirmOrderReceived, reportOrderProblem, claimStates, customerCreditBalance,
+  confirmOrderReceived, reportOrderProblem, claimStates, customerCreditBalance, customerPaysUpfrontOnly,
   listIncidents, registerIncident, resolveIncident, cooperativeIncidents,
 }

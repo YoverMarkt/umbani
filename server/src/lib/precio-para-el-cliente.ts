@@ -25,6 +25,8 @@
 // de cada línea, y los centavos sueltos van a las de mayor resto. Las líneas
 // siguen sumando el total; solo pueden diferir un centavo de la carta.
 
+import { porCobrarCents, saldoUsadoCents } from './por-cobrar'
+
 export const centavos = (monto: unknown): number => Math.round((Number(monto) || 0) * 100)
 
 /** El porcentaje POR PRODUCTO de una regla, o `null` si es una cantidad del pedido. */
@@ -115,6 +117,9 @@ export function cotizacionParaElCliente(
     total: number
     serviceFee: number
     customerSubtotal: number
+    /** Lo que se pagará con saldo Umbani y lo que falta (2026-10-10). */
+    saldoUsadoCents: number
+    aPagarCents: number
   },
   pct: number | null,
 ) {
@@ -140,6 +145,10 @@ export function cotizacionParaElCliente(
     shipping: cotizacion.shipping,
     serviceFee: cotizacion.serviceFee,
     total: cotizacion.total,
+    // El saldo Umbani (2026-10-10): el total no cambia; esto es lo que se
+    // pagará con saldo y lo que falta. Sin `usarSaldo`, 0 y el total.
+    saldoUsadoCents: cotizacion.saldoUsadoCents,
+    aPagarCents: cotizacion.aPagarCents,
   }
 }
 
@@ -169,10 +178,17 @@ export function pedidoParaElCliente(
   )
   const limpio: Record<string, unknown> = { ...pedido }
   for (const clave of INTERNOS) delete limpio[clave]
+  // Un solo nombre para el saldo hacia el cliente: `saldoUsadoCents`.
+  delete limpio.credit_cents
   return {
     ...limpio,
     subtotal: clienteCents / 100,
     service_fee: tarifaCents / 100,
+    // El saldo Umbani (2026-10-10): el total NO cambia; esto es lo que pagó
+    // con saldo y lo que falta (o faltaba) por pagar. Lo calcula el servidor:
+    // la app solo lo pinta.
+    saldoUsadoCents: saldoUsadoCents(pedido),
+    aPagarCents: porCobrarCents(pedido),
     order_items: items.map((item, i) => ({ ...item, line_total: lineas[i] / 100 })),
   }
 }

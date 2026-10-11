@@ -61,8 +61,15 @@ router.get('/api/v1/yo', appLimiter, authApp, async (req, res) => {
   // El saldo Umbani (2026-10-10). Si no se pudo leer, `null`: la app no
   // enseña un saldo que no conoce, y el resto de su cuenta sigue.
   const saldo = await db.customerCreditBalance(cliente.id).catch(() => null)
+  // Escalón 3 de la escalera (2026-10-10): la app no le ofrece el efectivo ni
+  // el pago al retirar. La base lo exige igual; si no se pudo leer, `false` y
+  // decide la base al pedir. Al cliente no se le explica la regla.
+  const soloPagoPorAdelantado = await db.customerPaysUpfrontOnly(cliente.id).catch(() => false)
   // `telefono` null = entró con correo y aún no dijo a qué número le llaman.
-  return res.json({ telefono: telefonoDe(req) || cliente.telefono, correo: cliente.correo, ciudadId: cliente.ciudadId, saldo })
+  return res.json({
+    telefono: telefonoDe(req) || cliente.telefono, correo: cliente.correo, ciudadId: cliente.ciudadId, saldo,
+    soloPagoPorAdelantado,
+  })
 })
 
 // ── Las ciudades (2026-10-05) ─────────────────────────────────────────────
