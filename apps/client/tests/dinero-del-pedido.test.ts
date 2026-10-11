@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { desgloseDelPedido, elPedidoSeCobra } from '../src/features/orders/dinero-del-pedido'
+import { desgloseDelPedido, elPedidoSeCobra, saldoDelPedido } from '../src/features/orders/dinero-del-pedido'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // LA TARJETA DEL PEDIDO TIENE QUE CUADRAR A LA VISTA
@@ -156,5 +156,27 @@ describe('un pedido vivo o entregado sí cuenta', () => {
 
   it('no se deja engañar por espacios', () => {
     expect(elPedidoSeCobra('  expirado  ')).toBe(false)
+  })
+})
+
+// ── EL SALDO UMBANI (2026-10-10) ──────────────────────────────────────────
+// El total no cambia; lo que el local COBRA sí. Pedirle el total a quien ya
+// pagó una parte con saldo sería cobrarle dos veces.
+describe('el saldo Umbani: lo que falta por cobrar', () => {
+  it('es el total menos lo pagado con saldo, al centavo', () => {
+    expect(saldoDelPedido({ total: '8.00', credit_cents: 110 })).toEqual({ saldo: 1.1, porCobrar: 6.9 })
+    expect(saldoDelPedido({ total: 15.18, credit_cents: 500 })).toEqual({ saldo: 5, porCobrar: 10.18 })
+  })
+
+  it('sin saldo, o con un dato roto, se cobra el total y nunca algo negativo', () => {
+    expect(saldoDelPedido({ total: 15.18 })).toEqual({ saldo: 0, porCobrar: 15.18 })
+    expect(saldoDelPedido({ total: 15.18, credit_cents: null })).toEqual({ saldo: 0, porCobrar: 15.18 })
+    expect(saldoDelPedido({ total: 15.18, credit_cents: -40 })).toEqual({ saldo: 0, porCobrar: 15.18 })
+    expect(saldoDelPedido({ total: 5, credit_cents: 900 })).toEqual({ saldo: 9, porCobrar: 0 })
+  })
+
+  it('el desglose del local NO cambia: su comida se le paga entera', () => {
+    const conSaldo = desgloseDelPedido({ subtotal: 11.98, shipping: 2, total: 15.18, platform_markup: 1.2, merchant_subtotal: 11.98 })
+    expect(conSaldo.porLosProductos).toBe(11.98)
   })
 })

@@ -33,6 +33,9 @@ type Pantalla = 'cargando' | 'entrar' | 'no-es' | 'inicio' | 'semana'
 
 /** Los centavos de la API, dichos en dólares. Solo para enseñar: aquí no se suma nada. */
 const dolares = (centavos: number | null | undefined) => money((centavos ?? 0) / 100)
+// Lo que COBRA en la puerta (2026-10-10): sin lo que el cliente pagó con su
+// saldo Umbani. Lo calcula el servidor; con uno anterior al saldo, el total.
+const aCobrar = (pedido: PedidoDelRepartidor) => pedido.cobrarCents ?? pedido.totalCents
 
 export default function RepartidorApp() {
   const [pantalla, setPantalla] = useState<Pantalla>(() => (tokenDeLaApp() ? 'cargando' : 'entrar'))
@@ -268,7 +271,7 @@ function Lugar({ icono, texto, detalle }: { icono: ReactNode; texto: string | nu
 /** Si cobra en la puerta, cuánto; si no, que no cobre nada. */
 function Cobro({ pedido }: { pedido: PedidoDelRepartidor }) {
   return pedido.cobrarEnEfectivo
-    ? <Lugar icono={<RiMoneyDollarCircleLine size={18} />} texto={`Cobras ${dolares(pedido.totalCents)} en efectivo`} />
+    ? <Lugar icono={<RiMoneyDollarCircleLine size={18} />} texto={`Cobras ${dolares(aCobrar(pedido))} en efectivo`} />
     : <Lugar icono={<RiCheckLine size={18} />} texto="Ya está pagado: no cobres nada" />
 }
 
@@ -373,9 +376,9 @@ function PedidoMio({ pedido, onListo, alFallar }: {
       {confirmando
         ? (
           <div className="mt-3 space-y-2">
-            <p className="text-[15px] font-bold">¿Cobraste {dolares(pedido.totalCents)} en efectivo?</p>
+            <p className="text-[15px] font-bold">¿Cobraste {dolares(aCobrar(pedido))} en efectivo?</p>
             <Boton disabled={enviando} onClick={() => void avanzar()}>
-              {enviando ? 'Un momento…' : `Sí, cobré ${dolares(pedido.totalCents)}`}
+              {enviando ? 'Un momento…' : `Sí, cobré ${dolares(aCobrar(pedido))}`}
             </Boton>
             <Boton variante="linea" disabled={enviando} onClick={() => setConfirmando(false)}>Todavía no</Boton>
           </div>

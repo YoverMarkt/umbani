@@ -97,6 +97,24 @@ const numero = (valor: unknown): number => {
 const aCentavos = (valor: number): number => Math.round(valor * 100) / 100
 
 /**
+ * El saldo Umbani del pedido (2026-10-10): lo que el cliente pagó con su saldo
+ * y lo que FALTA por cobrarle.
+ *
+ * ⚠️ El TOTAL no cambia —es el precio del pedido—, pero lo que el local cobra
+ * en la puerta, lo que le transfieren o lo que pasó por la tarjeta sí: es
+ * `porCobrar`. Pedirle el total a quien ya pagó una parte con saldo sería
+ * cobrarle dos veces. Esa parte la pone Umbani y el lunes se le reconoce al
+ * local en su liquidación.
+ *
+ * La misma resta que `porCobrarCents` del servidor, en centavos enteros.
+ */
+export const saldoDelPedido = (pedido: { total?: unknown; credit_cents?: unknown }) => {
+  const saldoCents = Math.max(0, Math.round(numero(pedido.credit_cents)))
+  const porCobrarCents = Math.max(0, Math.round(numero(pedido.total) * 100) - saldoCents)
+  return { saldo: saldoCents / 100, porCobrar: porCobrarCents / 100 }
+}
+
+/**
  * Reparte el dinero de un pedido entre sus TRES dueños.
  *
  * Sobre el pedido #3 de staging ($11.98 de producto + $2.00 de envío):

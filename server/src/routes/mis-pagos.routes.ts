@@ -51,6 +51,9 @@ router.get('/api/client/mis-pagos', auth.authClient, auth.requireOwner, async (r
       tuyoCents: p.local_cents + (p.reparto_para === 'local' ? p.reparto_cents : 0),
       comisionCents: p.umbani_cents,
       cobro: p.en_mano === 'local' ? 'tu' : 'umbani',
+      // Lo que el cliente pagó con saldo Umbani (2026-10-10): lo puso Umbani,
+      // así que el local cobró menos y se le reconoce en el depósito.
+      saldoCents: p.credit_cents ?? 0,
     })),
     depositos: depositos.map(d => ({
       id: d.id,

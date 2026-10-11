@@ -40,3 +40,21 @@ describe('el contrato con las apps Flutter', () => {
     expect(openapi).not.toMatch(documentada('/api/v1/motorizado/pedidos/{x}/inventada'))
   })
 })
+
+// ── El cobro en la puerta (2026-10-10) ────────────────────────────────────
+// Desde que el cliente puede pagar una parte con su saldo Umbani, el total del
+// pedido y lo que el repartidor cobra ya no son lo mismo. La app tiene que
+// decir y confirmar `cobrarCents` (lo calcula el servidor), nunca el total.
+describe('el repartidor cobra lo que falta, no el total', () => {
+  const fuente = readFileSync(new URL('../src/repartidor/RepartidorApp.tsx', import.meta.url), 'utf8')
+
+  it('«Cobras $X», «¿Cobraste $X?» y «Sí, cobré $X» llevan `cobrarCents`', () => {
+    expect(fuente).toContain('pedido.cobrarCents ?? pedido.totalCents')
+    expect(fuente.match(/dolares\(aCobrar\(pedido\)\)/g)).toHaveLength(3)
+    expect(fuente).not.toMatch(/dolares\(pedido\.totalCents\)/)
+  })
+
+  it('el contrato lo documenta', () => {
+    expect(openapi).toMatch(/cobrarCents \(2026-10-10\) es lo que COBRA en la puerta/)
+  })
+})

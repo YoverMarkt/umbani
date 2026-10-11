@@ -47,6 +47,12 @@ export interface PedidoDelRepartidor {
   totalCents: number
   carreraCents: number
   cobrarEnEfectivo: boolean
+  /**
+   * Lo que COBRA en la puerta (2026-10-10): el total menos lo que el cliente
+   * pagó con su saldo Umbani. Cobrar `totalCents` sería cobrar de más. Opcional
+   * solo para un servidor anterior al saldo: entonces vale el total.
+   */
+  cobrarCents?: number
   recoger: Punto & { local: string | null }
   entregar: Punto & { cliente: string | null; referencia: string | null; notas: string | null }
 }

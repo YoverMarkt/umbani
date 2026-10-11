@@ -125,7 +125,7 @@ Algunos traen `reason`:
 
   | Campo | Se enseña como |
   |---|---|
-  | `saldoUsadoCents` | «Saldo Umbani −$X» — **solo si es mayor que 0** |
+  | `saldoUsadoCents` | «Saldo Umbani», restando (como lo pinte el diseño) — **solo si es mayor que 0** |
   | `aPagarCents` | «A pagar» con el método elegido (si es 0: «Pagado con tu saldo») |
 
   Lo que cobra la tarjeta, lo que se transfiere y lo que se paga en efectivo es

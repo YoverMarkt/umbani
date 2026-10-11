@@ -73,7 +73,7 @@ components:
         shipping: { type: number, description: Envío }
         serviceFee: { type: number, description: Tarifa de servicio (0 = no se cobra; no enseñar la línea) }
         total: { type: number }
-        saldoUsadoCents: { type: integer, description: 'Lo que se pagará con saldo Umbani (0 = no enseñar la línea «Saldo Umbani −$X»)' }
+        saldoUsadoCents: { type: integer, description: 'Lo que se pagará con saldo Umbani (0 = no enseñar la línea «Saldo Umbani»)' }
         aPagarCents: { type: integer, description: 'Lo que falta: lo que se paga con el método elegido. 0 = el saldo lo cubre todo' }
         lines:
           type: array

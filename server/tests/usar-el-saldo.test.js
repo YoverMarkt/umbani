@@ -220,3 +220,26 @@ describe('todo el que cobra resta lo mismo', () => {
     expect(normal).not.toMatch(/saldo|Cobra:/i)
   })
 })
+
+describe('el efectivo de la flota propia del local', () => {
+  /** Una consulta de supabase-js de mentira: cualquier filtro encadena y al final responde. */
+  const consulta = (resultado) => {
+    const q = new Proxy({}, {
+      get: (_, prop) => (prop === 'then' ? (ok, mal) => Promise.resolve(resultado).then(ok, mal) : () => q),
+    })
+    return q
+  }
+
+  it('cuenta lo que COBRA el repartidor, no el total: lo pagado con saldo no pasó por su mano', async () => {
+    const respuestas = [
+      // Lo que lleva ahora: $15,18 con $5,00 de saldo → cobra $10,18.
+      { data: [{ courier_id: 'r1', total: 15.18, credit_cents: 500 }], error: null },
+      // Lo entregado hoy: $8,00 con $1,10 de saldo → cobró $6,90.
+      { data: [{ order_id: 'o1', total: 8 }], error: null },
+      { data: [{ id: 'o1', courier_id: 'r1', credit_cents: 110 }], error: null },
+    ]
+    vi.spyOn(client, 'from').mockImplementation(() => consulta(respuestas.shift()))
+    const efectivo = await db.fleetCash('negocio-a', ['r1'], '2026-10-10T05:00:00Z')
+    expect(efectivo.get('r1')).toEqual({ enCursoCents: 1018, cobradoHoyCents: 690, entregasHoy: 1 })
+  })
+})
