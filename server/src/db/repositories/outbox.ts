@@ -93,7 +93,7 @@ const getOrderForNotice = async (businessId: string, orderId: string) => {
   const { data, error } = await db
     .from('orders')
     .select(
-      'id,order_number,status,fulfillment,contact_phone,contact_name,total,currency,'
+      'id,order_number,status,fulfillment,contact_phone,contact_name,total,credit_cents,currency,'
       + 'payment_method,payment_confirmed_at,'
       + 'order_items(*, order_item_options(option_group_name,option_name,quantity,group_sort))',
     )

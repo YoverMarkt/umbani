@@ -41,10 +41,11 @@ Umbani atiende ciudad por ciudad (hoy Chone) y **cada cliente ve solo los locale
 - **Enseña:** variantes y grupos de opciones con sus reglas (`required`, `min_selectable`, `max_selectable`, `selection_type`, `free_selections`). El precio que se cobra lo dice la cotización, no la pantalla.
 
 ## 5. El carrito y el checkout
-- **Llama:** `POST /api/store/{slug}/quote` cada vez que cambia el carrito o la entrega → enseña cada línea (`lineTotal`), `subtotal` («Productos»), `shipping` («Envío»), `serviceFee` («Tarifa de servicio», solo si > 0) y `total`. Siempre suma; ver API-UMBANI.md §3.
+- **Llama:** `POST /api/store/{slug}/quote` con `usarSaldo: true` cada vez que cambia el carrito o la entrega → enseña cada línea (`lineTotal`), `subtotal` («Productos»), `shipping` («Envío»), `serviceFee` («Tarifa de servicio», solo si > 0) y `total`. Siempre suma; ver API-UMBANI.md §3.
+- **El saldo Umbani (2026-10-10):** debajo del total, «Saldo Umbani −$X» (`saldoUsadoCents`, solo si > 0) y «A pagar $Y» (`aPagarCents`). Se descuenta solo; no hace falta un interruptor. Si `aPagarCents` es 0, «Pagado con tu saldo».
 - **Direcciones:** `GET /api/store/{slug}/me` (nombre y direcciones guardadas), `POST /api/store/{slug}/addresses`, `DELETE .../addresses/{id}`, `PUT .../addresses/{id}/location` (el pin).
-- **Métodos de pago:** los de `business.paymentMethods`. `pago_al_retirar` solo si retira en el local.
-- **Confirmar:** `POST /api/store/{slug}/orders` con una `idempotencyKey` por carrito (si reintentas, manda la misma: no se crean dos pedidos).
+- **Métodos de pago:** los de `business.paymentMethods`. `pago_al_retirar` solo si retira en el local. Si `GET /api/v1/yo` trae `soloPagoPorAdelantado: true`, solo los que tienen `is_prepaid` (sin explicar por qué).
+- **Confirmar:** `POST /api/store/{slug}/orders` con `usarSaldo: true`, el `paymentMethod` y una `idempotencyKey` por carrito (si reintentas, manda la misma: no se crean dos pedidos). La respuesta trae `saldoUsadoCents` y `aPagarCents`: con tarjeta se cobra `aPagarCents`; con `payment_method: "saldo"` ya está pagado.
 
 ## 6. Después de pedir
 - **Efectivo / al retirar:** «Recibimos tu pedido #N». El local lo confirma y el cliente sigue el pedido en «Mis pedidos» (§7): desde el 2026-10-09 no se le manda ningún aviso por WhatsApp, y las notificaciones push llegarán después.
@@ -54,7 +55,7 @@ Umbani atiende ciudad por ciudad (hoy Chone) y **cada cliente ve solo los locale
 ## 7. Mis pedidos
 - **Llama:** `GET /api/v1/pedidos` (los de TODOS los locales, con `local.nombre`) y, al tocar uno, `GET /api/v1/pedidos/{id}`. Con la sesión de la app; no hace falta abrir la tienda de cada local.
 - **Para volver a pedir en ese local:** `local.slug` → `POST /api/v1/locales/{slug}/sesion`.
-- **Enseña:** el local, número, estado dicho para el cliente, lo que pidió (cada línea con su `line_total`) y el desglose `subtotal` / `shipping` / `service_fee` (solo si > 0) / `total`. Los estados: `esperando_pago` «Falta tu pago», `pago_en_revision` «Revisando tu pago», `pendiente` «Recibido», `confirmado`/`aceptado`/`preparacion` «En preparación», `listo_para_retiro` «Listo para retirar», `en_camino` «En camino», `completado` «Entregado», `cancelado`/`rechazado` «Cancelado», `expirado` «Se venció el tiempo de pago».
+- **Enseña:** el local, número, estado dicho para el cliente, lo que pidió (cada línea con su `line_total`) y el desglose `subtotal` / `shipping` / `service_fee` (solo si > 0) / `total`, y si pagó con saldo, «Saldo Umbani −$X» (`saldoUsadoCents`) y lo que pagó con su método (`aPagarCents`). Los estados: `esperando_pago` «Falta tu pago», `pago_en_revision` «Revisando tu pago», `pendiente` «Recibido», `confirmado`/`aceptado`/`preparacion` «En preparación», `listo_para_retiro` «Listo para retirar», `en_camino` «En camino», `completado` «Entregado», `cancelado`/`rechazado` «Cancelado», `expirado` «Se venció el tiempo de pago».
 
 ## 7b. «¿Algún problema con tu pedido?» y el saldo Umbani (2026-10-06 / 2026-10-10)
 Como las grandes: **todo empieza cuando el cliente reporta**. Si no dice nada, todo llegó bien: no le pidas confirmar (la pantalla exacta la manda el diseño del dueño). Una vez por pedido y en las 48 horas siguientes a la entrega. El detalle de la API, en API-UMBANI.md §5b.

@@ -65,12 +65,16 @@ components:
       description: |
         Solo lo que PAGA el cliente. Siempre suma: subtotal + shipping + serviceFee = total,
         y las líneas suman el subtotal. (Desde 2026-10-01 no viaja nada del local ni del margen.)
+        El saldo Umbani (2026-10-10) NO cambia el total: `saldoUsadoCents` es lo que se pagará con
+        saldo (solo si se pidió con `usarSaldo: true`) y `aPagarCents` lo que falta (total − saldo).
       properties:
         error: { type: string, description: Si viene, el carrito no se puede pedir así }
         subtotal: { type: number, description: Los productos, a precio del cliente («Productos») }
         shipping: { type: number, description: Envío }
         serviceFee: { type: number, description: Tarifa de servicio (0 = no se cobra; no enseñar la línea) }
         total: { type: number }
+        saldoUsadoCents: { type: integer, description: 'Lo que se pagará con saldo Umbani (0 = no enseñar la línea «Saldo Umbani −$X»)' }
+        aPagarCents: { type: integer, description: 'Lo que falta: lo que se paga con el método elegido. 0 = el saldo lo cubre todo' }
         lines:
           type: array
           items:
@@ -93,7 +97,8 @@ components:
       type: object
       description: |
         Un pedido tal como lo ve su cliente: cada línea con lo que pagó ÉL. Siempre suma:
-        subtotal + shipping + service_fee = total. Los estados, en APP-CLIENTE.md §7.
+        subtotal + shipping + service_fee = total. Los estados, en APP-CLIENTE.md §7. El saldo
+        Umbani (2026-10-10) no cambia el total: `saldoUsadoCents` + `aPagarCents` = total en centavos.
       properties:
         id: { type: string }
         order_number: { type: integer }
@@ -102,8 +107,10 @@ components:
         subtotal: { type: number, description: Los productos, a precio del cliente }
         shipping: { type: number }
         service_fee: { type: number, description: Tarifa de servicio (0 = no enseñar la línea) }
+        saldoUsadoCents: { type: integer, description: 'Lo que pagó con saldo Umbani (0 = no enseñar la línea)' }
+        aPagarCents: { type: integer, description: 'Lo que falta (o faltaba) por pagar con su método: total − saldo' }
         fulfillment: { type: string, enum: [delivery, pickup] }
-        payment_method: { type: string }
+        payment_method: { type: string, description: "Uno de los de la cotización, o `saldo` si el saldo Umbani lo pagó entero (ya está pagado)" }
         payment_confirmed_at: { type: [string, 'null'] }
         created_at: { type: string }
         received_ok_at: { type: [string, 'null'], description: Cuándo el cliente dijo «Todo bien» }
@@ -241,10 +248,12 @@ paths:
       responses:
         '200':
           description: |
-            `{ telefono, correo, ciudadId, saldo }` — telefono null si entró con correo y aún no lo puso
-            (PUT /api/v1/yo/telefono); ciudadId null si nunca eligió. `saldo` (2026-10-10) es su SALDO
-            UMBANI: `{ cents, proximo: { cents, venceEl } | null }` — lo que le queda vigente y el lote
-            que vence antes. No se cambia por efectivo. `saldo: null` = no se pudo leer: no lo enseñes.
+            `{ telefono, correo, ciudadId, saldo, soloPagoPorAdelantado }` — telefono null si entró con
+            correo y aún no lo puso (PUT /api/v1/yo/telefono); ciudadId null si nunca eligió. `saldo`
+            (2026-10-10) es su SALDO UMBANI: `{ cents, proximo: { cents, venceEl } | null }` — lo que le
+            queda vigente y el lote que vence antes. No se cambia por efectivo. `saldo: null` = no se pudo
+            leer: no lo enseñes. `soloPagoPorAdelantado: true` = no le ofrezcas efectivo ni pago al
+            retirar (solo los métodos con `is_prepaid`); no le expliques por qué.
         '401': { description: Sesión vencida }
   /api/v1/ciudades:
     get:
@@ -471,7 +480,7 @@ paths:
       summary: Los pedidos que puede tomar y los suyos en curso
       security: [{ sesionApp: [] }]
       responses:
-        '200': { description: '{ pedidos[{ id, numero, estado, mio, totalCents, carreraCents, cobrarEnEfectivo, recoger{local,direccion,lat,lng}, entregar{cliente,direccion,referencia,notas,lat,lng} }] }' }
+        '200': { description: '{ pedidos[{ id, numero, estado, mio, totalCents, carreraCents, cobrarEnEfectivo, cobrarCents, recoger{local,direccion,lat,lng}, entregar{cliente,direccion,referencia,notas,lat,lng} }] }. cobrarCents (2026-10-10) es lo que COBRA en la puerta: el total menos lo que el cliente pagó con saldo Umbani. Nunca cobres totalCents.' }
   /api/v1/motorizado/pedidos/{id}/tomar:
     post:
       summary: Toma un pedido (atómico; respeta el tope de efectivo)
@@ -578,6 +587,7 @@ paths:
               properties:
                 items: { type: array, items: { $ref: '#/components/schemas/ItemDelPedido' } }
                 fulfillment: { type: string, enum: [delivery, pickup] }
+                usarSaldo: { type: boolean, description: 'true = cotizar usando su saldo Umbani (necesita la sesión de tienda). La app lo manda SIEMPRE' }
       responses:
         '200':
           description: El desglose
@@ -603,8 +613,19 @@ paths:
                 paymentMethod: { type: string, enum: [transferencia, efectivo, pago_al_retirar, tarjeta] }
                 deliveryNotes: { type: string, maxLength: 300 }
                 idempotencyKey: { type: string, description: Una por carrito; reintentar con la misma no crea otro pedido }
+                usarSaldo:
+                  type: boolean
+                  description: |
+                    true = pagar con su saldo Umbani lo que alcance (2026-10-10). La app lo manda SIEMPRE, con
+                    un `paymentMethod` para el resto: si el saldo lo cubre entero, el pedido nace pagado con
+                    `payment_method: saldo`; si no, `aPagarCents` es lo que cobra ese método.
       responses:
-        '201': { description: '{ id, order_number, subtotal, shipping, total, status, payment_method }' }
+        '201':
+          description: |
+            `{ id, order_number, subtotal, shipping, total, status, payment_method, saldoUsadoCents, aPagarCents }`.
+            Con tarjeta, cobra `aPagarCents` (el resto lo pagó el saldo). Con `payment_method: saldo` no hay
+            nada que pagar.
+        '400': { description: "El texto para el cliente. Con saldo y sin `paymentMethod`: «Elige cómo pagar el resto». Si su cuenta solo paga por adelantado (`soloPagoPorAdelantado`) y eligió efectivo: «Para este pedido elige tarjeta o transferencia.»" }
         '403': { description: El cliente está bloqueado en este local }
         '409': { description: Local cerrado, o la tarjeta no está disponible }
     get:

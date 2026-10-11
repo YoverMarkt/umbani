@@ -21,6 +21,7 @@
 // intercambio posible.
 
 import type { BusinessRecord } from '../db/types'
+import { porCobrarCents, saldoUsadoCents } from '../lib/por-cobrar'
 import { tieneUbicacion } from '../lib/ubicacion'
 import { detalleEnTexto } from './order-detail'
 import type { OpcionDelPedido } from './order-detail'
@@ -30,6 +31,8 @@ export interface PedidoParaElDueno {
   contact_name?: string | null
   contact_phone?: string | null
   total?: number | string | null
+  /** Lo que el cliente pagó con saldo Umbani (2026-10-10). */
+  credit_cents?: number | string | null
   fulfillment?: string | null
   payment_method?: string | null
   delivery_address?: string | null
@@ -74,7 +77,22 @@ export function textoParaElDueno(
 
   lineas.push('')
   lineas.push(`*Total: ${money(pedido.total)}*`)
-  if (pedido.payment_method) lineas.push(`Pago: ${pedido.payment_method}`)
+  // ⚠️ El saldo Umbani (2026-10-10). El total no cambia, pero lo que COBRA el
+  // local sí: sin esta línea, quien lleva el pedido pediría el total entero a
+  // un cliente que ya pagó una parte. Lo pone Umbani y el lunes se le reconoce.
+  const saldo = saldoUsadoCents(pedido)
+  if (pedido.payment_method === 'saldo') {
+    lineas.push('Pago: saldo Umbani (ya está pagado)')
+  } else {
+    if (pedido.payment_method) lineas.push(`Pago: ${pedido.payment_method}`)
+    if (saldo > 0) {
+      lineas.push(`Pagó ${money(saldo / 100)} con saldo Umbani`)
+      const metodo = String(pedido.payment_method || 'efectivo')
+      if (metodo === 'efectivo' || metodo === 'pago_al_retirar') {
+        lineas.push(`*Cobra: ${money(porCobrarCents(pedido) / 100)}*`)
+      }
+    }
+  }
 
   const domicilio = String(pedido.fulfillment || 'delivery') === 'delivery'
   if (domicilio) {

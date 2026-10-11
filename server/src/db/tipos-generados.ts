@@ -2459,7 +2459,9 @@ export type Database = {
           courier_id: string | null
           courier_settlement_id: string | null
           created_at: string
+          credit_cents: number
           en_mano: string
+          en_mano_cents: number | null
           id: string
           kind: string
           local_cents: number
@@ -2481,7 +2483,9 @@ export type Database = {
           courier_id?: string | null
           courier_settlement_id?: string | null
           created_at?: string
+          credit_cents?: number
           en_mano: string
+          en_mano_cents?: number | null
           id?: string
           kind?: string
           local_cents: number
@@ -2503,7 +2507,9 @@ export type Database = {
           courier_id?: string | null
           courier_settlement_id?: string | null
           created_at?: string
+          credit_cents?: number
           en_mano?: string
+          en_mano_cents?: number | null
           id?: string
           kind?: string
           local_cents?: number
@@ -2567,6 +2573,7 @@ export type Database = {
           courier_assigned_at: string | null
           courier_id: string | null
           created_at: string | null
+          credit_cents: number
           currency: string
           customer_id: string | null
           customer_notified_at: string | null
@@ -2611,6 +2618,7 @@ export type Database = {
           courier_assigned_at?: string | null
           courier_id?: string | null
           created_at?: string | null
+          credit_cents?: number
           currency?: string
           customer_id?: string | null
           customer_notified_at?: string | null
@@ -2655,6 +2663,7 @@ export type Database = {
           courier_assigned_at?: string | null
           courier_id?: string | null
           created_at?: string | null
+          credit_cents?: number
           currency?: string
           customer_id?: string | null
           customer_notified_at?: string | null
@@ -4196,6 +4205,7 @@ export type Database = {
           p_notes?: string
           p_payment_method?: string
           p_scheduled_for?: string
+          p_use_credit?: boolean
         }
         Returns: Json
       }
@@ -4807,6 +4817,10 @@ export type Database = {
           p_plan: string
         }
         Returns: Json
+      }
+      usar_saldo_en_pedido: {
+        Args: { p_customer_id: string; p_order_id: string }
+        Returns: number
       }
     }
     Enums: {

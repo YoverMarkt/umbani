@@ -117,7 +117,8 @@ const pedidosEsperandoComprobante = async (
     // ⚠️ `contact_name` viaja desde el 2026-09-01: es con lo que se compara
     // el ORDENANTE del comprobante. No rechaza —pagar desde la cuenta de
     // la pareja es normal— pero el dueño tiene que verlo.
-    .select('id, business_id, customer_id, order_number, total, contact_phone, contact_name, created_at, businesses(name)')
+    // `credit_cents` (2026-10-10): con saldo Umbani se transfiere total − saldo.
+    .select('id, business_id, customer_id, order_number, total, credit_cents, contact_phone, contact_name, created_at, businesses(name)')
     .eq('status', 'esperando_pago')
     .is('payment_proof_url', null)
     .is('payment_confirmed_at', null)
@@ -138,6 +139,8 @@ const pedidosEsperandoComprobante = async (
     business_id: string
     order_number: number | null
     total: number | null
+    /** Lo pagado con saldo Umbani: se transfiere total − esto (2026-10-10). */
+    credit_cents: number | null
     contact_phone: string | null
     /** Con quién se pidió: se compara contra el ordenante del comprobante. */
     contact_name: string | null
@@ -320,7 +323,7 @@ const claimOrderNotification = async (
     // de cancelación cuentan otra cosa. Mismas columnas que `getOrderForNotice`
     // (la cola): los dos caminos tienen que redactar el MISMO mensaje.
     .select(
-      'id,order_number,status,fulfillment,contact_phone,contact_name,total,currency,'
+      'id,order_number,status,fulfillment,contact_phone,contact_name,total,credit_cents,currency,'
       + 'payment_method,payment_confirmed_at,'
       + 'order_items(*, order_item_options(option_group_name,option_name,quantity,group_sort))',
     )
@@ -345,7 +348,7 @@ const getOrderForOwnerNotice = async (businessId: string, orderId: string) => {
   const { data, error } = await db
     .from('orders')
     .select(
-      'id,order_number,fulfillment,payment_method,contact_name,contact_phone,total,'
+      'id,order_number,fulfillment,payment_method,contact_name,contact_phone,total,credit_cents,'
       + 'delivery_address,delivery_reference,delivery_latitude,delivery_longitude,'
       + 'delivery_courier_notes,'
       + 'order_items(*, order_item_options(option_group_name,option_name,quantity,group_sort))',
@@ -439,13 +442,16 @@ const confirmOrderPayment = async (businessId: string, orderId: string) => {
 const getOrderForReceiptCheck = async (businessId: string, orderId: string) => {
   const { data, error } = await db
     .from('orders')
-    .select('total,created_at,contact_name')
+    // `credit_cents` (2026-10-10): lo pagado con saldo Umbani. El comprobante
+    // se compara con lo que FALTABA por pagar, no con el total.
+    .select('total,credit_cents,created_at,contact_name')
     .eq('business_id', businessId)
     .eq('id', orderId)
     .maybeSingle()
   if (error) throw new Error(error.message)
   return (data || null) as {
     total?: unknown
+    credit_cents?: unknown
     created_at?: string | null
     contact_name?: string | null
   } | null

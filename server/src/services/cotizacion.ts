@@ -60,11 +60,16 @@ export interface CartQuote {
   /** La tarifa de servicio: la paga el cliente, es de Umbani. Va DENTRO de `platformMarkup`. */
   serviceFee: number
   total: number
+  /** Lo que pagaría con su saldo Umbani (2026-10-10). El total NO cambia. */
+  saldoUsadoCents: number
+  /** Lo que falta por pagar con el método que elija: total − saldo. */
+  aPagarCents: number
 }
 
 const vacia = (error: string): CartQuote => ({
   error, lines: [], subtotal: 0, shipping: 0, total: 0, serviceFee: 0,
   merchantSubtotal: 0, platformMarkup: 0, customerSubtotal: 0, markupPercentage: null,
+  saldoUsadoCents: 0, aPagarCents: 0,
 })
 
 export function quoteCart(input: {
@@ -81,6 +86,12 @@ export function quoteCart(input: {
   now?: Date
   /** La tarifa de servicio vigente. La base la suma igual en `orders_stamp_pricing`. */
   serviceFee?: number | null
+  /**
+   * El saldo Umbani del cliente, en centavos (2026-10-10). Solo cuando la app
+   * pide usarlo. La MISMA regla que `create_storefront_order`: paga hasta
+   * cubrir el total y nunca más; el total no cambia.
+   */
+  saldoCents?: number | null
 }): CartQuote {
   const porProducto = new Map(input.products.map(producto => [producto.id, producto]))
   const porVariante = new Map(input.variants.map(variante => [variante.id, variante]))
@@ -328,6 +339,9 @@ export function quoteCart(input: {
   // base (va DENTRO de su parte). Un carrito vacío no la paga.
   const tarifa = lines.length ? Math.max(0, Math.round((Number(input.serviceFee) || 0) * 100)) / 100 : 0
   const total = Math.round((customerSubtotal + shipping + tarifa) * 100) / 100
+  // El saldo, en centavos enteros como en la base: hasta el total, nunca más.
+  const totalCents = Math.round(total * 100)
+  const saldoUsadoCents = Math.min(Math.max(0, Math.floor(Number(input.saldoCents) || 0)), totalCents)
 
   return {
     lines,
@@ -341,5 +355,7 @@ export function quoteCart(input: {
     markupPercentage: input.pricing?.strategy === 'percentage'
       ? (Number(input.pricing.percentage) || 0)
       : null,
+    saldoUsadoCents,
+    aPagarCents: totalCents - saldoUsadoCents,
   }
 }

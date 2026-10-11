@@ -47,6 +47,8 @@ interface StorefrontRouteDatabase {
   /** Lo mínimo del pedido para cuadrar su comprobante: cuánto, cuándo y de quién. */
   getOrderForReceiptCheck(businessId: string, orderId: string): Promise<{
     total?: unknown
+    /** Lo pagado con saldo Umbani: el comprobante se compara con lo que faltaba. */
+    credit_cents?: unknown
     created_at?: string | null
     contact_name?: string | null
   } | null>
@@ -97,7 +99,11 @@ interface StorefrontRouteDatabase {
     total: number | string | null
     status: string | null
     payment_method: string | null
+    /** Lo pagado con saldo Umbani (2026-10-10). */
+    credit_cents: number | null
   } | null>
+  /** El saldo Umbani de una PERSONA (2026-10-10): lo que queda vigente. */
+  customerCreditBalance(customerId: string): Promise<{ cents: number }>
   /** El último intento de cobro con tarjeta de UN pedido de ESTE negocio. */
   getLatestCardPayment(businessId: string, orderId: string): Promise<{
     status: string

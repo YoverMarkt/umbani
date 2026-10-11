@@ -48,6 +48,16 @@ export function registrarCotizar(router: Router): void {
       await db.getBusinessPricingRule(businessId).catch(() => null),
     )
 
+    // ── El saldo Umbani (2026-10-10) ────────────────────────────────────────
+    //
+    // SOLO si la app lo pide (`usarSaldo: true`) y hay sesión: el saldo es de
+    // la PERSONA de la sesión, nunca de un id que mande el teléfono. La tienda
+    // web no lo pide (no pinta la línea). Si no se puede leer, se cotiza sin
+    // saldo: el número oficial lo pone igual la base al crear el pedido.
+    const saldoCents = body.usarSaldo === true && req.storefront?.customerId
+      ? await db.customerCreditBalance(req.storefront.customerId).then(s => s.cents).catch(() => 0)
+      : 0
+
     const cotizacion = quoteCart({
       items: items as never,
       products: productos as never,
@@ -58,6 +68,7 @@ export function registrarCotizar(router: Router): void {
       fulfillment: String(body.fulfillment || 'pickup'),
       pricing: reglaPrecio,
       serviceFee: await tarifaDeServicio(),
+      saldoCents,
     })
 
     if (cotizacion.error) return res.status(400).json({ error: cotizacion.error })

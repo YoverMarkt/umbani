@@ -58,8 +58,13 @@ repartidores propios encendidos.
 ## 2. Pedidos
 - **Llama:** `GET /api/v1/motorizado/pedidos` cada 15–20 s mientras esté
   disponible. Cada pedido trae `mio`, `numero`, `estado`, `totalCents`,
-  `carreraCents`, `cobrarEnEfectivo`, `recoger` (local, dirección, lat/lng) y
-  `entregar` (cliente, dirección, referencia, notas, lat/lng).
+  `carreraCents`, `cobrarEnEfectivo`, `cobrarCents`, `recoger` (local,
+  dirección, lat/lng) y `entregar` (cliente, dirección, referencia, notas,
+  lat/lng).
+- ⚠️ **Lo que cobra en la puerta es `cobrarCents`, nunca `totalCents`**
+  (2026-10-10): si el cliente pagó una parte con su saldo Umbani, el total es
+  mayor que lo que hay que cobrarle. «¿Cobraste $X en efectivo?» lleva
+  `cobrarCents`.
 - **Tomar:** `POST /api/v1/motorizado/pedidos/{id}/tomar`. `409` con `reason`:
   `ya_tomado` (otro llegó antes), `tope_de_efectivo`, `no_disponible`.
 - **Botón «Cómo llegar»:** abre Google Maps con `lat,lng` (no hace falta clave).
@@ -68,7 +73,8 @@ repartidores propios encendidos.
 - **Recogido** (sale en camino): `POST /api/v1/motorizado/pedidos/{id}/recogido`.
   Si el local no terminó de empacar: `409` con lo que falta.
 - **Entregado:** `POST /api/v1/motorizado/pedidos/{id}/entregado`. Si
-  `cobrarEnEfectivo` es verdadero, la app pide confirmar «Cobré $X» antes.
+  `cobrarEnEfectivo` es verdadero, la app pide confirmar «Cobré $X» antes, con
+  $X = `cobrarCents`.
   El cliente ve cada paso («en camino», «entregado») en su app en cuanto esta
   lo marca; la app del motorizado no le manda nada. Desde el 2026-10-09 no se
   le avisa por WhatsApp, y las notificaciones push llegarán después.

@@ -432,7 +432,7 @@ describe('crear pedido desde la mini app', () => {
     })
 
     expect(respuesta.status).toBe(201)
-    expect(respuesta.body).toEqual({ id: 'pedido-1' })
+    expect(respuesta.body).toEqual({ id: 'pedido-1', saldoUsadoCents: 0, aPagarCents: 0 })
   })
 
   // El nombre pertenece al negocio de la SESIÓN, igual que el pedido. Si

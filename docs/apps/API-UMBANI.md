@@ -116,8 +116,24 @@ Algunos traen `reason`:
 - Los precios que llegan son los del **cliente** (los de la carta). El precio
   del local y lo que gana Umbani **no viajan** a la app (decisión del dueño,
   2026-10-01): no los busques, no están.
-- El `total` que devuelve `POST /api/store/{slug}/orders` es **el que se
-  cobra**. Si difiere de la cotización, manda el del pedido.
+- El `total` que devuelve `POST /api/store/{slug}/orders` es el precio del
+  pedido. Si difiere de la cotización, manda el del pedido.
+- **El saldo Umbani (2026-10-10)** se descuenta solo, como Uber Cash, y se
+  combina con cualquier método, también el efectivo. Manda **siempre**
+  `usarSaldo: true` al cotizar y al crear el pedido. El total **no cambia**;
+  vienen dos campos más, en centavos:
+
+  | Campo | Se enseña como |
+  |---|---|
+  | `saldoUsadoCents` | «Saldo Umbani −$X» — **solo si es mayor que 0** |
+  | `aPagarCents` | «A pagar» con el método elegido (si es 0: «Pagado con tu saldo») |
+
+  Lo que cobra la tarjeta, lo que se transfiere y lo que se paga en efectivo es
+  `aPagarCents`, nunca el `total`. Si el saldo lo cubre entero, el pedido nace
+  ya pagado con `payment_method: "saldo"` (no abras PayPhone ni pidas
+  comprobante). Manda igual un `paymentMethod`: el precio puede cambiar entre
+  la cotización y el pedido, y si queda algo por pagar sin método la base
+  responde «Elige cómo pagar el resto». Si se cancela, el saldo vuelve solo.
 
 ## 4. Pagar con tarjeta
 
@@ -180,5 +196,9 @@ no le pidas confirmar. En un pedido entregado, durante 48 horas
    - `estado: 'abierta'`: lo revisa una persona.
    Enseña `mensaje` **tal cual**: a propósito, nunca le explica la regla.
 4. **Su saldo:** `GET /api/v1/yo` trae `saldo: { cents, proximo: { cents, venceEl } }`.
-   No se cambia por efectivo, sirve en cualquier local y vence. Usarlo al pedir
-   llega en la parte 2 de la fase 2.
+   No se cambia por efectivo, sirve en cualquier local y vence. Se usa al pedir
+   con `usarSaldo: true` (ver §3).
+5. **Solo por adelantado:** si `GET /api/v1/yo` trae `soloPagoPorAdelantado:
+   true`, no le ofrezcas efectivo ni pago al retirar (solo los métodos con
+   `is_prepaid`). No le expliques por qué; si igual lo intenta, la base responde
+   «Para este pedido elige tarjeta o transferencia.»
