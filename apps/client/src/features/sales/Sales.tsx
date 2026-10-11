@@ -22,7 +22,7 @@ export default function Sales() {
       <div className="mb-5">
         <h1 className="text-2xl font-bold text-foreground">Ventas</h1>
         <p className="text-sm text-muted-foreground">
-          El historial de lo ya cobrado. Cada venta nace sola al entregar un pedido
+          El historial de lo ya cobrado. Cada venta nace sola al entregar un pedido.
           El dueño no registra nada a mano.
         </p>
       </div>
