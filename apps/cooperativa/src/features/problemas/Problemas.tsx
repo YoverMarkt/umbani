@@ -9,7 +9,8 @@ import { Dato, Ficha, Fichas, SoloEnPantallaAncha } from '../../components/Ficha
 
 // Los problemas de sus motorizados: las carreras retenidas (se le cayó la
 // comida) y, desde el 2026-10-06, las incidencias de los pedidos que
-// llevaban, con quién respondió. Sin datos de clientes.
+// llevaban, con quién respondió. Desde el 2026-10-12, también cuánto se le
+// descontó a su repartidor por cada una. Sin datos de clientes.
 
 type Retenida = {
   pedido: number | null; local: string | null; fecha: string; repartidor: string
@@ -18,6 +19,8 @@ type Retenida = {
 type Incidencia = {
   pedido: number | null; local: string | null; fecha: string; repartidor: string
   tipo: string; estado: 'abierta' | 'resuelta' | 'descartada'; responsable: string | null
+  /** < 0: se le descontó a tu repartidor en su liquidación (lo decide la base). */
+  ajusteCents?: number
 }
 
 const getProblemas = () =>
@@ -51,7 +54,8 @@ export default function Problemas() {
         <h1 className="text-2xl font-bold text-foreground">Problemas</h1>
         <p className="text-sm text-muted-foreground">
           Lo que salió mal en los pedidos de tus repartidores, y quién respondió. Cuando a uno se le cae la comida,
-          Umbani le retiene la carrera de ese pedido: no se le paga el lunes, y el local cobra su comida igual.
+          Umbani le retiene la carrera de ese pedido: no se le paga el lunes, y el local cobra su comida igual. Si
+          Umbani confirma que en una incidencia respondía tu repartidor, se le descuenta en su liquidación del lunes.
         </p>
       </div>
       <h2 className="text-base font-semibold text-foreground">Carreras retenidas</h2>
@@ -120,6 +124,10 @@ export default function Problemas() {
                     detalle={`${fecha(i.fecha)} · ${i.repartidor}`}
                     derecha={<Badge variant={i.estado === 'abierta' ? 'default' : 'outline'}>{TIPOS[i.tipo] ?? i.tipo}</Badge>}>
                     <p className="text-sm text-foreground">{comoQuedo(i)}</p>
+                    {(i.ajusteCents ?? 0) !== 0 && (
+                      <Dato nombre={(i.ajusteCents ?? 0) < 0 ? 'Se le descuenta a tu repartidor' : 'A favor de tu repartidor'}
+                        valor={dolares(i.ajusteCents)} />
+                    )}
                   </Ficha>
                 ))}
               </div>

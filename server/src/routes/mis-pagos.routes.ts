@@ -23,11 +23,12 @@ const router = createRouter()
 
 router.get('/api/client/mis-pagos', auth.authClient, auth.requireOwner, async (req, res) => {
   const businessId = getClientBusinessId(req)
-  const [saldos, pedidos, depositos, negocio] = await Promise.all([
+  const [saldos, pedidos, depositos, negocio, ajustes] = await Promise.all([
     db.getSettlementBalances(businessId),
     db.listLedger(businessId, { soloSinLiquidar: true, limite: 200 }),
     db.listSettlements({ businessId, limite: 52 }),
     db.getBusinessById(businessId),
+    db.listUnsettledAdjustments({ businessId }),
   ])
   const s = saldos[0]
   return res.json({
@@ -40,6 +41,8 @@ router.get('/api/client/mis-pagos', auth.authClient, auth.requireOwner, async (r
       yaCobrasteCents: s?.en_mano_cents ?? 0,
       deAntesCents: s?.arrastre_cents ?? 0,
       comisionCents: s?.umbani_cents ?? 0,
+      // Por incidencias (2026-10-12): + se le reconoce, − se le descuenta.
+      ajustesCents: s?.ajustes_cents ?? 0,
       netoCents: s?.neto_cents ?? 0,
     },
     pedidos: pedidos.map(p => ({
@@ -55,6 +58,14 @@ router.get('/api/client/mis-pagos', auth.authClient, auth.requireOwner, async (r
       // así que el local cobró menos y se le reconoce en el depósito.
       saldoCents: p.credit_cents ?? 0,
     })),
+    // El porqué de cada ajuste de la semana: el pedido y qué pasó.
+    ajustes: ajustes.map(a => ({
+      numero: a.orders?.order_number ?? null,
+      fecha: a.created_at,
+      tipo: a.order_incidents?.kind ?? null,
+      concepto: a.concepto,
+      cents: a.cents,
+    })),
     depositos: depositos.map(d => ({
       id: d.id,
       desde: d.period_start,
@@ -64,6 +75,7 @@ router.get('/api/client/mis-pagos', auth.authClient, auth.requireOwner, async (r
       yaCobrasteCents: d.en_mano_cents,
       deAntesCents: d.arrastre_cents,
       cuotaCents: d.cuota_cents,
+      ajustesCents: d.ajustes_cents,
       netoCents: d.neto_cents,
       estado: d.status,
       pagadoEl: d.paid_at,

@@ -34,6 +34,8 @@ type Motorizado = {
 type Liquidacion = {
   id: string; period_start: string; period_end: string; orders_count: number
   derecho_cents: number; en_mano_cents: number; neto_cents: number; status: string
+  /** Por incidencias (2026-10-12): < 0 se le descontó. Ya está en el neto. */
+  ajustes_cents?: number
   reference: string | null; couriers?: { name: string } | null
 }
 
@@ -214,6 +216,7 @@ export default function Motorizados() {
                   <TableHead>Semana</TableHead>
                   <TableHead className="text-right">Carreras</TableHead>
                   <TableHead className="text-right">Efectivo cobrado</TableHead>
+                  <TableHead className="text-right">Incidencias</TableHead>
                   <TableHead className="text-right">Neto</TableHead>
                   <TableHead className="text-right">Acción</TableHead>
                 </TableRow>
@@ -225,6 +228,7 @@ export default function Motorizados() {
                     <TableCell className="whitespace-nowrap">{l.period_start} → {l.period_end}</TableCell>
                     <TableCell className="text-right tabular-nums">{dinero(l.derecho_cents)}</TableCell>
                     <TableCell className="text-right tabular-nums">{dinero(l.en_mano_cents)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{l.ajustes_cents ? dinero(l.ajustes_cents) : '—'}</TableCell>
                     <TableCell className="text-right font-semibold tabular-nums">
                       {l.neto_cents >= 0 ? `Le pagamos ${dinero(l.neto_cents)}` : `Nos debe ${dinero(-l.neto_cents)}`}
                     </TableCell>

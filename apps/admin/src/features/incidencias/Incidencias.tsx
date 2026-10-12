@@ -13,9 +13,10 @@ import { Skeleton } from '@botpanel/ui/components/skeleton'
 import { Textarea } from '@botpanel/ui/components/textarea'
 import { getClients } from '../clients/api'
 import {
-  MOTIVOS, QUIEN_RESPONDE, RESPONSABLES, TIPOS, getIncidencias, registrarIncidencia, resolverIncidencia,
+  MOTIVOS, QUIEN_RESPONDE, RECLAMOS, RESPONSABLES, TIPOS, getIncidencias, registrarIncidencia, resolverIncidencia,
   type Incidencia, type Responsable, type TipoDeIncidencia,
 } from './api'
+import { AjustesAplicados, EfectoDeResolver } from './EfectoDeResolver'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // INCIDENCIAS — «¿Llegó todo bien?» y lo que sale mal (2026-10-06, fase 1)
@@ -26,14 +27,22 @@ import {
 // no llegó) y aquí se registran los que el cliente no ve (comida caída,
 // cliente ausente, accidente, el repartidor que no apareció).
 // ⚠️ Fase 2 (2026-10-10): la compensación es SALDO UMBANI —lo pequeño, al
-// instante— y se usa al pedir. Cobrársela al responsable en la liquidación
-// del lunes es la parte 3.
+// instante— y se usa al pedir. Parte 3 (2026-10-12): al confirmar quién
+// responde, se le descuenta en su liquidación del lunes, y antes de confirmar
+// se ve exactamente cuánto (`EfectoDeResolver`). En lo que se perdió antes de
+// entregar, el monto no es saldo: es la comida que se le reconoce al local.
 
 const dinero = (centavos: number | null | undefined) => `$${((centavos ?? 0) / 100).toFixed(2)}`
 const fecha = (iso: string) => new Date(iso).toLocaleString('es-EC', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 const ESTADO = { abierta: 'Abierta', compensada: 'Saldo dado', resuelta: 'Resuelta', descartada: 'Descartada' } as const
 /** Las que le tocan al superadmin: decidir, o confirmar quién responde de un saldo ya dado. */
 const pendiente = (i: Incidencia) => i.estado === 'abierta' || i.estado === 'compensada'
+const esReclamo = (i: Incidencia | null) => Boolean(i && RECLAMOS.includes(i.tipo))
+/** «12,50» o «12.50» → 1250; lo que no es un monto, `null`. */
+const centavosDe = (texto: string) => {
+  const n = Number(texto.replace(',', '.'))
+  return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) : null
+}
 
 export default function Incidencias() {
   const qc = useQueryClient()
@@ -48,15 +57,18 @@ export default function Incidencias() {
   const [decision, setDecision] = useState({ estado: 'resuelta' as 'resuelta' | 'descartada', responsable: 'local' as Responsable, compensacion: '', nota: '' })
   const abrirResolver = (i: Incidencia) => {
     setResolviendo(i)
-    // Si el saldo ya se dio al instante, el monto es ese y no cambia.
-    const cents = i.estado === 'compensada' ? (i.compensacionCents ?? 0) : i.sugeridoCents
+    // Si el saldo ya se dio al instante, el monto es ese y no cambia. En lo
+    // perdido antes de entregar, se propone la comida del local.
+    const cents = i.estado === 'compensada'
+      ? (i.compensacionCents ?? 0)
+      : esReclamo(i) ? i.sugeridoCents : (i.comidaSugeridaCents ?? 0)
     setDecision({ estado: 'resuelta', responsable: QUIEN_RESPONDE[i.tipo], compensacion: (cents / 100).toFixed(2), nota: '' })
   }
   const resolver = useMutation({
     mutationFn: () => resolverIncidencia(resolviendo!.id, {
       estado: decision.estado,
       responsable: decision.estado === 'resuelta' ? decision.responsable : null,
-      compensacionCents: decision.estado === 'resuelta' ? Math.round((Number(decision.compensacion.replace(',', '.')) || 0) * 100) : null,
+      compensacionCents: decision.estado === 'resuelta' ? (centavosDe(decision.compensacion) ?? 0) : null,
       nota: decision.nota.trim(),
     }),
     onSuccess: (r: { saldoCents?: number }) => {
@@ -90,8 +102,8 @@ export default function Incidencias() {
           <h1 className="text-2xl font-bold text-foreground">Incidencias</h1>
           <p className="text-sm text-muted-foreground">
             Lo que el cliente reporta en «¿Llegó todo bien?» y lo que registras tú. Primero se le resuelve al
-            cliente —lo pequeño, al instante, como saldo Umbani— y después se decide quién responde. Cobrárselo al
-            responsable en la liquidación del lunes llega en la parte 3.
+            cliente —lo pequeño, al instante, como saldo Umbani— y después se decide quién responde: a ese se le
+            descuenta en su liquidación del lunes, y antes de confirmar ves cuánto.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -167,7 +179,7 @@ export default function Incidencias() {
                       : (
                         <span className="text-muted-foreground">
                           {i.estado === 'resuelta'
-                            ? <>Responde {RESPONSABLES[i.responsable!].toLowerCase()} · compensación <strong className="text-foreground">{dinero(i.compensacionCents)}</strong></>
+                            ? <>Responde {RESPONSABLES[i.responsable!].toLowerCase()} · {esReclamo(i) ? 'compensación' : 'comida'} <strong className="text-foreground">{dinero(i.compensacionCents)}</strong></>
                             : 'Descartada'}
                           {i.resolucion ? ` · «${i.resolucion}»` : ''}
                         </span>
@@ -176,6 +188,7 @@ export default function Incidencias() {
                       <Button size="sm" onClick={() => abrirResolver(i)}>{i.estado === 'compensada' ? 'Confirmar' : 'Resolver'}</Button>
                     )}
                   </div>
+                  <AjustesAplicados incidencia={i} />
                 </Card>
               ))}
             </div>
@@ -210,7 +223,8 @@ export default function Incidencias() {
                     ...decision,
                     responsable: v as Responsable,
                     // Si responde el cliente de lo que dijo no recibir, no hay nada que devolverle.
-                    ...(v === 'cliente' && resolviendo?.estado === 'abierta' ? { compensacion: '0.00' } : {}),
+                    // (En lo perdido antes de entregar el monto es la comida del local: se queda.)
+                    ...(v === 'cliente' && resolviendo?.estado === 'abierta' && esReclamo(resolviendo) ? { compensacion: '0.00' } : {}),
                   })}>
                     <SelectTrigger id="inc-responsable" className="mt-1 w-full"><SelectValue /></SelectTrigger>
                     <SelectContent>
@@ -219,16 +233,23 @@ export default function Incidencias() {
                   </Select>
                 </div>
                 <div>
-                  <Label htmlFor="inc-compensacion">Compensación al cliente ($)</Label>
+                  <Label htmlFor="inc-compensacion">
+                    {esReclamo(resolviendo) ? 'Compensación al cliente ($)' : 'Comida que se le reconoce al local ($)'}
+                  </Label>
                   <Input id="inc-compensacion" inputMode="decimal" value={decision.compensacion}
                     disabled={resolviendo?.estado === 'compensada'}
                     onChange={e => setDecision({ ...decision, compensacion: e.target.value })} />
                   <p className="mt-1 text-xs text-muted-foreground">
                     {resolviendo?.estado === 'compensada'
                       ? 'El saldo ya se le dio al instante: aquí solo confirmas quién responde.'
-                      : <>Sugerido por la base: {dinero(resolviendo?.sugeridoCents)}. Se le da como saldo Umbani al resolver. Nunca más que el total del pedido.</>}
+                      : esReclamo(resolviendo)
+                        ? <>Sugerido por la base: {dinero(resolviendo?.sugeridoCents)}. Se le da como saldo Umbani al resolver. Nunca más que el total del pedido.</>
+                        : <>Lo que el local recibe por los productos: {dinero(resolviendo?.comidaSugeridaCents)}. Si respondía el local, la pierde él.</>}
                   </p>
                 </div>
+                {resolviendo && (
+                  <EfectoDeResolver incidencia={resolviendo} responsable={decision.responsable} compensacionCents={centavosDe(decision.compensacion)} />
+                )}
               </>
             )}
             <div>

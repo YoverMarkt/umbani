@@ -170,7 +170,7 @@ const cooperativeWeek = async (cooperativeId: string, weekStart: string) => {
   const ids = await idsDeLaCooperativa(cooperativeId)
   if (!ids.length) return []
   const { data, error } = await db.from('courier_settlements')
-    .select('courier_id, period_start, period_end, orders_count, derecho_cents, en_mano_cents, arrastre_cents, neto_cents, status, paid_at, couriers(name, phone)')
+    .select('courier_id, period_start, period_end, orders_count, derecho_cents, en_mano_cents, arrastre_cents, ajustes_cents, neto_cents, status, paid_at, couriers(name, phone)')
     .in('courier_id', ids).eq('period_start', weekStart)
   if (error) throw fallo(error)
   return data || []

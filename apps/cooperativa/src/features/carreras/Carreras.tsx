@@ -33,6 +33,9 @@ const ESTADO: Record<string, string> = {
   en_cero: 'En cero', compensada: 'Pasó a la semana siguiente',
 }
 
+/** Un ajuste por incidencias, con su signo: «−$10.00». */
+const ajuste = (centavos?: number) => (centavos ? `${centavos < 0 ? '−' : '+'}${dolares(centavos)}` : '—')
+
 /** Quién le debe a quién, dicho con palabras. */
 const saldo = (centavos: number) => (
   centavos > 0 ? `Umbani le paga ${dolares(centavos)}` : centavos < 0 ? `Entrega ${dolares(centavos)}` : 'En cero'
@@ -97,6 +100,7 @@ export default function Carreras() {
                       {f.retenidasCents > 0 && <Dato nombre="Retenidas" valor={dolares(f.retenidasCents)} />}
                       <Dato nombre="Efectivo cobrado" valor={dolares(f.efectivoCobradoCents)} />
                       <Dato nombre="Efectivo encima" valor={dolares(f.efectivoEncimaCents)} />
+                      {(f.ajustesCents ?? 0) !== 0 && <Dato nombre="Por incidencias" valor={ajuste(f.ajustesCents)} />}
                     </Ficha>
                   ))}
                 </Fichas>
@@ -110,6 +114,7 @@ export default function Carreras() {
                         <TableHead className="text-right">Retenidas</TableHead>
                         <TableHead className="text-right">Efectivo cobrado</TableHead>
                         <TableHead className="text-right">Efectivo encima</TableHead>
+                        <TableHead className="text-right">Por incidencias</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -121,6 +126,7 @@ export default function Carreras() {
                           <TableCell className="text-right tabular-nums">{f.retenidasCents ? dolares(f.retenidasCents) : '—'}</TableCell>
                           <TableCell className="text-right tabular-nums">{dolares(f.efectivoCobradoCents)}</TableCell>
                           <TableCell className="text-right tabular-nums">{dolares(f.efectivoEncimaCents)}</TableCell>
+                          <TableCell className="text-right tabular-nums">{ajuste(f.ajustesCents)}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -143,6 +149,7 @@ export default function Carreras() {
                           <Dato nombre="Pedidos" valor={f.pedidos} />
                           <Dato nombre="Carreras" valor={dolares(f.carrerasCents)} />
                           <Dato nombre="Efectivo cobrado" valor={dolares(f.efectivoCobradoCents)} />
+                          {(f.ajustesCents ?? 0) !== 0 && <Dato nombre="Por incidencias" valor={ajuste(f.ajustesCents)} />}
                           <Dato nombre="Saldo con Umbani" valor={saldo(f.saldoCents)} />
                         </Ficha>
                       ))}
@@ -155,6 +162,7 @@ export default function Carreras() {
                             <TableHead className="text-right">Pedidos</TableHead>
                             <TableHead className="text-right">Carreras</TableHead>
                             <TableHead className="text-right">Efectivo cobrado</TableHead>
+                            <TableHead className="text-right">Por incidencias</TableHead>
                             <TableHead className="text-right">Saldo con Umbani</TableHead>
                             <TableHead>Estado</TableHead>
                           </TableRow>
@@ -166,6 +174,7 @@ export default function Carreras() {
                               <TableCell className="text-right tabular-nums">{f.pedidos}</TableCell>
                               <TableCell className="text-right tabular-nums">{dolares(f.carrerasCents)}</TableCell>
                               <TableCell className="text-right tabular-nums">{dolares(f.efectivoCobradoCents)}</TableCell>
+                              <TableCell className="text-right tabular-nums">{ajuste(f.ajustesCents)}</TableCell>
                               <TableCell className="text-right">{saldo(f.saldoCents)}</TableCell>
                               <TableCell><Badge variant="outline">{ESTADO[f.estado] ?? f.estado}</Badge></TableCell>
                             </TableRow>

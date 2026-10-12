@@ -6,8 +6,9 @@ import { Card } from '@botpanel/ui/components/card'
 // ═══════════════════════════════════════════════════════════════════════════
 //
 // Pedida por el dueño: «dejar claro para la cooperativa» cómo se trabaja con
-// Umbani. ⚠️ Solo lo que YA hace la plataforma: lo que llegue con las
-// incidencias se dice como «pronto», nunca como si existiera.
+// Umbani. ⚠️ Solo lo que YA hace la plataforma: lo que aún no existe se dice
+// como «pronto», nunca como si existiera. El descuento al repartidor que
+// respondía en una incidencia existe desde el 2026-10-12.
 
 function Bloque({ titulo, children }: { titulo: string; children: ReactNode }) {
   return (
@@ -73,7 +74,9 @@ export default function ComoFunciona() {
         </p>
         <p>
           Si algo sale mal con un pedido (faltó algo, no llegó, el cliente no estaba…), Umbani lo revisa y decide
-          quién responde. Lo ves en «Problemas», con lo que se decidió.
+          quién responde. Si respondía tu repartidor, se le descuenta en su liquidación del lunes lo que se le
+          devolvió al cliente (menos la comisión de Umbani) o la comida que se perdió. Lo ves en «Problemas», con
+          lo que se decidió y cuánto se le descontó.
         </p>
       </Bloque>
 

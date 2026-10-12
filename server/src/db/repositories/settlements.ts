@@ -32,6 +32,8 @@ export interface SaldoEnCurso {
   neto_cents: number
   umbani_cents: number
   payphone_cents: number
+  // Por incidencias (2026-10-12): + se le reconoce, − se le descuenta.
+  ajustes_cents: number
 }
 
 /** Lo aún sin liquidar de cada local (o de uno). */
@@ -47,7 +49,7 @@ const getSettlementBalances = async (businessId?: string | null): Promise<SaldoE
 const listSettlements = async (input: { businessId?: string | null; limite?: number } = {}) => {
   let consulta = db
     .from('settlements')
-    .select('id, business_id, party, period_start, period_end, orders_count, derecho_cents, en_mano_cents, arrastre_cents, cuota_cents, neto_cents, status, paid_at, reference, created_at, businesses(name)')
+    .select('id, business_id, party, period_start, period_end, orders_count, derecho_cents, en_mano_cents, arrastre_cents, cuota_cents, ajustes_cents, neto_cents, status, paid_at, reference, created_at, businesses(name)')
     .order('period_start', { ascending: false })
     .order('created_at', { ascending: false })
     .limit(Math.min(Math.max(input.limite ?? 100, 1), 300))
@@ -108,6 +110,25 @@ const listLedger = async (businessId: string, input: { soloSinLiquidar?: boolean
   return data || []
 }
 
+/**
+ * Los ajustes por incidencias que aún no se liquidaron (2026-10-12): lo que se
+ * le reconoce (+) o se le cobra (−) a UN local o a UN repartidor, y por qué.
+ * ⚠️ El dueño es obligatorio: esto lo piden el panel del local y la app del
+ * repartidor, cada uno lo suyo.
+ */
+const listUnsettledAdjustments = async (de: { businessId: string } | { courierId: string }) => {
+  const consulta = db
+    .from('settlement_adjustments')
+    .select('cents, concepto, created_at, businesses(name), orders!settlement_adjustments_order_fk(order_number), order_incidents!settlement_adjustments_incident_fk(kind)')
+    .order('created_at', { ascending: false })
+    .limit(200)
+  const { data, error } = 'businessId' in de
+    ? await consulta.eq('business_id', de.businessId).eq('party', 'local').is('settlement_id', null)
+    : await consulta.eq('courier_id', de.courierId).eq('party', 'motorizado').is('courier_settlement_id', null)
+  if (error) throw new Error(error.message)
+  return data || []
+}
+
 /** La tarifa de servicio vigente, tal como la cobra la base. */
 const getServiceFee = async (): Promise<number> => {
   const { data, error } = await db.rpc('tarifa_de_servicio')
@@ -122,6 +143,7 @@ export {
   closeWeeklySettlements,
   getSettlementBalances,
   listSettlements,
+  listUnsettledAdjustments,
   markSettlementPaid,
   listCardPayments,
   getDemoBusinessIds,

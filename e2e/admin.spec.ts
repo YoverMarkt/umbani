@@ -805,8 +805,14 @@ test('Incidencias: el reclamo del cliente, con el responsable propuesto por la t
     pedido: { id: 'p1', numero: 41, totalCents: 1250, pago: 'efectivo', cliente: 'Ana', telefono: '593991234567' },
     local: { id: 'b1', nombre: 'Monster Pizza' }, repartidor: { nombre: 'Andrés', cooperativa: 'Cooperativa Chone' },
     alInstante: false, saldoDadoEn: null, reparto: { localCents: 400, umbaniCents: 40, carreraCents: 0 },
-    escalon: 2, motivos: ['reportes_seguidos'], fotoUrl: null,
+    escalon: 2, motivos: ['reportes_seguidos'], fotoUrl: null, ajustes: [], comidaSugeridaCents: null,
   }] } }))
+  // Parte 3 (2026-10-12): lo que pasará en las liquidaciones, ANTES de confirmar.
+  const previas: string[] = []
+  await page.route('**/api/admin/incidencias/inc-1/efecto?*', route => {
+    previas.push(new URL(route.request().url()).search)
+    return route.fulfill({ json: { ajustes: [{ parte: 'local', cents: -400, concepto: 'reclamo' }], bloquea: false } })
+  })
   await page.route('**/api/admin/incidencias/inc-1/resolver', async route => {
     decisiones.push(route.request().postDataJSON())
     return route.fulfill({ json: { ok: true } })
@@ -825,6 +831,8 @@ test('Incidencias: el reclamo del cliente, con el responsable propuesto por la t
   // Faltó un producto → responde el local, según la tabla aprobada.
   await expect(ventana.getByRole('combobox', { name: 'Quién responde' })).toContainText('El local')
   await expect(ventana.getByLabel('Compensación al cliente ($)')).toHaveValue('4.40')
+  await expect(ventana.getByText('Al local Monster Pizza se le descontarán $4.00 el lunes: lo devuelto al cliente, menos la comisión de Umbani.')).toBeVisible()
+  expect(previas.at(-1)).toBe('?responsable=local&compensacionCents=440')
   const resolver = ventana.getByRole('button', { name: 'Resolver' })
   await expect(resolver).toBeDisabled() // sin decir qué pasó
   await ventana.getByLabel('Qué pasó (queda anotado)').fill('El local olvidó la pizza')
@@ -844,8 +852,11 @@ test('Incidencias: el saldo ya dado al instante solo se confirma, con el monto b
     pedido: { id: 'p2', numero: 57, totalCents: 1300, pago: 'efectivo', cliente: 'Ana', telefono: '593991234567' },
     local: { id: 'b1', nombre: 'Monster Pizza' }, repartidor: null,
     alInstante: true, saldoDadoEn: '2026-10-10T12:00:01Z', reparto: { localCents: 130, umbaniCents: 20, carreraCents: 0 },
-    escalon: 1, motivos: [], fotoUrl: null,
+    escalon: 1, motivos: [], fotoUrl: null, ajustes: [], comidaSugeridaCents: null,
   }] } }))
+  await page.route('**/api/admin/incidencias/inc-2/efecto?*', route => route.fulfill({
+    json: { ajustes: [{ parte: 'local', cents: -130, concepto: 'reclamo' }], bloquea: false },
+  }))
   await page.route('**/api/admin/incidencias/inc-2/resolver', async route => {
     decisiones.push(route.request().postDataJSON())
     return route.fulfill({ json: { ok: true, saldoCents: 0 } })
@@ -862,5 +873,49 @@ test('Incidencias: el saldo ya dado al instante solo se confirma, con el monto b
   await ventana.getByRole('button', { name: 'Confirmar' }).click()
   await expect.poll(() => decisiones.length).toBe(1)
   expect(decisiones[0]).toEqual({ estado: 'resuelta', responsable: 'local', compensacionCents: 150, nota: 'El local olvidó la cola' })
+})
+
+test('Incidencias: el cliente no estaba — se le reconoce la comida al local, el cliente queda bloqueado, y lo aplicado se ve', async ({ page }) => {
+  await seedAdminSession(page)
+  await mockAdminApi(page)
+  const decisiones: unknown[] = []
+  const comun = {
+    origen: 'superadmin', lineas: [], nota: 'No abrió la puerta', sugeridoCents: null, resueltaPor: null,
+    creadaEn: '2026-10-12T12:00:00Z', pedido: { id: 'p3', numero: 63, totalCents: 1300, pago: 'efectivo', cliente: 'Ana', telefono: '593991234567' },
+    local: { id: 'b1', nombre: 'Monster Pizza' }, repartidor: null, alInstante: false, saldoDadoEn: null,
+    reparto: { localCents: null, umbaniCents: null, carreraCents: null }, escalon: null, motivos: [], fotoUrl: null,
+  }
+  await page.route('**/api/admin/incidencias?estado=*', route => route.fulfill({ json: { incidencias: [
+    { ...comun, id: 'inc-3', tipo: 'cliente_ausente', estado: 'abierta', responsable: null, compensacionCents: null,
+      resolucion: null, resueltaEn: null, ajustes: [], comidaSugeridaCents: 999 },
+    { ...comun, id: 'inc-4', tipo: 'falta_producto', estado: 'resuelta', responsable: 'local', compensacionCents: 440,
+      resolucion: 'El local olvidó la pizza', resueltaEn: '2026-10-12T13:00:00Z', comidaSugeridaCents: null,
+      pedido: { ...comun.pedido, id: 'p4', numero: 64 },
+      ajustes: [{ parte: 'local', cents: -400, concepto: 'reclamo' }] },
+  ] } }))
+  await page.route('**/api/admin/incidencias/inc-3/efecto?*', route => route.fulfill({
+    json: { ajustes: [{ parte: 'local', cents: 999, concepto: 'comida_reconocida' }], bloquea: true },
+  }))
+  await page.route('**/api/admin/incidencias/inc-3/resolver', async route => {
+    decisiones.push(route.request().postDataJSON())
+    return route.fulfill({ json: { ok: true, saldoCents: 0, ajustes: [{ parte: 'local', cents: 999, concepto: 'comida_reconocida' }] } })
+  })
+
+  await page.goto(`${adminUrl}#/incidencias`)
+  // Lo que ya se aplicó en una resuelta, con su signo.
+  await expect(page.getByText('Local · lo devuelto al cliente, menos la comisión de Umbani')).toBeVisible()
+  await expect(page.getByText('−$4.00')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Resolver' }).click()
+  const ventana = page.getByRole('dialog', { name: /Resolver #63/ })
+  // Lo perdido antes de entregar: el monto es la comida del local, no un saldo.
+  await expect(ventana.getByRole('combobox', { name: 'Quién responde' })).toContainText('El cliente')
+  await expect(ventana.getByLabel('Comida que se le reconoce al local ($)')).toHaveValue('9.99')
+  await expect(ventana.getByText('Al local Monster Pizza se le pagarán $9.99 el lunes: la comida que perdió.')).toBeVisible()
+  await expect(ventana.getByText('El cliente quedará bloqueado en Umbani: no podrá hacer más pedidos.')).toBeVisible()
+  await ventana.getByLabel('Qué pasó (queda anotado)').fill('No estaba')
+  await ventana.getByRole('button', { name: 'Resolver' }).click()
+  await expect.poll(() => decisiones.length).toBe(1)
+  expect(decisiones[0]).toEqual({ estado: 'resuelta', responsable: 'cliente', compensacionCents: 999, nota: 'No estaba' })
 })
 

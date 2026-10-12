@@ -34,7 +34,24 @@ export type Incidencia = {
   motivos: string[]
   /** La foto del cliente, con un enlace que caduca solo. */
   fotoUrl: string | null
+  /** Parte 3 (2026-10-12): lo que se le ajustó a cada uno al resolver. */
+  ajustes: Ajuste[]
+  /** En lo perdido antes de entregar: la comida que se propone reconocerle al local. */
+  comidaSugeridaCents: number | null
 }
+
+/**
+ * Lo que se le reconoce (+) o se le descuenta (−) a alguien en su liquidación
+ * del lunes por una incidencia (2026-10-12). Lo calcula la base.
+ */
+export type Ajuste = {
+  parte: 'local' | 'motorizado'
+  cents: number
+  concepto: 'reclamo' | 'no_cobro' | 'comida_reconocida' | 'comida_cobrada'
+}
+
+/** Faltó, vino mal o no llegó: el monto es saldo para el cliente. En lo demás, es la comida del local. */
+export const RECLAMOS: TipoDeIncidencia[] = ['falta_producto', 'vino_mal', 'no_llego']
 
 /** Por qué un reporte no salió al instante (2026-10-10). */
 export const MOTIVOS: Record<string, string> = {
@@ -66,7 +83,8 @@ export const TIPOS: Record<TipoDeIncidencia, string> = {
 
 export const RESPONSABLES: Record<Responsable, string> = {
   local: 'El local',
-  repartidor: 'El repartidor (y su cooperativa)',
+  // A él, no a su cooperativa (decisión del dueño, 2026-10-12).
+  repartidor: 'El repartidor',
   cliente: 'El cliente',
   umbani: 'Umbani',
 }
@@ -90,4 +108,10 @@ export const registrarIncidencia = (datos: { localId: string; numero: number; ti
   api<{ id: string }>('/api/admin/incidencias', { method: 'POST', body: JSON.stringify(datos) })
 
 export const resolverIncidencia = (id: string, datos: { estado: 'resuelta' | 'descartada'; responsable: Responsable | null; compensacionCents: number | null; nota: string }) =>
-  api<{ ok: true; saldoCents?: number }>(`/api/admin/incidencias/${id}/resolver`, { method: 'POST', body: JSON.stringify(datos) })
+  api<{ ok: true; saldoCents?: number; ajustes?: Ajuste[] }>(`/api/admin/incidencias/${id}/resolver`, { method: 'POST', body: JSON.stringify(datos) })
+
+/** Lo que pasaría al resolver, sin escribir nada (2026-10-12). */
+export const getEfecto = (id: string, responsable: Responsable, compensacionCents: number) =>
+  api<{ ajustes?: Ajuste[]; bloquea?: boolean }>(
+    `/api/admin/incidencias/${id}/efecto?responsable=${responsable}&compensacionCents=${compensacionCents}`,
+  ).then(r => ({ ajustes: r?.ajustes ?? [], bloquea: r?.bloquea === true }))
