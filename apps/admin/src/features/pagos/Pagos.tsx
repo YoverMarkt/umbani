@@ -210,6 +210,7 @@ export default function Pagos() {
                       <TableHead className="text-right">Le corresponde</TableHead>
                       <TableHead className="text-right">Ya cobró él</TableHead>
                       <TableHead className="text-right">De antes</TableHead>
+                      <TableHead className="text-right">Incidencias</TableHead>
                       <TableHead className="text-right">Saldo</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -224,6 +225,7 @@ export default function Pagos() {
                         <TableCell className="text-right tabular-nums">{dinero(s.derecho_cents)}</TableCell>
                         <TableCell className="text-right tabular-nums">{dinero(s.en_mano_cents)}</TableCell>
                         <TableCell className="text-right tabular-nums">{s.arrastre_cents ? dinero(s.arrastre_cents) : '—'}</TableCell>
+                        <TableCell className="text-right tabular-nums">{s.ajustes_cents ? dinero(s.ajustes_cents) : '—'}</TableCell>
                         <TableCell className="text-right font-semibold tabular-nums">
                           {s.neto_cents >= 0 ? `Le debemos ${dinero(s.neto_cents)}` : `Nos debe ${dinero(-s.neto_cents)}`}
                         </TableCell>
@@ -247,6 +249,7 @@ export default function Pagos() {
                       <TableHead>Semana</TableHead>
                       <TableHead className="text-right">Pedidos</TableHead>
                       <TableHead className="text-right">Cuota descontada</TableHead>
+                      <TableHead className="text-right">Incidencias</TableHead>
                       <TableHead className="text-right">Neto</TableHead>
                       <TableHead>Estado</TableHead>
                       <TableHead className="text-right">Acción</TableHead>
@@ -262,6 +265,7 @@ export default function Pagos() {
                         <TableCell className="whitespace-nowrap">{semana(l.period_start, l.period_end)}</TableCell>
                         <TableCell className="text-right tabular-nums">{l.orders_count}</TableCell>
                         <TableCell className="text-right tabular-nums">{l.cuota_cents ? dinero(l.cuota_cents) : '—'}</TableCell>
+                        <TableCell className="text-right tabular-nums">{l.ajustes_cents ? dinero(l.ajustes_cents) : '—'}</TableCell>
                         <TableCell className="text-right font-semibold tabular-nums">{dinero(l.neto_cents)}</TableCell>
                         <TableCell>
                           <Badge variant="outline" className={ESTADO_LIQUIDACION[l.status].tono}>{ESTADO_LIQUIDACION[l.status].texto}</Badge>

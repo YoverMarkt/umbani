@@ -265,21 +265,21 @@ describe('sus carreras', () => {
 
   it('la semana en curso de cada uno sale de la base, y las cerradas, de su liquidación', async () => {
     vi.spyOn(db, 'listCooperativeCouriers').mockResolvedValue(suyos)
-    vi.spyOn(db, 'getCourierBalance').mockResolvedValue({ pedidos: 3, carrerasCents: 450, retenidasCents: 150, efectivoCobradoCents: 3790, efectivoEncimaCents: 3790 })
+    vi.spyOn(db, 'getCourierBalance').mockResolvedValue({ pedidos: 3, carrerasCents: 450, retenidasCents: 150, efectivoCobradoCents: 3790, efectivoEncimaCents: 3790, ajustesCents: -850 })
     const semanas = vi.spyOn(db, 'cooperativeWeeks').mockResolvedValue(['2026-09-28'])
     const r = await correr(panel, 'get', '/api/cooperativa/carreras', { headers: sesionDe() })
     expect(semanas).toHaveBeenCalledWith(COOP)
     expect(r.body).toEqual({
       semanas: ['2026-09-28'],
-      enCurso: [{ id: MOTO, nombre: 'Andrés', telefono: '593991234567', pedidos: 3, carrerasCents: 450, retenidasCents: 150, efectivoCobradoCents: 3790, efectivoEncimaCents: 3790 }],
+      enCurso: [{ id: MOTO, nombre: 'Andrés', telefono: '593991234567', pedidos: 3, carrerasCents: 450, retenidasCents: 150, efectivoCobradoCents: 3790, efectivoEncimaCents: 3790, ajustesCents: -850 }],
     })
     const semana = vi.spyOn(db, 'cooperativeWeek').mockResolvedValue([{
       courier_id: MOTO, period_start: '2026-09-28', period_end: '2026-10-04', orders_count: 2, derecho_cents: 300,
-      en_mano_cents: 842, arrastre_cents: 0, neto_cents: -542, status: 'por_cobrar', paid_at: null, couriers: { name: 'Andrés', phone: '593991234567' },
+      en_mano_cents: 842, arrastre_cents: 0, ajustes_cents: 0, neto_cents: -542, status: 'por_cobrar', paid_at: null, couriers: { name: 'Andrés', phone: '593991234567' },
     }])
     const cerrada = await correr(panel, 'get', '/api/cooperativa/carreras/semana/:semana', { headers: sesionDe(), params: { semana: '2026-09-28' } })
     expect(semana).toHaveBeenCalledWith(COOP, '2026-09-28')
-    expect(cerrada.body.filas[0]).toMatchObject({ nombre: 'Andrés', pedidos: 2, carrerasCents: 300, efectivoCobradoCents: 842, saldoCents: -542, estado: 'por_cobrar' })
+    expect(cerrada.body.filas[0]).toMatchObject({ nombre: 'Andrés', pedidos: 2, carrerasCents: 300, efectivoCobradoCents: 842, ajustesCents: 0, saldoCents: -542, estado: 'por_cobrar' })
     expect((await correr(panel, 'get', '/api/cooperativa/carreras/semana/:semana', { headers: sesionDe(), params: { semana: 'cualquiera' } })).status).toBe(400)
   })
 
@@ -290,14 +290,16 @@ describe('sus carreras', () => {
     expect(r.headers['content-type']).toBe('text/csv; charset=utf-8')
     expect(r.headers['content-disposition']).toContain('attachment')
     expect(r.body.startsWith('﻿"Repartidor";"WhatsApp";"Pedidos";"Carreras"')).toBe(true)
-    expect(r.body).toContain('"Andrés";"593991234567";"3";"4,50";"0,00";"37,90";"12,50"')
+    expect(r.body).toContain('"Andrés";"593991234567";"3";"4,50";"0,00";"37,90";"12,50";"0,00"')
 
+    // Lo que se le descontó por una incidencia, en su columna (2026-10-12).
     vi.spyOn(db, 'cooperativeWeek').mockResolvedValue([{
       courier_id: MOTO, period_start: '2026-09-28', period_end: '2026-10-04', orders_count: 2, derecho_cents: 300,
-      en_mano_cents: 842, arrastre_cents: 0, neto_cents: -542, status: 'por_cobrar', paid_at: null, couriers: { name: 'Andrés', phone: '593991234567' },
+      en_mano_cents: 842, arrastre_cents: 0, ajustes_cents: -1000, neto_cents: -1542, status: 'por_cobrar', paid_at: null, couriers: { name: 'Andrés', phone: '593991234567' },
     }])
     const cerrada = await correr(panel, 'get', '/api/cooperativa/carreras.csv', { headers: sesionDe(), query: { semana: '2026-09-28' } })
-    expect(cerrada.body).toContain('"2026-09-28 a 2026-10-04";"Andrés";"593991234567";"2";"3,00";"8,42";"-5,42";"Debe entregarlo"')
+    expect(cerrada.body).toContain('"Ajustes por incidencias";"Saldo (+ Umbani le paga, - debe)"')
+    expect(cerrada.body).toContain('"2026-09-28 a 2026-10-04";"Andrés";"593991234567";"2";"3,00";"8,42";"-10,00";"-15,42";"Debe entregarlo"')
     expect((await correr(panel, 'get', '/api/cooperativa/carreras.csv', { headers: sesionDe(), query: { semana: 'x' } })).status).toBe(400)
   })
 })
@@ -470,6 +472,7 @@ describe('la app del motorizado sabe que es de una cooperativa', () => {
   it('flota «cooperativa» y el nombre de la suya; los de Umbani, sin cooperativa', async () => {
     vi.spyOn(db, 'sesionesDeLaAppValidasDesde').mockResolvedValue(null)
     vi.spyOn(db, 'getCourierBalance').mockResolvedValue(null)
+    vi.spyOn(db, 'listUnsettledAdjustments').mockResolvedValue([])
     vi.spyOn(db, 'getCooperative').mockResolvedValue(cooperativa)
     const moto = vi.spyOn(db, 'getActiveCourierByPhone').mockResolvedValue({
       id: MOTO, name: 'Andrés', vehicle: 'Moto', fleet_business_id: null, cooperative_id: COOP, available: false, cash_limit_cents: 15000,

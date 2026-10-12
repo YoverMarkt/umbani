@@ -209,6 +209,7 @@ describe('la cooperativa ve las de sus motorizados, sin datos del cliente', () =
     expect(deSusMotorizados).toHaveBeenCalledWith(['m1'])
     expect(r.body.incidencias).toEqual([{
       pedido: 41, local: 'Monster Pizza', fecha: '2026-10-06T12:00:00Z', repartidor: 'Andrés', tipo: 'no_llego', estado: 'resuelta', responsable: 'repartidor',
+      ajusteCents: 0,
     }])
   })
 })
@@ -392,7 +393,7 @@ describe('fase 2: el superadmin', () => {
     const resolver = vi.spyOn(db, 'resolveIncident').mockResolvedValue({ result: 'ok', saldoCents: 440 })
     const body = { estado: 'resuelta', responsable: 'local', compensacionCents: 440, nota: 'El local la olvidó' }
     expect((await correr(adminInc, 'post', '/api/admin/incidencias/:id/resolver', { headers: admin(), params: { id: INC }, body })).body)
-      .toEqual({ ok: true, saldoCents: 440 })
+      .toEqual({ ok: true, saldoCents: 440, ajustes: [] })
     for (const [resultado, estado] of [['compensacion_ya_dada', 409], ['cliente_sin_compensacion', 400], ['sin_cuenta', 409]]) {
       resolver.mockResolvedValue({ result: resultado })
       const r = await correr(adminInc, 'post', '/api/admin/incidencias/:id/resolver', { headers: admin(), params: { id: INC }, body })
@@ -425,3 +426,136 @@ describe('fase 2: el repositorio', () => {
   })
 })
 
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PARTE 3: QUE PAGUE QUIEN TUVO LA CULPA (2026-10-12)
+// ═══════════════════════════════════════════════════════════════════════════
+// Cuánto paga cada uno lo decide la base (bloque «QUE PAGUE QUIEN TUVO LA
+// CULPA» de verify:schema). Aquí: que el superadmin vea el efecto ANTES de
+// confirmar, que cada pantalla reciba sus ajustes y que la cooperativa vea
+// solo lo de sus repartidores.
+
+describe('parte 3: el superadmin ve el efecto antes de confirmar', () => {
+  const EFECTO = '/api/admin/incidencias/:id/efecto'
+
+  it('valida antes de preguntarle a la base', async () => {
+    const efecto = vi.spyOn(db, 'incidentEffect')
+    expect((await correr(adminInc, 'get', EFECTO, { headers: admin(), params: { id: 'x' }, query: { responsable: 'local' } })).status).toBe(404)
+    expect((await correr(adminInc, 'get', EFECTO, { headers: admin(), params: { id: INC }, query: { responsable: 'el vecino' } })).status).toBe(400)
+    for (const compensacionCents of ['-1', '4.5', 'mucho', '10000001']) {
+      const r = await correr(adminInc, 'get', EFECTO, { headers: admin(), params: { id: INC }, query: { responsable: 'local', compensacionCents } })
+      expect(r.status, compensacionCents).toBe(400)
+    }
+    expect(efecto).not.toHaveBeenCalled()
+  })
+
+  it('a quién se le reconoce o descuenta cuánto, y si el cliente queda bloqueado', async () => {
+    const efecto = vi.spyOn(db, 'incidentEffect').mockResolvedValue({
+      ajustes: [
+        { party: 'local', courierId: null, cents: 1000, concepto: 'comida_reconocida' },
+        { party: 'motorizado', courierId: 'm1', cents: -1000, concepto: 'comida_cobrada' },
+      ],
+      bloquea: false,
+    })
+    const r = await correr(adminInc, 'get', EFECTO, { headers: admin(), params: { id: INC }, query: { responsable: 'repartidor', compensacionCents: '1000' } })
+    expect(efecto).toHaveBeenCalledWith(INC, 'repartidor', 1000)
+    expect(r.body).toEqual({
+      ajustes: [
+        { parte: 'local', cents: 1000, concepto: 'comida_reconocida' },
+        { parte: 'motorizado', cents: -1000, concepto: 'comida_cobrada' },
+      ],
+      bloquea: false,
+    })
+    // Sin monto, cero: lo que vale para el cliente ausente, que no recibe saldo.
+    efecto.mockResolvedValue({ ajustes: [], bloquea: true })
+    const ausente = await correr(adminInc, 'get', EFECTO, { headers: admin(), params: { id: INC }, query: { responsable: 'cliente' } })
+    expect(efecto).toHaveBeenLastCalledWith(INC, 'cliente', 0)
+    expect(ausente.body).toEqual({ ajustes: [], bloquea: true })
+  })
+
+  it('al resolver, la respuesta trae los ajustes que se aplicaron', async () => {
+    vi.spyOn(db, 'resolveIncident').mockResolvedValue({
+      result: 'ok', saldoCents: 1300, ajustes: [{ party: 'local', courierId: null, cents: -1200, concepto: 'reclamo' }],
+    })
+    const r = await correr(adminInc, 'post', '/api/admin/incidencias/:id/resolver', {
+      headers: admin(), params: { id: INC }, body: { estado: 'resuelta', responsable: 'local', compensacionCents: 1300, nota: 'No mandó el combo' },
+    })
+    expect(r.body).toEqual({ ok: true, saldoCents: 1300, ajustes: [{ parte: 'local', cents: -1200, concepto: 'reclamo' }] })
+  })
+
+  it('la lista trae lo ya ajustado y, en lo perdido antes de entregar, la comida que se propone', async () => {
+    const base = {
+      origin: 'superadmin', status: 'abierta', responsible: null, lines: [], note: null, suggested_cents: null,
+      compensation_cents: null, resolution_note: null, resolved_by: null, created_at: '2026-10-12T12:00:00Z', resolved_at: null,
+      order_id: PEDIDO, business_id: LOCAL, businesses: null, couriers: null,
+    }
+    vi.spyOn(db, 'listIncidents').mockResolvedValue([
+      { ...base, id: 'caida', kind: 'comida_caida', orders: { order_number: 41, total: 13, status: 'cancelado', merchant_subtotal: 9.99 } },
+      { ...base, id: 'igual', kind: 'no_aparecio', orders: { order_number: 42, total: 13, status: 'completado', merchant_subtotal: 9.99 } },
+      { ...base, id: 'reclamo', kind: 'vino_mal', orders: { order_number: 43, total: 13, status: 'completado', merchant_subtotal: 9.99 },
+        settlement_adjustments: [{ party: 'local', courier_id: null, cents: -900, concepto: 'reclamo' }] },
+    ])
+    const r = await correr(adminInc, 'get', '/api/admin/incidencias', { headers: admin() })
+    const [caida, igual, reclamo] = r.body.incidencias
+    expect(caida).toMatchObject({ comidaSugeridaCents: 999, ajustes: [] })
+    // Se entregó igual: no se perdió comida.
+    expect(igual.comidaSugeridaCents).toBeNull()
+    // En un reclamo el monto es el saldo del cliente, no comida del local.
+    expect(reclamo).toMatchObject({ comidaSugeridaCents: null, ajustes: [{ parte: 'local', cents: -900, concepto: 'reclamo' }] })
+  })
+})
+
+describe('parte 3: la cooperativa ve lo que se le descontó a SU repartidor', () => {
+  it('suma solo lo de sus repartidores, nunca lo del local', async () => {
+    vi.spyOn(db, 'getCooperativeUserById').mockImplementation(async (coop, userId) => ({ id: userId, cooperative_id: coop, active: true }))
+    vi.spyOn(db, 'getCooperative').mockResolvedValue({ id: 'c1', active: true })
+    vi.spyOn(db, 'cooperativeRetainedRuns').mockResolvedValue([])
+    vi.spyOn(db, 'listCooperativeCouriers').mockResolvedValue([{ id: 'm1', name: 'Andrés' }])
+    vi.spyOn(db, 'cooperativeIncidents').mockResolvedValue([{
+      id: INC, kind: 'no_llego', status: 'resuelta', responsible: 'repartidor', created_at: '2026-10-12T12:00:00Z',
+      courier_id: 'm1', orders: { order_number: 41 }, businesses: { name: 'Monster Pizza' },
+      settlement_adjustments: [
+        { party: 'motorizado', courier_id: 'm1', cents: 1300 },
+        { party: 'motorizado', courier_id: 'm1', cents: -1200 },
+        { party: 'local', courier_id: null, cents: 500 },
+        { party: 'motorizado', courier_id: 'de-otra-flota', cents: -700 },
+      ],
+    }])
+    const token = jwt.sign({ role: 'cooperativa', cooperativeId: 'c1', userId: 'u-inc', email: 'c@x.ec' }, SECRET)
+    const r = await correr(panelCoop, 'get', '/api/cooperativa/problemas', { headers: { authorization: `Bearer ${token}` } })
+    expect(r.body.incidencias[0].ajusteCents).toBe(100)
+  })
+})
+
+describe('parte 3: el repositorio', () => {
+  it('el efecto se le pregunta a la base, que es la misma función que lo aplica', async () => {
+    const rpc = vi.spyOn(client, 'rpc').mockResolvedValue({
+      data: { ajustes: [{ party: 'local', courierId: null, cents: -100, concepto: 'reclamo' }], bloquea: false }, error: null,
+    })
+    expect(await db.incidentEffect(INC, 'local', 110)).toEqual({
+      ajustes: [{ party: 'local', courierId: null, cents: -100, concepto: 'reclamo' }], bloquea: false,
+    })
+    expect(rpc).toHaveBeenLastCalledWith('efecto_de_la_incidencia', { p_incident_id: INC, p_responsible: 'local', p_compensation_cents: 110 })
+    rpc.mockResolvedValue({ data: { ajustes: null, bloquea: 'si' }, error: null })
+    expect(await db.incidentEffect(INC, 'cliente', 0)).toEqual({ ajustes: [], bloquea: false })
+    rpc.mockResolvedValue({ data: null, error: { message: 'caída' } })
+    await expect(db.incidentEffect(INC, 'local', 0)).rejects.toThrow('caída')
+  })
+
+  it('los ajustes sin liquidar: los del local por su negocio, los del repartidor por él', async () => {
+    const q = {}
+    for (const m of ['select', 'eq', 'is', 'order', 'limit']) q[m] = vi.fn(() => q)
+    q.then = (ok, mal) => Promise.resolve({ data: [{ cents: -100 }], error: null }).then(ok, mal)
+    const desde = vi.spyOn(client, 'from').mockReturnValue(q)
+    expect(await db.listUnsettledAdjustments({ businessId: LOCAL })).toEqual([{ cents: -100 }])
+    expect(desde).toHaveBeenLastCalledWith('settlement_adjustments')
+    expect(q.eq.mock.calls).toEqual([['business_id', LOCAL], ['party', 'local']])
+    expect(q.is).toHaveBeenLastCalledWith('settlement_id', null)
+    q.eq.mockClear()
+    await db.listUnsettledAdjustments({ courierId: 'm1' })
+    expect(q.eq.mock.calls).toEqual([['courier_id', 'm1'], ['party', 'motorizado']])
+    expect(q.is).toHaveBeenLastCalledWith('courier_settlement_id', null)
+    q.then = (ok, mal) => Promise.resolve({ data: null, error: { message: 'caída' } }).then(ok, mal)
+    await expect(db.listUnsettledAdjustments({ courierId: 'm1' })).rejects.toThrow('caída')
+  })
+})

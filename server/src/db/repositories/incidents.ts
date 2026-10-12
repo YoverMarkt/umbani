@@ -118,8 +118,9 @@ const listIncidents = async (estado: 'abierta' | 'todas', limite = 200) => {
     .select(`id, kind, origin, status, responsible, lines, note, suggested_cents, compensation_cents, resolution_note,
       resolved_by, created_at, resolved_at, order_id, business_id, auto_approved, compensated_at,
       local_cents, umbani_cents, reparto_cents, photo_public_id, escalon, review_reasons,
-      orders!order_incidents_order_fk(order_number, total, payment_method, contact_name, contact_phone),
-      businesses(name), couriers(name, cooperative_id, cooperatives(name))`)
+      orders!order_incidents_order_fk(order_number, total, payment_method, contact_name, contact_phone, status, merchant_subtotal),
+      businesses(name), couriers(name, cooperative_id, cooperatives(name)),
+      settlement_adjustments(party, courier_id, cents, concepto)`)
     .order('created_at', { ascending: false })
     .limit(Math.min(Math.max(limite, 1), 500))
   if (estado === 'abierta') consulta = consulta.in('status', ['abierta', 'compensada'])
@@ -140,13 +141,28 @@ const resolveIncident = async (input: {
   p_compensation_cents: input.compensationCents ?? -1, p_note: input.note, p_actor: input.actor,
 })))
 
+/**
+ * Lo que resolver una incidencia le haría a la liquidación del lunes de cada
+ * uno, SIN escribir nada (2026-10-12). Es la misma función que lo aplica al
+ * resolver: el superadmin ve antes de confirmar exactamente lo que va a pasar.
+ */
+const incidentEffect = async (id: string, responsible: string, compensationCents: number) => {
+  const datos = leer(sinError(await db.rpc('efecto_de_la_incidencia', {
+    p_incident_id: id, p_responsible: responsible, p_compensation_cents: compensationCents,
+  })))
+  return {
+    ajustes: (Array.isArray(datos.ajustes) ? datos.ajustes : []) as { party: string; courierId: string | null; cents: number; concepto: string }[],
+    bloquea: datos.bloquea === true,
+  }
+}
+
 // ── La cooperativa ─────────────────────────────────────────────────────────
 
 /** Las incidencias de SUS motorizados. ⚠️ Sin datos del cliente: ni su nota. */
 const cooperativeIncidents = async (courierIds: string[]) => {
   if (!courierIds.length) return []
   const { data, error } = await db.from('order_incidents')
-    .select('id, kind, status, responsible, created_at, resolved_at, courier_id, orders!order_incidents_order_fk(order_number), businesses(name)')
+    .select('id, kind, status, responsible, created_at, resolved_at, courier_id, orders!order_incidents_order_fk(order_number), businesses(name), settlement_adjustments(party, courier_id, cents)')
     .in('courier_id', courierIds)
     .order('created_at', { ascending: false })
     .limit(100)
@@ -156,5 +172,5 @@ const cooperativeIncidents = async (courierIds: string[]) => {
 
 export {
   confirmOrderReceived, reportOrderProblem, claimStates, customerCreditBalance, customerPaysUpfrontOnly,
-  listIncidents, registerIncident, resolveIncident, cooperativeIncidents,
+  listIncidents, registerIncident, resolveIncident, incidentEffect, cooperativeIncidents,
 }

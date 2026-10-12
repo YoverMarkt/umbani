@@ -56,6 +56,10 @@ router.get(`${base}/yo`, limiter, authApp, soloMotorizado, async (req, res) => {
   // La de una cooperativa (2026-10-06) cobra y liquida como la de Umbani; la
   // app solo necesita saber de cuál es para decírselo.
   const cooperativa = m.cooperative_id ? await db.getCooperative(m.cooperative_id).catch(() => null) : null
+  const [semana, ajustes] = await Promise.all([
+    db.getCourierBalance(m.id),
+    db.listUnsettledAdjustments({ courierId: m.id }),
+  ])
   return res.json({
     nombre: m.name,
     vehiculo: m.vehicle,
@@ -63,7 +67,17 @@ router.get(`${base}/yo`, limiter, authApp, soloMotorizado, async (req, res) => {
     cooperativa: cooperativa?.name ?? null,
     disponible: m.available,
     topeEfectivoCents: m.cash_limit_cents,
-    semana: await db.getCourierBalance(m.id),
+    semana,
+    // Lo que se le descontó (o reconoció) esta semana por una incidencia, y
+    // por qué (2026-10-12). Suma `semana.ajustesCents`.
+    ajustes: ajustes.map(a => ({
+      numero: a.orders?.order_number ?? null,
+      local: a.businesses?.name ?? null,
+      fecha: a.created_at,
+      tipo: a.order_incidents?.kind ?? null,
+      concepto: a.concepto,
+      cents: a.cents,
+    })),
   })
 })
 

@@ -79,8 +79,24 @@ describe('la app del motorizado', () => {
   it('su inicio: flota, tope y su semana', async () => {
     vi.spyOn(db, 'getActiveCourierByPhone').mockResolvedValue(moto)
     vi.spyOn(db, 'getCourierBalance').mockResolvedValue({ carrerasCents: 400 })
+    vi.spyOn(db, 'listUnsettledAdjustments').mockResolvedValue([])
     const r = await correr(appMoto, 'get', '/api/v1/motorizado/yo', { headers: conSesion() })
-    expect(r.body).toMatchObject({ nombre: 'Luis', flota: 'umbani', topeEfectivoCents: 15000, semana: { carrerasCents: 400 } })
+    expect(r.body).toMatchObject({ nombre: 'Luis', flota: 'umbani', topeEfectivoCents: 15000, semana: { carrerasCents: 400 }, ajustes: [] })
+  })
+
+  it('su inicio dice qué se le descontó esta semana y por qué, sin datos del cliente (2026-10-12)', async () => {
+    vi.spyOn(db, 'getActiveCourierByPhone').mockResolvedValue(moto)
+    vi.spyOn(db, 'getCourierBalance').mockResolvedValue({ carrerasCents: 400, ajustesCents: -1000 })
+    const ajustes = vi.spyOn(db, 'listUnsettledAdjustments').mockResolvedValue([{
+      cents: -1000, concepto: 'comida_cobrada', created_at: '2026-10-12T15:00:00Z',
+      businesses: { name: 'Monster Pizza' }, orders: { order_number: 41 }, order_incidents: { kind: 'comida_caida' },
+    }])
+    const r = await correr(appMoto, 'get', '/api/v1/motorizado/yo', { headers: conSesion() })
+    expect(ajustes).toHaveBeenCalledWith({ courierId: moto.id })
+    expect(r.body.semana.ajustesCents).toBe(-1000)
+    expect(r.body.ajustes).toEqual([{
+      numero: 41, local: 'Monster Pizza', fecha: '2026-10-12T15:00:00Z', tipo: 'comida_caida', concepto: 'comida_cobrada', cents: -1000,
+    }])
   })
 
   it('tomar: cada negativa con su texto; el tope se explica', async () => {

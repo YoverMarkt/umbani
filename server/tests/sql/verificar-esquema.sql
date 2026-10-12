@@ -9130,7 +9130,7 @@ $f$;
 do $culpa$
 declare
   v_local uuid; v_moto uuid; v_propio uuid; v_cliente uuid;
-  v_ped uuid; v_inc uuid; v_r jsonb; v_efecto jsonb;
+  v_ped uuid; v_inc uuid; v_r jsonb; v_efecto jsonb; v_encima integer;
 begin
   insert into businesses (slug, name, type, whatsapp_provider, whatsapp_number, ycloud_number, takes_orders, storefront_enabled, delivery_by)
   values ('verif-culpa', 'Culpa', 'pizzería', 'ycloud', '+593900779000', '+593900779000', true, true, 'umbani') returning id into v_local;
@@ -9205,9 +9205,15 @@ begin
   -- justo la comida: carrera 200 − efectivo 1300 + 1300 − 1200 = −1000.
   v_ped := pg_temp.verif_entregado(v_local, 'efectivo', v_moto, '593900779206');
   v_inc := pg_temp.verif_incidencia(v_local, v_ped, 'no_llego', 1000, 100, 200);
+  v_encima := public.courier_cash_in_hand(v_moto);
   perform public.resolve_incident(v_inc, 'resuelta', 'repartidor', 0, 'Dijo que cobró y no entregó', 'superadmin');
   if pg_temp.verif_ajustes(v_inc) <> 'motorizado:no_cobro:1300 motorizado:reclamo:-1200' then
     raise exception 'no llegó en efectivo: quedó «%»', pg_temp.verif_ajustes(v_inc);
+  end if;
+  -- Ese efectivo no lo tiene: no le cuenta para el tope.
+  if public.courier_cash_in_hand(v_moto) <> v_encima - 1300 then
+    raise exception 'el efectivo encima sigue contando lo que no cobró: % (antes %)',
+      public.courier_cash_in_hand(v_moto), v_encima;
   end if;
   -- Si respondía UMBANI, solo se deshace el cobro: él no tenía la culpa.
   v_ped := pg_temp.verif_entregado(v_local, 'efectivo', v_moto, '593900779207');

@@ -58,6 +58,11 @@ const TARJETA: Record<string, string> = {
   devolucion_manual: 'Cobro con tarjeta: devolver a mano',
 }
 const MODO: Record<string, string> = { pruebas: 'en pruebas', produccion: 'de verdad' }
+/** Por qué se ajustó una liquidación al resolver una incidencia (2026-10-12). */
+const AJUSTE: Record<string, string> = {
+  reclamo: 'lo devuelto al cliente, menos la comisión', no_cobro: 'efectivo que no cobró',
+  comida_reconocida: 'comida que perdió', comida_cobrada: 'comida que se perdió',
+}
 
 /** Qué pasó, en una frase. */
 function que(m: MovimientoDeDinero): string {
@@ -73,6 +78,7 @@ function que(m: MovimientoDeDinero): string {
   if (a === 'pago_confirmado') return 'Pago confirmado'
   if (a === 'pedido_pagado_cancelado') return 'Pedido YA PAGADO cancelado'
   if (a === 'venta_anulada') return 'Venta anulada por Umbani'
+  if (a === 'ajuste_por_incidencia') return 'Ajuste por incidencia'
   if (a === 'factura_creada') return 'Factura creada'
   if (a.startsWith('factura_')) return `Factura ${ESTADO[a.slice(8)] ?? a.slice(8)}`
   if (a === 'margen_creado') return 'Regla de margen creada'
@@ -114,6 +120,10 @@ function detalle(m: MovimientoDeDinero): string {
     return `Pedido #${texto(d.numero)} · ${dolares(d.total)} · ${texto(d.metodo)}${saldo}`
   }
   if (a === 'venta_anulada') return `Pedido #${texto(d.numero)} · ${dolares(d.total)} · «${texto(d.motivo)}»`
+  if (a === 'ajuste_por_incidencia') {
+    return `Pedido #${texto(d.numero)} · ${d.parte === 'motorizado' ? 'repartidor' : 'local'} ${dinero(d.cents)}`
+      + ` · ${AJUSTE[String(d.concepto)] ?? texto(d.concepto)}`
+  }
   if (a === 'factura_creada') return dolares(d.monto)
   if (a.startsWith('factura_')) return `${dolares(antes.monto)} → ${dolares(despues.monto)}`
   if (a.startsWith('margen_')) {

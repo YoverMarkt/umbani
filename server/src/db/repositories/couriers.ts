@@ -94,7 +94,7 @@ const markCourierSettlementPaid = async (id: string, referencia: string) =>
 const listCourierSettlements = async (courierId?: string | null, limite = 100) => {
   let consulta = db
     .from('courier_settlements')
-    .select('id, courier_id, period_start, period_end, orders_count, derecho_cents, en_mano_cents, arrastre_cents, neto_cents, status, paid_at, reference, couriers(name, phone)')
+    .select('id, courier_id, period_start, period_end, orders_count, derecho_cents, en_mano_cents, arrastre_cents, ajustes_cents, neto_cents, status, paid_at, reference, couriers(name, phone)')
     .order('period_start', { ascending: false })
     .limit(Math.min(Math.max(limite, 1), 300))
   if (courierId) consulta = consulta.eq('courier_id', courierId)

@@ -25503,3 +25503,37 @@ as $$
   from public.order_ledger l
   where l.courier_id = p_courier_id and l.courier_settlement_id is null
 $$;
+
+
+-- ── 7. El efectivo encima no cuenta lo que no cobró ─────────────────────────
+-- Copiada ENTERA de la vigente (migration-2026-10-10-usar-el-saldo.sql);
+-- cambia solo lo marcado (2026-10-12). Un «no llegó» en efectivo deshace un
+-- cobro que el libro anotó y no ocurrió (`no_cobro`): ese dinero no lo tiene,
+-- y no puede contarle para el tope de efectivo hasta el lunes.
+create or replace function public.courier_cash_in_hand(p_courier_id uuid)
+returns integer
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select (
+    coalesce((
+      select sum(en_mano_cents) from public.order_ledger
+      where courier_id = p_courier_id and en_mano = 'motorizado' and courier_settlement_id is null
+    ), 0)
+    + coalesce((
+      -- Lo que va a cobrar: sin lo pagado con saldo Umbani (2026-10-10).
+      select sum(round(o.total * 100) - coalesce(o.credit_cents, 0)) from public.orders o
+      where o.courier_id = p_courier_id
+        and coalesce(o.payment_method, 'efectivo') in ('efectivo', 'pago_al_retirar')
+        and o.status not in ('completado', 'cancelado', 'rechazado', 'expirado')
+    ), 0)
+    -- Lo que el libro dice que cobró y no cobró (2026-10-12).
+    - coalesce((
+      select sum(a.cents) from public.settlement_adjustments a
+      where a.courier_id = p_courier_id and a.party = 'motorizado'
+        and a.concepto = 'no_cobro' and a.courier_settlement_id is null
+    ), 0)
+  )::integer
+$$;

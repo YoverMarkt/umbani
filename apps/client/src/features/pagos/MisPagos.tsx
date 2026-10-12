@@ -6,6 +6,7 @@ import { QueryError } from '@botpanel/ui/components/query-error'
 import { Skeleton } from '@botpanel/ui/components/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@botpanel/ui/components/table'
 import { api } from '../../api/client'
+import AjustesPorIncidencias, { type AjusteDelLocal } from './AjustesPorIncidencias'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MIS PAGOS — EL ESTADO DE CUENTA DEL LOCAL
@@ -30,6 +31,8 @@ type Semana = {
   yaCobrasteCents: number
   deAntesCents: number
   comisionCents: number
+  /** Por incidencias (2026-10-12): + se te paga, − se te descuenta. Ya está en el neto. */
+  ajustesCents?: number
   netoCents: number
 }
 type Pedido = {
@@ -53,12 +56,13 @@ type Deposito = {
   yaCobrasteCents: number
   deAntesCents: number
   cuotaCents: number
+  ajustesCents?: number
   netoCents: number
   estado: 'por_pagar' | 'por_cobrar' | 'en_cero' | 'pagada' | 'cobrada' | 'compensada'
   pagadoEl: string | null
   referencia: string | null
 }
-type MisPagosData = { semana: Semana; pedidos: Pedido[]; depositos: Deposito[]; demo?: boolean }
+type MisPagosData = { semana: Semana; pedidos: Pedido[]; depositos: Deposito[]; ajustes?: AjusteDelLocal[]; demo?: boolean }
 
 const dinero = (centavos: number) =>
   '$' + (Math.abs(centavos) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -149,6 +153,12 @@ export default function MisPagos() {
               Incluye {dinero(s.deAntesCents)} {s.deAntesCents < 0 ? 'que debías' : 'a tu favor'} de semanas anteriores.
             </p>
           )}
+          {(s.ajustesCents ?? 0) !== 0 && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Incluye {dinero(s.ajustesCents ?? 0)} {(s.ajustesCents ?? 0) < 0 ? 'que se te descuentan' : 'a tu favor'} por
+              incidencias: abajo, el porqué de cada una.
+            </p>
+          )}
         </CardContent>
       </Card>
 
@@ -202,6 +212,8 @@ export default function MisPagos() {
         </CardContent>
       </Card>
 
+      <AjustesPorIncidencias ajustes={data.ajustes ?? []} />
+
       <Card>
         <CardHeader><CardTitle className="text-base">Depósitos</CardTitle></CardHeader>
         <CardContent className="p-0">
@@ -216,6 +228,7 @@ export default function MisPagos() {
                     <TableHead className="text-right">Te correspondía</TableHead>
                     <TableHead className="text-right">Ya cobrado</TableHead>
                     <TableHead className="text-right">Cuota descontada</TableHead>
+                    <TableHead className="text-right">Incidencias</TableHead>
                     <TableHead className="text-right">Neto</TableHead>
                     <TableHead>Estado</TableHead>
                   </TableRow>
@@ -228,6 +241,9 @@ export default function MisPagos() {
                       <TableCell className="text-right tabular-nums">{dinero(d.tuyoCents)}</TableCell>
                       <TableCell className="text-right tabular-nums">{dinero(d.yaCobrasteCents)}</TableCell>
                       <TableCell className="text-right tabular-nums">{d.cuotaCents ? dinero(d.cuotaCents) : '—'}</TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {d.ajustesCents ? `${d.ajustesCents < 0 ? '−' : '+'}${dinero(d.ajustesCents)}` : '—'}
+                      </TableCell>
                       <TableCell className="text-right font-semibold tabular-nums">{dinero(d.netoCents)}</TableCell>
                       <TableCell>
                         <Badge variant="outline" className={ESTADO[d.estado].tono}>

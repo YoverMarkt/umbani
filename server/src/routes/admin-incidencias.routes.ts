@@ -14,8 +14,13 @@ import { signedMediaUrl } from '../integrations/cloudinary'
 // Fase 2 (2026-10-10): lo que el cliente no recibió bien se le devuelve como
 // SALDO UMBANI. Lo pequeño llega al instante (estado `compensada`) y aquí solo
 // se confirma quién responde; el resto se decide aquí, y al resolverlo se le
-// da el saldo. ⚠️ Sin esa confirmación, al responsable no se le cobra nada
-// (la liquidación del lunes es la parte 3).
+// da el saldo.
+//
+// Parte 3 (2026-10-12): al confirmar quién responde, la BASE ajusta la
+// liquidación del lunes de cada uno (`settlement_adjustments`). Antes de
+// confirmar, el superadmin ve el efecto exacto (`/efecto`): es la misma
+// función la que lo enseña y la que lo aplica. ⚠️ Sin esa confirmación, al
+// responsable no se le cobra nada.
 
 interface ModuloAuth { authAdmin: RequestHandler }
 const auth: ModuloAuth = require('../middleware/auth') as typeof import('../middleware/auth')
@@ -41,6 +46,16 @@ const responder = (res: Parameters<RequestHandler>[1], resultado: unknown, ok: (
   return res.status(e.status).json({ error: e.error })
 }
 const quien = (req: Request) => `superadmin:${(req.user as { email?: string } | undefined)?.email || 'sin-correo'}`
+
+const RESPONSABLES = new Set(['local', 'repartidor', 'cliente', 'umbani'])
+// Lo que se perdió ANTES de entregar: ahí la compensación es la comida que se
+// le reconoce al local, no un saldo para el cliente.
+const RECLAMOS = new Set(['falta_producto', 'vino_mal', 'no_llego'])
+
+/** Un ajuste, como lo enseñan las pantallas: + a favor, − se le cobra. */
+const ajuste = (a: { party?: unknown; cents?: unknown; concepto?: unknown }) => ({
+  parte: String(a.party ?? ''), cents: Number(a.cents) || 0, concepto: String(a.concepto ?? ''),
+})
 
 router.get('/api/admin/incidencias', auth.authAdmin, async (req, res) => {
   const estado = req.query.estado === 'todas' ? 'todas' : 'abierta'
@@ -69,6 +84,14 @@ router.get('/api/admin/incidencias', auth.authAdmin, async (req, res) => {
       alInstante: i.auto_approved,
       saldoDadoEn: i.compensated_at,
       reparto: { localCents: i.local_cents, umbaniCents: i.umbani_cents, carreraCents: i.reparto_cents },
+      // Parte 3: lo que ya se le ajustó a cada uno al resolver, y —en lo que se
+      // perdió antes de entregar— la comida que se propone reconocerle al
+      // local: lo que recibe por los productos, si el pedido no llegó a
+      // entregarse (si se entregó igual, no se perdió nada).
+      ajustes: (i.settlement_adjustments || []).map(ajuste),
+      comidaSugeridaCents: RECLAMOS.has(i.kind) || i.orders?.status === 'completado'
+        ? null
+        : Math.round((Number(i.orders?.merchant_subtotal) || 0) * 100),
       escalon: i.escalon,
       motivos: i.review_reasons,
       fotoUrl: fotos.get(i.id) ?? null,
@@ -98,6 +121,24 @@ router.post('/api/admin/incidencias', auth.authAdmin, async (req, res) => {
   return responder(res, r.result, () => res.status(201).json({ id: r.id }))
 })
 
+/**
+ * Lo que pasaría al resolver, SIN escribir nada: a quién se le reconoce o se
+ * le descuenta cuánto en su liquidación del lunes, y si el cliente queda
+ * bloqueado. La pantalla lo enseña antes de confirmar.
+ */
+router.get('/api/admin/incidencias/:id/efecto', auth.authAdmin, async (req, res) => {
+  const id = String(req.params.id || '')
+  if (!UUID.test(id)) return res.status(404).json({ error: 'No encontramos esa incidencia' })
+  const responsable = String(req.query.responsable ?? '')
+  if (!RESPONSABLES.has(responsable)) return res.status(400).json({ error: RESPUESTA.datos_invalidos.error })
+  const compensacion = Number(req.query.compensacionCents ?? 0)
+  if (!Number.isInteger(compensacion) || compensacion < 0 || compensacion > 10_000_000) {
+    return res.status(400).json({ error: 'La compensación va en centavos enteros' })
+  }
+  const efecto = await db.incidentEffect(id, responsable, compensacion)
+  return res.json({ ajustes: efecto.ajustes.map(ajuste), bloquea: efecto.bloquea })
+})
+
 router.post('/api/admin/incidencias/:id/resolver', auth.authAdmin, async (req, res) => {
   const id = String(req.params.id || '')
   if (!UUID.test(id)) return res.status(404).json({ error: 'No encontramos esa incidencia' })
@@ -111,7 +152,11 @@ router.post('/api/admin/incidencias/:id/resolver', auth.authAdmin, async (req, r
     id, status: estado, responsible: typeof body.responsable === 'string' ? body.responsable : null,
     compensationCents: compensacion, note: String(body.nota ?? ''), actor: quien(req),
   })
-  return responder(res, r.result, () => res.json({ ok: true, saldoCents: Number(r.saldoCents) || 0 }))
+  return responder(res, r.result, () => res.json({
+    ok: true,
+    saldoCents: Number(r.saldoCents) || 0,
+    ajustes: Array.isArray(r.ajustes) ? (r.ajustes as Parameters<typeof ajuste>[0][]).map(ajuste) : [],
+  }))
 })
 
 export = router

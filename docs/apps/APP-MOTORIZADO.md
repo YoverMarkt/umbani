@@ -47,11 +47,18 @@ repartidores propios encendidos.
 - Solo ves pedidos que el local **ya aceptó**, a domicilio y de locales que
   reparten con Umbani (o de tu local, si eres de su flota y la tiene encendida).
 - Si se cae la comida, **se te retiene la carrera** de ese pedido.
+- Si un pedido tuvo un problema y Umbani confirma que respondías tú, **se te
+  descuenta en tu liquidación del lunes** (2026-10-12): lo que se le devolvió
+  al cliente menos la comisión de Umbani, o la comida que se perdió. Lo decide
+  la base; la app solo lo enseña.
 
 ## 1. Inicio
 - **Llama:** `GET /api/v1/motorizado/yo` → nombre, flota, `disponible`,
-  `topeEfectivoCents` y `semana` (`carrerasCents`, `efectivoCobradoCents`,
-  `efectivoEncimaCents`, `deAntesCents`).
+  `topeEfectivoCents`, `semana` (`carrerasCents`, `efectivoCobradoCents`,
+  `efectivoEncimaCents`, `deAntesCents`, `ajustesCents`) y `ajustes`: lo que se
+  le descontó (o reconoció) esta semana por una incidencia, cada uno con
+  `numero`, `local`, `fecha`, `tipo` (qué pasó), `concepto` y `cents` (< 0: se
+  le descuenta). Sin datos del cliente.
 - **Enseña:** un interruptor grande «Disponible» (`PUT /api/v1/motorizado/disponible`
   con `{ disponible: true|false }`) y una barra «Efectivo encima: $X de $150».
 
@@ -82,6 +89,7 @@ repartidores propios encendidos.
 ## 4. Mis liquidaciones
 - **Llama:** `GET /api/v1/motorizado/liquidaciones` → cada semana con
   `derecho_cents` (tus carreras), `en_mano_cents` (efectivo cobrado),
+  `ajustes_cents` (por incidencias: < 0 se te descontó),
   `neto_cents` (> 0: Umbani te paga; < 0: debes entregar ese efectivo) y `status`.
 
 Todo importe llega en **centavos** (`…Cents`): divide entre 100 solo para

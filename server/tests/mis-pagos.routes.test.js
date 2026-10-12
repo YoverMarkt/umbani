@@ -33,6 +33,9 @@ async function pedir(claims, query = {}) {
 }
 
 describe('Mis pagos', () => {
+  // ⚠️ Como el negocio: sin simularlo, en el CI la lectura se queda colgada.
+  beforeEach(() => { vi.spyOn(db, 'listUnsettledAdjustments').mockResolvedValue([]) })
+
   it('un empleado NO ve los depósitos del dueño', async () => {
     const r = await pedir({ role: 'client', businessId: 'b1', urole: 'employee', perms: ['reportes', 'ventas'] })
     expect(r.status).toBe(403)
@@ -95,5 +98,26 @@ describe('Mis pagos', () => {
     vi.spyOn(db, 'getBusinessById').mockResolvedValue({ id: 'b1', slug: 'b1', name: 'Burger Brava', is_demo: true })
     const r = await pedir({ role: 'client', businessId: 'b1', urole: 'owner' })
     expect(r.body.demo).toBe(true)
+  })
+
+  it('los ajustes por incidencias: en la semana, con su porqué, y en cada depósito (2026-10-12)', async () => {
+    vi.spyOn(db, 'getSettlementBalances').mockResolvedValue([{
+      business_id: 'b1', pedidos: 1, pedidos_tarjeta: 0, derecho_cents: 1000, en_mano_cents: 0,
+      arrastre_cents: 0, neto_cents: 100, umbani_cents: 100, payphone_cents: 0, ajustes_cents: -900,
+    }])
+    vi.spyOn(db, 'listLedger').mockResolvedValue([])
+    vi.spyOn(db, 'getBusinessById').mockResolvedValue({ id: 'b1', slug: 'b1', name: 'Local', is_demo: false })
+    vi.spyOn(db, 'listSettlements').mockResolvedValue([{ id: 's', period_start: '2026-10-05', period_end: '2026-10-11',
+      orders_count: 1, derecho_cents: 1000, en_mano_cents: 0, arrastre_cents: 0, cuota_cents: 0, ajustes_cents: -900,
+      neto_cents: 100, status: 'por_pagar', paid_at: null, reference: null }])
+    const ajustes = vi.spyOn(db, 'listUnsettledAdjustments').mockResolvedValue([
+      { cents: -900, concepto: 'reclamo', created_at: '2026-10-12T15:00:00Z', orders: { order_number: 41 }, order_incidents: { kind: 'vino_mal' } },
+    ])
+    const r = await pedir({ role: 'client', businessId: 'b1', urole: 'owner' }, { businessId: 'OTRO' })
+    // Los de SU negocio, del JWT.
+    expect(ajustes).toHaveBeenCalledWith({ businessId: 'b1' })
+    expect(r.body.semana).toMatchObject({ ajustesCents: -900, netoCents: 100 })
+    expect(r.body.ajustes).toEqual([{ numero: 41, fecha: '2026-10-12T15:00:00Z', tipo: 'vino_mal', concepto: 'reclamo', cents: -900 }])
+    expect(r.body.depositos[0]).toMatchObject({ ajustesCents: -900, netoCents: 100 })
   })
 })

@@ -15,6 +15,8 @@ export type SaldoEnCurso = {
   neto_cents: number
   umbani_cents: number
   payphone_cents: number
+  /** Por incidencias (2026-10-12): + se le reconoce, − se le descuenta. Ya está dentro del neto. */
+  ajustes_cents: number
   /** Local de demostración: su dinero es de prueba (2026-09-30). */
   demo?: boolean
 }
@@ -29,6 +31,8 @@ export type Liquidacion = {
   en_mano_cents: number
   arrastre_cents: number
   cuota_cents: number
+  /** Por incidencias (2026-10-12). Ya está dentro del neto. */
+  ajustes_cents: number
   neto_cents: number
   status: 'por_pagar' | 'por_cobrar' | 'en_cero' | 'pagada' | 'cobrada' | 'compensada'
   paid_at: string | null

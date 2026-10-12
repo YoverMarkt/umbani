@@ -160,6 +160,8 @@ async function semanaEnCurso(cooperativeId: string) {
       retenidasCents: Number(s.retenidasCents) || 0,
       efectivoCobradoCents: Number(s.efectivoCobradoCents) || 0,
       efectivoEncimaCents: Number(s.efectivoEncimaCents) || 0,
+      // Por incidencias en que respondía él (2026-10-12): − se le descuenta.
+      ajustesCents: Number(s.ajustesCents) || 0,
     }
   })
 }
@@ -177,6 +179,7 @@ async function semanaCerrada(cooperativeId: string, semana: string) {
     carrerasCents: f.derecho_cents,
     efectivoCobradoCents: f.en_mano_cents,
     arrastreCents: f.arrastre_cents,
+    ajustesCents: f.ajustes_cents,
     // > 0: Umbani le paga · < 0: él entrega ese efectivo.
     saldoCents: f.neto_cents,
     estado: f.status,
@@ -223,24 +226,25 @@ router.get('/api/cooperativa/carreras.csv', ...puerta, async (req, res) => {
   if (semana === 'en-curso') {
     const filas = await semanaEnCurso(cooperativeId)
     return descargar(res, 'carreras-semana-en-curso.csv', csv([
-      ['Repartidor', 'WhatsApp', 'Pedidos', 'Carreras', 'Carreras retenidas', 'Efectivo cobrado', 'Efectivo encima'],
+      ['Repartidor', 'WhatsApp', 'Pedidos', 'Carreras', 'Carreras retenidas', 'Efectivo cobrado', 'Efectivo encima', 'Ajustes por incidencias'],
       ...filas.map(f => [f.nombre, f.telefono, f.pedidos, dolares(f.carrerasCents), dolares(f.retenidasCents),
-        dolares(f.efectivoCobradoCents), dolares(f.efectivoEncimaCents)]),
+        dolares(f.efectivoCobradoCents), dolares(f.efectivoEncimaCents), dolares(f.ajustesCents)]),
     ]))
   }
   if (!SEMANA.test(semana)) return res.status(400).json({ error: 'Semana no válida' })
   const filas = await semanaCerrada(cooperativeId, semana)
   return descargar(res, `carreras-${semana}.csv`, csv([
-    ['Semana', 'Repartidor', 'WhatsApp', 'Pedidos', 'Carreras', 'Efectivo cobrado', 'Saldo (+ Umbani le paga, - debe)', 'Estado'],
+    ['Semana', 'Repartidor', 'WhatsApp', 'Pedidos', 'Carreras', 'Efectivo cobrado', 'Ajustes por incidencias', 'Saldo (+ Umbani le paga, - debe)', 'Estado'],
     ...filas.map(f => [`${f.desde} a ${f.hasta}`, f.nombre, f.telefono, f.pedidos, dolares(f.carrerasCents),
-      dolares(f.efectivoCobradoCents), dolares(f.saldoCents), ESTADO[f.estado] ?? f.estado]),
+      dolares(f.efectivoCobradoCents), dolares(f.ajustesCents), dolares(f.saldoCents), ESTADO[f.estado] ?? f.estado]),
   ]))
 })
 
 // ── Sus problemas ──────────────────────────────────────────────────────────
 // Las carreras retenidas (se le cayó la comida) y, desde el 2026-10-06, las
 // incidencias de los pedidos que llevaban sus motorizados: qué pasó y quién
-// respondió. ⚠️ Sin datos del cliente: ni su nombre, ni su nota.
+// respondió. Desde el 2026-10-12, también cuánto se le ajustó a su repartidor
+// por cada una. ⚠️ Sin datos del cliente: ni su nombre, ni su nota.
 
 router.get('/api/cooperativa/problemas', ...puerta, async (req, res) => {
   const cooperativeId = cooperativaDe(req).cooperativeId
@@ -259,6 +263,10 @@ router.get('/api/cooperativa/problemas', ...puerta, async (req, res) => {
       tipo: i.kind,
       estado: i.status,
       responsable: i.responsible,
+      // − se le descontó a su repartidor en su liquidación; 0 si nada.
+      ajusteCents: (i.settlement_adjustments || [])
+        .filter(a => a.party === 'motorizado' && nombreDe.has(String(a.courier_id)))
+        .reduce((suma, a) => suma + a.cents, 0),
     })),
     retenidas: retenidas.map(r => ({
       pedido: r.orders?.order_number ?? null,

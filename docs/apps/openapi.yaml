@@ -463,7 +463,7 @@ paths:
       summary: El motorizado de la sesión y su semana en curso
       security: [{ sesionApp: [] }]
       responses:
-        '200': { description: '{ nombre, vehiculo, flota (umbani | cooperativa | local), cooperativa (su nombre, o null), disponible, topeEfectivoCents, semana{ pedidos, carrerasCents, retenidasCents, efectivoCobradoCents, deAntesCents, efectivoEncimaCents } }. La de cooperativa cobra y liquida con Umbani como la de Umbani.' }
+        '200': { description: '{ nombre, vehiculo, flota (umbani | cooperativa | local), cooperativa (su nombre, o null), disponible, topeEfectivoCents, semana{ pedidos, carrerasCents, retenidasCents, efectivoCobradoCents, deAntesCents, efectivoEncimaCents, ajustesCents }, ajustes[{ numero, local, fecha, tipo, concepto, cents }] }. La de cooperativa cobra y liquida con Umbani como la de Umbani. ajustes (2026-10-12): lo que se le descontó (cents < 0) o reconoció esta semana por una incidencia en que respondía él; suman semana.ajustesCents.' }
         '403': { description: El teléfono no es de un motorizado activo }
   /api/v1/motorizado/disponible:
     put:
@@ -509,7 +509,7 @@ paths:
       summary: Sus liquidaciones semanales
       security: [{ sesionApp: [] }]
       responses:
-        '200': { description: '{ liquidaciones[{ period_start, period_end, orders_count, derecho_cents, en_mano_cents, arrastre_cents, neto_cents, status, reference }] }' }
+        '200': { description: '{ liquidaciones[{ period_start, period_end, orders_count, derecho_cents, en_mano_cents, arrastre_cents, ajustes_cents, neto_cents, status, reference }] }. neto = derecho − en_mano + arrastre + ajustes.' }
 
   /api/store/{slug}:
     get:
