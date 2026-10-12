@@ -263,10 +263,13 @@ router.get('/api/cooperativa/problemas', ...puerta, async (req, res) => {
       tipo: i.kind,
       estado: i.status,
       responsable: i.responsible,
-      // − se le descontó a su repartidor en su liquidación; 0 si nada.
-      ajusteCents: (i.settlement_adjustments || [])
+      // Lo que se le ajustó a su repartidor en su liquidación, LÍNEA A LÍNEA.
+      // ⚠️ No se suman: en un «no llegó» en efectivo se deshace el cobro (+) y
+      // se descuenta el pedido (−), y el neto parece a favor cuando en verdad
+      // paga la comida (lo destapó el ejemplo completo del staging).
+      ajustes: (i.settlement_adjustments || [])
         .filter(a => a.party === 'motorizado' && nombreDe.has(String(a.courier_id)))
-        .reduce((suma, a) => suma + a.cents, 0),
+        .map(a => ({ concepto: a.concepto, cents: a.cents })),
     })),
     retenidas: retenidas.map(r => ({
       pedido: r.orders?.order_number ?? null,

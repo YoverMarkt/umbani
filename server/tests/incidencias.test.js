@@ -209,7 +209,7 @@ describe('la cooperativa ve las de sus motorizados, sin datos del cliente', () =
     expect(deSusMotorizados).toHaveBeenCalledWith(['m1'])
     expect(r.body.incidencias).toEqual([{
       pedido: 41, local: 'Monster Pizza', fecha: '2026-10-06T12:00:00Z', repartidor: 'Andrés', tipo: 'no_llego', estado: 'resuelta', responsable: 'repartidor',
-      ajusteCents: 0,
+      ajustes: [],
     }])
   })
 })
@@ -506,7 +506,7 @@ describe('parte 3: el superadmin ve el efecto antes de confirmar', () => {
 })
 
 describe('parte 3: la cooperativa ve lo que se le descontó a SU repartidor', () => {
-  it('suma solo lo de sus repartidores, nunca lo del local', async () => {
+  it('línea a línea y solo lo de sus repartidores, nunca lo del local', async () => {
     vi.spyOn(db, 'getCooperativeUserById').mockImplementation(async (coop, userId) => ({ id: userId, cooperative_id: coop, active: true }))
     vi.spyOn(db, 'getCooperative').mockResolvedValue({ id: 'c1', active: true })
     vi.spyOn(db, 'cooperativeRetainedRuns').mockResolvedValue([])
@@ -515,15 +515,16 @@ describe('parte 3: la cooperativa ve lo que se le descontó a SU repartidor', ()
       id: INC, kind: 'no_llego', status: 'resuelta', responsible: 'repartidor', created_at: '2026-10-12T12:00:00Z',
       courier_id: 'm1', orders: { order_number: 41 }, businesses: { name: 'Monster Pizza' },
       settlement_adjustments: [
-        { party: 'motorizado', courier_id: 'm1', cents: 1300 },
-        { party: 'motorizado', courier_id: 'm1', cents: -1200 },
-        { party: 'local', courier_id: null, cents: 500 },
-        { party: 'motorizado', courier_id: 'de-otra-flota', cents: -700 },
+        { party: 'motorizado', courier_id: 'm1', cents: 1300, concepto: 'no_cobro' },
+        { party: 'motorizado', courier_id: 'm1', cents: -1200, concepto: 'reclamo' },
+        { party: 'local', courier_id: null, cents: 500, concepto: 'comida_reconocida' },
+        { party: 'motorizado', courier_id: 'de-otra-flota', cents: -700, concepto: 'comida_cobrada' },
       ],
     }])
     const token = jwt.sign({ role: 'cooperativa', cooperativeId: 'c1', userId: 'u-inc', email: 'c@x.ec' }, SECRET)
     const r = await correr(panelCoop, 'get', '/api/cooperativa/problemas', { headers: { authorization: `Bearer ${token}` } })
-    expect(r.body.incidencias[0].ajusteCents).toBe(100)
+    // ⚠️ Separadas: sumadas darían +$1,00 «a favor», y en verdad paga la comida.
+    expect(r.body.incidencias[0].ajustes).toEqual([{ concepto: 'no_cobro', cents: 1300 }, { concepto: 'reclamo', cents: -1200 }])
   })
 })
 

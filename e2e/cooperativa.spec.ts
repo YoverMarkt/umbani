@@ -39,7 +39,14 @@ async function simularApi(page: Page) {
       registro.descarga = route.request().headers().authorization ?? null
       return route.fulfill({ status: 200, headers: { 'content-type': 'text/csv; charset=utf-8' }, body: '﻿"Repartidor";"WhatsApp"\n' })
     }
-    if (ruta === '/api/cooperativa/problemas') return route.fulfill({ json: { retenidas: [], incidencias: [] } })
+    if (ruta === '/api/cooperativa/problemas') {
+      // «No llegó» en efectivo y respondía su repartidor (2026-10-12): dos líneas.
+      return route.fulfill({ json: { retenidas: [], incidencias: [{
+        pedido: 11, local: 'Monster Pizza', fecha: '2026-10-12T04:40:00Z', repartidor: 'Andrés Mera', tipo: 'no_llego',
+        estado: 'resuelta', responsable: 'repartidor',
+        ajustes: [{ concepto: 'no_cobro', cents: 1094 }, { concepto: 'reclamo', cents: -999 }],
+      }] } })
+    }
     return route.fulfill({ json: {} })
   })
   return registro
@@ -111,6 +118,19 @@ test('la guía «Cómo funciona» explica el dinero y no promete lo que aún no 
   await expect(page.getByRole('heading', { name: 'Cómo funciona' })).toBeVisible()
   await expect(page.getByText('Cada lunes Umbani cierra su semana')).toBeVisible()
   await expect(page.getByText(/Umbani lo revisa y decide\s+quién responde/)).toBeVisible()
+})
+
+test('en Problemas, lo que se le descontó a su repartidor va línea a línea, nunca sumado', async ({ page }) => {
+  await simularApi(page)
+  await page.addInitScript(() => localStorage.setItem('cooperativa_token', 'tok-coop'))
+  await page.goto(`${url}#/problemas`)
+  await expect(page.getByText('Respondió tu repartidor')).toBeVisible()
+  await expect(page.getByText('No cobró ese efectivo: ya no le cuenta')).toBeVisible()
+  await expect(page.getByText('+$10.94')).toBeVisible()
+  await expect(page.getByText('Se le descuenta el pedido, menos la comisión de Umbani')).toBeVisible()
+  await expect(page.getByText('−$9.99')).toBeVisible()
+  // Sumadas darían «+$0.95 a favor»: eso no se enseña nunca.
+  await expect(page.getByText('$0.95')).toHaveCount(0)
 })
 
 // En el teléfono, donde la cooperativa lo usa durante el turno: las tablas se

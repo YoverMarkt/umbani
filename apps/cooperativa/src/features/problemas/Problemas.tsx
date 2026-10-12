@@ -19,8 +19,8 @@ type Retenida = {
 type Incidencia = {
   pedido: number | null; local: string | null; fecha: string; repartidor: string
   tipo: string; estado: 'abierta' | 'resuelta' | 'descartada'; responsable: string | null
-  /** < 0: se le descontó a tu repartidor en su liquidación (lo decide la base). */
-  ajusteCents?: number
+  /** Lo que se le ajustó a tu repartidor en su liquidación, línea a línea (lo decide la base). */
+  ajustes?: { concepto: 'reclamo' | 'no_cobro' | 'comida_reconocida' | 'comida_cobrada'; cents: number }[]
 }
 
 const getProblemas = () =>
@@ -40,6 +40,20 @@ const comoQuedo = (i: Incidencia) => (
     : i.estado === 'descartada' ? 'Descartada: no hubo problema'
       : `Respondió ${RESPONDE[i.responsable ?? ''] ?? 'Umbani'}`
 )
+
+/**
+ * Cada línea dicha con palabras. ⚠️ Van SEPARADAS a propósito: en un «no
+ * llegó» en efectivo se deshace el cobro (+) y se descuenta el pedido (−);
+ * sumadas parecerían a favor de tu repartidor, y en verdad paga la comida.
+ */
+const queSeLeHizo = (a: NonNullable<Incidencia['ajustes']>[number], i: Incidencia) => {
+  if (a.concepto === 'no_cobro') return 'No cobró ese efectivo: ya no le cuenta'
+  if (a.concepto === 'comida_cobrada') return 'Se le descuenta la comida que se perdió'
+  return i.tipo === 'no_llego'
+    ? 'Se le descuenta el pedido, menos la comisión de Umbani'
+    : 'Se le descuenta lo devuelto al cliente, menos la comisión de Umbani'
+}
+const conSigno = (centavos: number) => `${centavos < 0 ? '−' : '+'}${dolares(centavos)}`
 
 const fecha = (iso: string) => new Date(iso).toLocaleDateString('es-EC', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 
@@ -124,10 +138,9 @@ export default function Problemas() {
                     detalle={`${fecha(i.fecha)} · ${i.repartidor}`}
                     derecha={<Badge variant={i.estado === 'abierta' ? 'default' : 'outline'}>{TIPOS[i.tipo] ?? i.tipo}</Badge>}>
                     <p className="text-sm text-foreground">{comoQuedo(i)}</p>
-                    {(i.ajusteCents ?? 0) !== 0 && (
-                      <Dato nombre={(i.ajusteCents ?? 0) < 0 ? 'Se le descuenta a tu repartidor' : 'A favor de tu repartidor'}
-                        valor={dolares(i.ajusteCents)} />
-                    )}
+                    {(i.ajustes ?? []).map(a => (
+                      <Dato key={a.concepto} nombre={queSeLeHizo(a, i)} valor={conSigno(a.cents)} />
+                    ))}
                   </Ficha>
                 ))}
               </div>
