@@ -892,6 +892,12 @@ test('Incidencias: el cliente no estaba — se le reconoce la comida al local, e
       resolucion: 'El local olvidó la pizza', resueltaEn: '2026-10-12T13:00:00Z', comidaSugeridaCents: null,
       pedido: { ...comun.pedido, id: 'p4', numero: 64 },
       ajustes: [{ parte: 'local', cents: -400, concepto: 'reclamo' }] },
+    // «No llegó» en efectivo: el cliente no recibió nada; al repartidor se le
+    // deshace el cobro y paga el pedido menos la comisión (no «lo devuelto»).
+    { ...comun, id: 'inc-5', tipo: 'no_llego', estado: 'resuelta', responsable: 'repartidor', compensacionCents: 0,
+      resolucion: 'Dijo que entregó y no', resueltaEn: '2026-10-12T13:30:00Z', comidaSugeridaCents: null,
+      pedido: { ...comun.pedido, id: 'p5', numero: 65 }, repartidor: { nombre: 'Diego', cooperativa: 'Cooperativa Chone' },
+      ajustes: [{ parte: 'motorizado', cents: 1094, concepto: 'no_cobro' }, { parte: 'motorizado', cents: -999, concepto: 'reclamo' }] },
   ] } }))
   await page.route('**/api/admin/incidencias/inc-3/efecto?*', route => route.fulfill({
     json: { ajustes: [{ parte: 'local', cents: 999, concepto: 'comida_reconocida' }], bloquea: true },
@@ -905,6 +911,8 @@ test('Incidencias: el cliente no estaba — se le reconoce la comida al local, e
   // Lo que ya se aplicó en una resuelta, con su signo.
   await expect(page.getByText('Local · lo devuelto al cliente, menos la comisión de Umbani')).toBeVisible()
   await expect(page.getByText('−$4.00')).toBeVisible()
+  await expect(page.getByText('Repartidor · el efectivo que no llegó a cobrar')).toBeVisible()
+  await expect(page.getByText('Repartidor · el pedido que no llegó, menos la comisión de Umbani')).toBeVisible()
 
   await page.getByRole('button', { name: 'Resolver' }).click()
   const ventana = page.getByRole('dialog', { name: /Resolver #63/ })

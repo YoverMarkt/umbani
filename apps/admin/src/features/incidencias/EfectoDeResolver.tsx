@@ -20,6 +20,15 @@ const QUE_ES: Record<Ajuste['concepto'], string> = {
   comida_cobrada: 'la comida que se perdió',
 }
 
+/**
+ * Por qué. En un pedido que NO LLEGÓ el «reclamo» no es lo devuelto: si iba
+ * en efectivo el cliente no pagó ni recibió nada, y lo que se cobra es el
+ * valor del pedido menos la comisión de Umbani (la comida y el envío).
+ */
+const queEs = (a: Ajuste, i: Incidencia) => (
+  a.concepto === 'reclamo' && i.tipo === 'no_llego' ? 'el pedido que no llegó, menos la comisión de Umbani' : QUE_ES[a.concepto]
+)
+
 const aQuien = (a: Ajuste, i: Incidencia) => (
   a.parte === 'local'
     ? `Al local${i.local.nombre ? ` ${i.local.nombre}` : ''}`
@@ -31,7 +40,7 @@ function frase(a: Ajuste, i: Incidencia) {
   if (a.concepto === 'no_cobro') {
     return `${aQuien(a, i)} se le quitan ${dinero(a.cents)} del efectivo cobrado: el libro decía que los cobró y el pedido no llegó.`
   }
-  return `${aQuien(a, i)} se le ${a.cents < 0 ? 'descontarán' : 'pagarán'} ${dinero(a.cents)} el lunes: ${QUE_ES[a.concepto]}.`
+  return `${aQuien(a, i)} se le ${a.cents < 0 ? 'descontarán' : 'pagarán'} ${dinero(a.cents)} el lunes: ${queEs(a, i)}.`
 }
 
 /** Lo que ya se aplicó, en la tarjeta de una resuelta. */
@@ -42,7 +51,7 @@ export function AjustesAplicados({ incidencia }: { incidencia: Incidencia }) {
       {incidencia.ajustes.map(a => (
         <li key={`${a.parte}-${a.concepto}`} className="flex justify-between gap-3">
           <span className="text-muted-foreground">
-            {a.parte === 'local' ? 'Local' : 'Repartidor'} · {QUE_ES[a.concepto]}
+            {a.parte === 'local' ? 'Local' : 'Repartidor'} · {queEs(a, incidencia)}
           </span>
           <span className="shrink-0 tabular-nums">{a.cents < 0 ? '−' : '+'}{dinero(a.cents)}</span>
         </li>
