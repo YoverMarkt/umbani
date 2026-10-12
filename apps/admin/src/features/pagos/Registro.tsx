@@ -122,7 +122,7 @@ function detalle(m: MovimientoDeDinero): string {
   if (a === 'venta_anulada') return `Pedido #${texto(d.numero)} · ${dolares(d.total)} · «${texto(d.motivo)}»`
   if (a === 'ajuste_por_incidencia') {
     return `Pedido #${texto(d.numero)} · ${d.parte === 'motorizado' ? 'repartidor' : 'local'} ${dinero(d.cents)}`
-      + ` · ${AJUSTE[String(d.concepto)] ?? texto(d.concepto)}`
+      + ` · ${d.concepto === 'reclamo' && d.tipo === 'no_llego' ? 'el pedido que no llegó, menos la comisión' : AJUSTE[String(d.concepto)] ?? texto(d.concepto)}`
   }
   if (a === 'factura_creada') return dolares(d.monto)
   if (a.startsWith('factura_')) return `${dolares(antes.monto)} → ${dolares(despues.monto)}`

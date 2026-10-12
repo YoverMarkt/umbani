@@ -37,6 +37,11 @@ const POR_QUE: Record<AjusteDelLocal['concepto'], string> = {
   comida_cobrada: 'La comida que se perdió',
 }
 
+/** En un pedido que no llegó, el «reclamo» es su valor, no un saldo devuelto. */
+const porQue = (a: AjusteDelLocal) => (
+  a.concepto === 'reclamo' && a.tipo === 'no_llego' ? 'El pedido no llegó: su valor, menos la comisión de Umbani' : POR_QUE[a.concepto]
+)
+
 const conSigno = (centavos: number) => (centavos < 0 ? '−$' : '+$')
   + (Math.abs(centavos) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
@@ -65,7 +70,7 @@ export default function AjustesPorIncidencias({ ajustes }: { ajustes: AjusteDelL
                 </TableCell>
                 <TableCell>
                   <div>{QUE_PASO[a.tipo || ''] || 'Incidencia'}</div>
-                  <div className="text-xs text-muted-foreground">{POR_QUE[a.concepto]}</div>
+                  <div className="text-xs text-muted-foreground">{porQue(a)}</div>
                 </TableCell>
                 <TableCell className={`text-right font-semibold tabular-nums ${a.cents < 0 ? 'text-destructive' : 'text-foreground'}`}>
                   {conSigno(a.cents)}
