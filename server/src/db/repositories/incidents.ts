@@ -162,7 +162,7 @@ const incidentEffect = async (id: string, responsible: string, compensationCents
 const cooperativeIncidents = async (courierIds: string[]) => {
   if (!courierIds.length) return []
   const { data, error } = await db.from('order_incidents')
-    .select('id, kind, status, responsible, created_at, resolved_at, courier_id, orders!order_incidents_order_fk(order_number), businesses(name), settlement_adjustments(party, courier_id, cents)')
+    .select('id, kind, status, responsible, created_at, resolved_at, courier_id, orders!order_incidents_order_fk(order_number), businesses(name), settlement_adjustments(party, courier_id, cents, concepto)')
     .in('courier_id', courierIds)
     .order('created_at', { ascending: false })
     .limit(100)

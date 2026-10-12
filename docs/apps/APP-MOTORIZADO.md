@@ -59,6 +59,14 @@ repartidores propios encendidos.
   le descontó (o reconoció) esta semana por una incidencia, cada uno con
   `numero`, `local`, `fecha`, `tipo` (qué pasó), `concepto` y `cents` (< 0: se
   le descuenta). Sin datos del cliente.
+- ⚠️ **Enseña cada línea por separado; no las sumes por pedido.** En un «no
+  llegó» en efectivo llegan dos: `no_cobro` (+, ese efectivo ya no le cuenta
+  como cobrado) y `reclamo` (−, el pedido menos la comisión de Umbani). Sumadas
+  parecerían a favor del repartidor, y en verdad paga la comida. Textos:
+  `no_cobro` «No cobraste ese efectivo: ya no te cuenta», `reclamo` en un
+  `no_llego` «El pedido que no llegó, menos la comisión de Umbani», `reclamo`
+  en lo demás «Lo devuelto al cliente, menos la comisión de Umbani»,
+  `comida_cobrada` «La comida que se perdió».
 - **Enseña:** un interruptor grande «Disponible» (`PUT /api/v1/motorizado/disponible`
   con `{ disponible: true|false }`) y una barra «Efectivo encima: $X de $150».
 

@@ -75,8 +75,9 @@ export default function ComoFunciona() {
         <p>
           Si algo sale mal con un pedido (faltó algo, no llegó, el cliente no estaba…), Umbani lo revisa y decide
           quién responde. Si respondía tu repartidor, se le descuenta en su liquidación del lunes lo que se le
-          devolvió al cliente (menos la comisión de Umbani) o la comida que se perdió. Lo ves en «Problemas», con
-          lo que se decidió y cuánto se le descontó.
+          devolvió al cliente o, si el pedido no llegó, su valor (en los dos casos, menos la comisión de Umbani), o
+          la comida que se perdió. Si no llegó y era en efectivo, además ese efectivo deja de contarle como cobrado.
+          Lo ves en «Problemas», línea a línea.
         </p>
       </Bloque>
 
