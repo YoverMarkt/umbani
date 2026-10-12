@@ -15,7 +15,7 @@ const sesionApp = require('../dist/services/sesion-app')
 // ═══════════════════════════════════════════════════════════════════════════
 // «¿LLEGÓ TODO BIEN?» Y LAS INCIDENCIAS (2026-10-06, fase 1)
 // ═══════════════════════════════════════════════════════════════════════════
-// Las reglas (de quién es, 48 h, una vez, cuánto le corresponde) se prueban
+// Las reglas (de quién es, el plazo de 1 hora, una vez, cuánto le corresponde) se prueban
 // en PostgreSQL real (bloque «LAS INCIDENCIAS» de verify:schema) y de punta a
 // punta en `recorridos/09-reclamos`. Aquí: lo que se le dice a cada uno, que
 // el pedido sea de la sesión, y que la cooperativa no vea datos del cliente.
@@ -60,7 +60,8 @@ const admin = () => ({ authorization: `Bearer ${jwt.sign({ role: 'admin', mfa: t
 
 describe('lo que se le dice al cliente', () => {
   it('cada respuesta de la base, con palabras; lo desconocido no se inventa', () => {
-    expect(reclamos.respuestaAlCliente('fuera_de_plazo')).toEqual({ status: 409, error: 'Pasaron más de 48 horas desde la entrega. Escríbenos y lo vemos.' })
+    // Sin «escríbenos»: Umbani es solo app (2026-10-12), y el plazo es un ajuste que el texto no nombra.
+    expect(reclamos.respuestaAlCliente('fuera_de_plazo')).toEqual({ status: 409, error: 'El tiempo para reportar este pedido ya terminó.' })
     expect(reclamos.respuestaAlCliente('ya_reclamado').status).toBe(409)
     expect(reclamos.respuestaAlCliente('linea_invalida').status).toBe(400)
     expect(reclamos.respuestaAlCliente('algo_raro')).toEqual({ status: 409, error: 'No pudimos registrarlo. Inténtalo de nuevo.' })
@@ -77,26 +78,32 @@ describe('lo que se le dice al cliente', () => {
 })
 
 describe('el estado de cada pedido (de una lista, de una vez)', () => {
-  it('«todo bien», su reclamo, y hasta cuándo puede reclamar (solo dentro de las 48 h y sin reclamo)', async () => {
+  it('«todo bien», su reclamo, y hasta cuándo puede reclamar (dentro del plazo que dice la base, y sin reclamo)', async () => {
     const consulta = (data) => {
       const q = {}
       for (const m of ['select', 'in', 'eq']) q[m] = vi.fn(() => q)
       q.then = (ok, mal) => Promise.resolve({ data, error: null }).then(ok, mal)
       return q
     }
-    const hace1h = new Date(Date.now() - 3600_000).toISOString()
-    const hace50h = new Date(Date.now() - 50 * 3600_000).toISOString()
+    // El plazo lo dice la base (`plazo_de_reclamo_minutos`, 2026-10-12): aquí, 60 minutos.
+    const plazo = vi.spyOn(client, 'rpc').mockResolvedValue({ data: 60, error: null })
+    const hace10min = new Date(Date.now() - 10 * 60_000).toISOString()
+    const hace2h = new Date(Date.now() - 2 * 3600_000).toISOString()
     vi.spyOn(client, 'from')
       .mockReturnValueOnce(consulta([{ order_id: 'reclamado', kind: 'falta_producto', status: 'abierta', suggested_cents: 440, compensation_cents: null }]))
-      .mockReturnValueOnce(consulta([{ order_id: 'reciente', sold_at: hace1h }, { order_id: 'viejo', sold_at: hace50h }, { order_id: 'reclamado', sold_at: hace1h }]))
+      .mockReturnValueOnce(consulta([{ order_id: 'reciente', sold_at: hace10min }, { order_id: 'viejo', sold_at: hace2h }, { order_id: 'reclamado', sold_at: hace10min }]))
     const estados = await db.claimStates([
       { id: 'reciente', status: 'completado', received_ok_at: null },
-      { id: 'viejo', status: 'completado', received_ok_at: hace50h },
+      { id: 'viejo', status: 'completado', received_ok_at: hace2h },
       { id: 'reclamado', status: 'completado' },
       { id: 'cocinando', status: 'preparacion' },
     ])
     expect(estados.get('reciente')).toMatchObject({ todoBien: false, reclamo: null })
-    expect(new Date(estados.get('reciente').reclamableHasta).getTime()).toBeGreaterThan(Date.now() + 46 * 3600_000)
+    expect(plazo).toHaveBeenCalledWith('plazo_de_reclamo_minutos')
+    // Entregado hace 10 minutos, con 60 de plazo: le quedan unos 50.
+    const quedan = new Date(estados.get('reciente').reclamableHasta).getTime() - Date.now()
+    expect(quedan).toBeGreaterThan(49 * 60_000)
+    expect(quedan).toBeLessThan(51 * 60_000)
     expect(estados.get('viejo')).toEqual({ todoBien: true, reclamo: null, reclamableHasta: null })
     expect(estados.get('reclamado')).toMatchObject({ reclamo: { tipo: 'falta_producto', estado: 'abierta', sugeridoCents: 440 }, reclamableHasta: null })
     expect(estados.get('cocinando')).toEqual({ todoBien: false, reclamo: null, reclamableHasta: null })
@@ -449,13 +456,14 @@ describe('parte 3: el superadmin ve el efecto antes de confirmar', () => {
     expect(efecto).not.toHaveBeenCalled()
   })
 
-  it('a quién se le reconoce o descuenta cuánto, y si el cliente queda bloqueado', async () => {
+  it('a quién se le reconoce o descuenta cuánto, y si el cliente pasará a pagar solo por adelantado', async () => {
     const efecto = vi.spyOn(db, 'incidentEffect').mockResolvedValue({
       ajustes: [
         { party: 'local', courierId: null, cents: 1000, concepto: 'comida_reconocida' },
         { party: 'motorizado', courierId: 'm1', cents: -1000, concepto: 'comida_cobrada' },
       ],
-      bloquea: false,
+      soloPorAdelantado: false,
+      diasSoloPorAdelantado: null,
     })
     const r = await correr(adminInc, 'get', EFECTO, { headers: admin(), params: { id: INC }, query: { responsable: 'repartidor', compensacionCents: '1000' } })
     expect(efecto).toHaveBeenCalledWith(INC, 'repartidor', 1000)
@@ -464,13 +472,14 @@ describe('parte 3: el superadmin ve el efecto antes de confirmar', () => {
         { parte: 'local', cents: 1000, concepto: 'comida_reconocida' },
         { parte: 'motorizado', cents: -1000, concepto: 'comida_cobrada' },
       ],
-      bloquea: false,
+      soloPorAdelantado: false,
+      diasSoloPorAdelantado: null,
     })
     // Sin monto, cero: lo que vale para el cliente ausente, que no recibe saldo.
-    efecto.mockResolvedValue({ ajustes: [], bloquea: true })
+    efecto.mockResolvedValue({ ajustes: [], soloPorAdelantado: true, diasSoloPorAdelantado: 90 })
     const ausente = await correr(adminInc, 'get', EFECTO, { headers: admin(), params: { id: INC }, query: { responsable: 'cliente' } })
     expect(efecto).toHaveBeenLastCalledWith(INC, 'cliente', 0)
-    expect(ausente.body).toEqual({ ajustes: [], bloquea: true })
+    expect(ausente.body).toEqual({ ajustes: [], soloPorAdelantado: true, diasSoloPorAdelantado: 90 })
   })
 
   it('al resolver, la respuesta trae los ajustes que se aplicaron', async () => {
@@ -531,14 +540,16 @@ describe('parte 3: la cooperativa ve lo que se le descontó a SU repartidor', ()
 describe('parte 3: el repositorio', () => {
   it('el efecto se le pregunta a la base, que es la misma función que lo aplica', async () => {
     const rpc = vi.spyOn(client, 'rpc').mockResolvedValue({
-      data: { ajustes: [{ party: 'local', courierId: null, cents: -100, concepto: 'reclamo' }], bloquea: false }, error: null,
+      data: { ajustes: [{ party: 'local', courierId: null, cents: -100, concepto: 'reclamo' }], soloPorAdelantado: false }, error: null,
     })
     expect(await db.incidentEffect(INC, 'local', 110)).toEqual({
-      ajustes: [{ party: 'local', courierId: null, cents: -100, concepto: 'reclamo' }], bloquea: false,
+      ajustes: [{ party: 'local', courierId: null, cents: -100, concepto: 'reclamo' }], soloPorAdelantado: false, diasSoloPorAdelantado: null,
     })
     expect(rpc).toHaveBeenLastCalledWith('efecto_de_la_incidencia', { p_incident_id: INC, p_responsible: 'local', p_compensation_cents: 110 })
-    rpc.mockResolvedValue({ data: { ajustes: null, bloquea: 'si' }, error: null })
-    expect(await db.incidentEffect(INC, 'cliente', 0)).toEqual({ ajustes: [], bloquea: false })
+    rpc.mockResolvedValue({ data: { ajustes: null, soloPorAdelantado: 'si', diasSoloPorAdelantado: 'x' }, error: null })
+    expect(await db.incidentEffect(INC, 'cliente', 0)).toEqual({ ajustes: [], soloPorAdelantado: false, diasSoloPorAdelantado: null })
+    rpc.mockResolvedValue({ data: { ajustes: [], soloPorAdelantado: true, diasSoloPorAdelantado: 90 }, error: null })
+    expect(await db.incidentEffect(INC, 'cliente', 0)).toEqual({ ajustes: [], soloPorAdelantado: true, diasSoloPorAdelantado: 90 })
     rpc.mockResolvedValue({ data: null, error: { message: 'caída' } })
     await expect(db.incidentEffect(INC, 'local', 0)).rejects.toThrow('caída')
   })
@@ -558,5 +569,51 @@ describe('parte 3: el repositorio', () => {
     expect(q.is).toHaveBeenLastCalledWith('courier_settlement_id', null)
     q.then = (ok, mal) => Promise.resolve({ data: null, error: { message: 'caída' } }).then(ok, mal)
     await expect(db.listUnsettledAdjustments({ courierId: 'm1' })).rejects.toThrow('caída')
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════
+// «NO ESTABA» YA NO BLOQUEA (2026-10-12)
+// ═══════════════════════════════════════════════════════════════════════════
+// La regla —90 días solo por adelantado, el escalón 3 de la escalera— la
+// prueba la base (bloque «QUE PAGUE QUIEN TUVO LA CULPA»). Aquí: que el
+// superadmin lo vea y lo pueda levantar, y que cada «no» se diga claro.
+
+describe('el superadmin levanta el «solo por adelantado» de quien no estaba', () => {
+  const LEVANTAR = '/api/admin/incidencias/:id/levantar'
+
+  it('lo ve en la lista: hasta cuándo, y si ya se levantó (quién y cuándo)', async () => {
+    vi.spyOn(db, 'listIncidents').mockResolvedValue([{
+      id: INC, kind: 'cliente_ausente', origin: 'superadmin', status: 'resuelta', responsible: 'cliente', lines: [], note: 'No abrió',
+      suggested_cents: null, compensation_cents: 849, resolution_note: 'No estaba', resolved_by: 'superadmin:yo@umbani.ec',
+      created_at: '2026-10-12T12:00:00Z', resolved_at: '2026-10-12T13:00:00Z', order_id: PEDIDO, business_id: LOCAL,
+      prepaid_only_until: '2027-01-10T13:00:00Z', restriction_lifted_at: null, restriction_lifted_by: null,
+      orders: { order_number: 14, total: 10.94, status: 'cancelado', merchant_subtotal: 8.49 }, businesses: null, couriers: null,
+    }])
+    const r = await correr(adminInc, 'get', '/api/admin/incidencias', { headers: admin() })
+    expect(r.body.incidencias[0]).toMatchObject({ soloPorAdelantadoHasta: '2027-01-10T13:00:00Z', restriccionLevantada: null })
+  })
+
+  it('valida el id, levanta con quién fue, y cada «no» de la base se dice', async () => {
+    const levantar = vi.spyOn(db, 'liftPrepaidOnly').mockResolvedValue({ result: 'ok' })
+    expect((await correr(adminInc, 'post', LEVANTAR, { headers: admin(), params: { id: 'x' } })).status).toBe(404)
+    expect(levantar).not.toHaveBeenCalled()
+    const bien = await correr(adminInc, 'post', LEVANTAR, { headers: admin(), params: { id: INC } })
+    expect(bien).toMatchObject({ status: 200, body: { ok: true } })
+    expect(levantar).toHaveBeenCalledWith(INC, 'superadmin:yo@umbani.ec')
+    for (const [result, estado] of [['not_found', 404], ['no_activa', 409]]) {
+      levantar.mockResolvedValue({ result })
+      const r = await correr(adminInc, 'post', LEVANTAR, { headers: admin(), params: { id: INC } })
+      expect(r.status, result).toBe(estado)
+      expect(r.body.error, result).not.toBe('No se pudo. Inténtalo de nuevo.')
+    }
+  })
+
+  it('el repositorio llama a la función de la base, y un error no se traga', async () => {
+    const rpc = vi.spyOn(client, 'rpc').mockResolvedValue({ data: { result: 'ok' }, error: null })
+    expect(await db.liftPrepaidOnly(INC, 'superadmin:yo@umbani.ec')).toEqual({ result: 'ok' })
+    expect(rpc).toHaveBeenLastCalledWith('levantar_solo_adelantado', { p_incident_id: INC, p_actor: 'superadmin:yo@umbani.ec' })
+    rpc.mockResolvedValue({ data: null, error: { message: 'caída' } })
+    await expect(db.liftPrepaidOnly(INC, 'x')).rejects.toThrow('caída')
   })
 })

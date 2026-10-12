@@ -17,6 +17,7 @@ import {
   type Incidencia, type Responsable, type TipoDeIncidencia,
 } from './api'
 import { AjustesAplicados, EfectoDeResolver } from './EfectoDeResolver'
+import SoloPorAdelantado from './SoloPorAdelantado'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // INCIDENCIAS — «¿Llegó todo bien?» y lo que sale mal (2026-10-06, fase 1)
@@ -189,6 +190,7 @@ export default function Incidencias() {
                     )}
                   </div>
                   <AjustesAplicados incidencia={i} />
+                  <SoloPorAdelantado incidencia={i} />
                 </Card>
               ))}
             </div>

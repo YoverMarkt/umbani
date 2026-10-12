@@ -11,8 +11,9 @@ import type { TrackedOrder } from '../lib/types'
 //
 // Pedido del dueño: «algo para que el cliente diga todo está correcto con su
 // pedido… en las grandes, cuando no me llega algo me dan dinero de la app».
-// En cada pedido entregado de «Mis pedidos», durante 48 horas: «Todo bien» o
-// «Algo salió mal» (faltó algo, vino mal, no llegó). Una vez por pedido.
+// En cada pedido entregado de «Mis pedidos», durante el plazo que dice el
+// servidor (1 hora desde el 2026-10-12): «Todo bien» o «Algo salió mal»
+// (faltó algo, vino mal, no llegó). Una vez por pedido.
 //
 // ⚠️ Lo que le corresponde lo calcula el SERVIDOR y lo decide Umbani al
 // revisarlo: aquí no se suma nada ni se le promete una cifra. Va en su propio

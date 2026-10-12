@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
-  admin, centavos, cerrarSql, clientePorWhatsApp, configurarElDinero, entrarComoLocal, exigir,
+  admin, centavos, cerrarSql, clientePorLaApp, configurarElDinero, entrarComoLocal, exigir, http,
   llevarHastaEntregar, productosSimples, recogerLaMesa, sql,
 } from './actores.mjs'
 
@@ -12,10 +12,16 @@ import {
 // después, como en las grandes: el superadmin ve ANTES de confirmar a quién se
 // le descuenta o reconoce cuánto, confirma, y el dueño lo ve en «Mis pagos»
 // con su porqué. Lo que se perdió antes de entregar se le reconoce al local;
-// si el cliente no estaba, además queda bloqueado y ya no puede pedir.
+// si el cliente no estaba, ya no se le bloquea (2026-10-12): 90 días solo paga
+// por adelantado, y Umbani se lo puede levantar antes.
 //
 // Cuánto paga cada uno, en cada caso, lo prueba la base (bloque «QUE PAGUE
 // QUIEN TUVO LA CULPA» de verify:schema). Aquí, que llegue a cada pantalla.
+//
+// ⚠️ Con un cliente NUEVO de la app (2026-10-12), como el 11: los recorridos
+// no corren en orden alfabético, y si este dejaba su historial (un reclamo,
+// un «no estaba») en el cliente de todos, el 09 ya no encontraba un primer
+// reclamo «con el historial limpio». Lo destapó correr este antes que aquel.
 
 let cliente
 let local
@@ -23,12 +29,11 @@ let carta
 let addressId
 let negocio
 let comoEstaba
-let clienteBloqueado
 
 beforeAll(async () => {
   await recogerLaMesa()
   await configurarElDinero({ envio: 1.5, margen: 10, tarifa: 0.1 })
-  cliente = await clientePorWhatsApp()
+  cliente = await clientePorLaApp()
   local = await entrarComoLocal()
   carta = await cliente.catalogo()
   addressId = await cliente.direccion()
@@ -38,12 +43,9 @@ beforeAll(async () => {
 })
 afterAll(async () => {
   await admin.pedir('PUT', `/api/admin/clients/${negocio}`, comoEstaba)
-  // El cliente de prueba es el MISMO en todos los recorridos: se le quita el
-  // bloqueo que le puso este, o el siguiente no podría pedir.
-  if (clienteBloqueado) {
-    await sql(`update customers set blocked_at = null, blocked_until = null, blocked_kind = null, blocked_reason = null
-                where id = $1`, [clienteBloqueado])
-  }
+  // Por si falló a medias: nadie se queda en «solo por adelantado».
+  await sql(`update order_incidents set prepaid_only_until = now()
+              where kind = 'cliente_ausente' and prepaid_only_until > now()`)
   await cerrarSql()
 })
 
@@ -88,7 +90,7 @@ describe('que pague quien tuvo la culpa', () => {
     const vista = await efecto(suya.id, 'local', r.sugeridoCents)
     expect(vista).toEqual({
       ajustes: [{ parte: 'local', cents: -(r.sugeridoCents - suya.reparto.umbaniCents), concepto: 'reclamo' }],
-      bloquea: false,
+      soloPorAdelantado: false, diasSoloPorAdelantado: null,
     })
 
     const antes = await misPagos()
@@ -121,7 +123,10 @@ describe('que pague quien tuvo la culpa', () => {
     expect(suya.comidaSugeridaCents).toBeGreaterThan(0)
 
     const vista = await efecto(suya.id, 'umbani', suya.comidaSugeridaCents)
-    expect(vista).toEqual({ ajustes: [{ parte: 'local', cents: suya.comidaSugeridaCents, concepto: 'comida_reconocida' }], bloquea: false })
+    expect(vista).toEqual({
+      ajustes: [{ parte: 'local', cents: suya.comidaSugeridaCents, concepto: 'comida_reconocida' }],
+      soloPorAdelantado: false, diasSoloPorAdelantado: null,
+    })
     const antes = await misPagos()
     const resuelta = await exigir(200, admin.pedir('POST', `/api/admin/incidencias/${suya.id}/resolver`, {
       estado: 'resuelta', responsable: 'umbani', compensacionCents: suya.comidaSugeridaCents, nota: 'Accidente: lo pone Umbani',
@@ -130,21 +135,35 @@ describe('que pague quien tuvo la culpa', () => {
     expect((await misPagos()).semana.ajustesCents - antes.semana.ajustesCents).toBe(suya.comidaSugeridaCents)
   })
 
-  it('el cliente no estaba: Umbani le paga la comida al local y el cliente ya no puede pedir', async () => {
+  it('el cliente no estaba: Umbani le paga la comida al local y el cliente solo paga por adelantado, hasta que se lo levanten', async () => {
     const { pedido, suya } = await perdidaAntesDeEntregar('cliente_ausente', 'No abrió la puerta ni contestó')
     const vista = await efecto(suya.id, 'cliente', suya.comidaSugeridaCents)
-    expect(vista).toEqual({ ajustes: [{ parte: 'local', cents: suya.comidaSugeridaCents, concepto: 'comida_reconocida' }], bloquea: true })
+    expect(vista).toEqual({
+      ajustes: [{ parte: 'local', cents: suya.comidaSugeridaCents, concepto: 'comida_reconocida' }],
+      soloPorAdelantado: true, diasSoloPorAdelantado: 90,
+    })
     await exigir(200, admin.pedir('POST', `/api/admin/incidencias/${suya.id}/resolver`, {
       estado: 'resuelta', responsable: 'cliente', compensacionCents: suya.comidaSugeridaCents, nota: 'No estaba',
     }))
 
-    ;[{ customer_id: clienteBloqueado }] = await sql('select customer_id from orders where id = $1', [pedido.id])
-    const [bloqueo] = await sql('select blocked_at, blocked_until, blocked_kind, blocked_reason from customers where id = $1', [clienteBloqueado])
-    expect(bloqueo).toMatchObject({ blocked_until: null, blocked_kind: 'manual', blocked_reason: `No estaba para recibir su pedido #${await numeroDe(pedido.id)}` })
-    expect(bloqueo.blocked_at).not.toBeNull()
-    // El bloqueo es de verdad: la base no deja entrar su próximo pedido.
-    const otro = await pedirEnEfectivo()
-    expect(otro.status).toBe(403)
-    expect(otro.body.error).toBe('No podemos procesar este pedido.')
+    // Ya no se le bloquea (2026-10-12)…
+    const [{ customer_id: clienteId }] = await sql('select customer_id from orders where id = $1', [pedido.id])
+    const [cliente_] = await sql('select blocked_at from customers where id = $1', [clienteId])
+    expect(cliente_.blocked_at).toBeNull()
+    // …pero la app ya no le ofrece el efectivo, y la base se lo rechaza.
+    const yo = await exigir(200, http('GET', '/api/v1/yo', { token: cliente.tokenApp }))
+    expect(yo.soloPagoPorAdelantado).toBe(true)
+    const enEfectivo = await pedirEnEfectivo()
+    expect(enEfectivo.status).toBe(400)
+    expect(enEfectivo.body.error).toBe('Para este pedido elige tarjeta o transferencia.')
+    const { incidencias } = await exigir(200, admin.pedir('GET', '/api/admin/incidencias?estado=todas'))
+    expect(new Date(incidencias.find(i => i.id === suya.id).soloPorAdelantadoHasta).getTime()).toBeGreaterThan(Date.now() + 89 * 86_400_000)
+
+    // Umbani se lo levanta: vuelve a pedir en efectivo.
+    await exigir(200, admin.pedir('POST', `/api/admin/incidencias/${suya.id}/levantar`))
+    expect((await admin.pedir('POST', `/api/admin/incidencias/${suya.id}/levantar`)).status).toBe(409)
+    expect((await exigir(200, http('GET', '/api/v1/yo', { token: cliente.tokenApp }))).soloPagoPorAdelantado).toBe(false)
+    const deNuevo = await exigir(201, pedirEnEfectivo())
+    await exigir(200, local.cambiarEstado(deNuevo.id, 'cancelado'))
   })
 })

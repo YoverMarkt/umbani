@@ -39,6 +39,7 @@ const RESPUESTA: Record<string, { status: number; error: string }> = {
   compensacion_ya_dada: { status: 409, error: 'El saldo ya se le dio al instante: aquí solo se confirma quién responde, el monto no cambia' },
   cliente_sin_compensacion: { status: 400, error: 'Si responde el cliente, no hay nada que devolverle: deja la compensación en 0' },
   sin_cuenta: { status: 409, error: 'No encontramos la cuenta de ese cliente para darle el saldo' },
+  no_activa: { status: 409, error: 'Ese cliente ya no tiene la restricción: no hay nada que levantar' },
 }
 const responder = (res: Parameters<RequestHandler>[1], resultado: unknown, ok: () => void) => {
   if (resultado === 'ok') return ok()
@@ -89,6 +90,10 @@ router.get('/api/admin/incidencias', auth.authAdmin, async (req, res) => {
       // local: lo que recibe por los productos, si el pedido no llegó a
       // entregarse (si se entregó igual, no se perdió nada).
       ajustes: (i.settlement_adjustments || []).map(ajuste),
+      // «No estaba» (2026-10-12): hasta cuándo solo paga por adelantado, y si
+      // Umbani lo levantó antes (quién y cuándo).
+      soloPorAdelantadoHasta: i.prepaid_only_until,
+      restriccionLevantada: i.restriction_lifted_at ? { en: i.restriction_lifted_at, por: i.restriction_lifted_by } : null,
       comidaSugeridaCents: RECLAMOS.has(i.kind) || i.orders?.status === 'completado'
         ? null
         : Math.round((Number(i.orders?.merchant_subtotal) || 0) * 100),
@@ -123,8 +128,9 @@ router.post('/api/admin/incidencias', auth.authAdmin, async (req, res) => {
 
 /**
  * Lo que pasaría al resolver, SIN escribir nada: a quién se le reconoce o se
- * le descuenta cuánto en su liquidación del lunes, y si el cliente queda
- * bloqueado. La pantalla lo enseña antes de confirmar.
+ * le descuenta cuánto en su liquidación del lunes, y si el cliente pasará a
+ * pagar solo por adelantado (y cuántos días). La pantalla lo enseña antes de
+ * confirmar.
  */
 router.get('/api/admin/incidencias/:id/efecto', auth.authAdmin, async (req, res) => {
   const id = String(req.params.id || '')
@@ -136,7 +142,22 @@ router.get('/api/admin/incidencias/:id/efecto', auth.authAdmin, async (req, res)
     return res.status(400).json({ error: 'La compensación va en centavos enteros' })
   }
   const efecto = await db.incidentEffect(id, responsable, compensacion)
-  return res.json({ ajustes: efecto.ajustes.map(ajuste), bloquea: efecto.bloquea })
+  return res.json({
+    ajustes: efecto.ajustes.map(ajuste),
+    soloPorAdelantado: efecto.soloPorAdelantado,
+    diasSoloPorAdelantado: efecto.diasSoloPorAdelantado,
+  })
+})
+
+/**
+ * Umbani levanta antes el «solo por adelantado» de un cliente que no estaba
+ * (2026-10-12): vuelve a poder pagar como quiera. Queda quién fue.
+ */
+router.post('/api/admin/incidencias/:id/levantar', auth.authAdmin, async (req, res) => {
+  const id = String(req.params.id || '')
+  if (!UUID.test(id)) return res.status(404).json({ error: 'No encontramos esa incidencia' })
+  const r = await db.liftPrepaidOnly(id, quien(req))
+  return responder(res, r.result, () => res.json({ ok: true }))
 })
 
 router.post('/api/admin/incidencias/:id/resolver', auth.authAdmin, async (req, res) => {

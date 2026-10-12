@@ -13,7 +13,9 @@ export const RESPUESTA_AL_CLIENTE: Record<string, { status: number; error: strin
   not_found: { status: 404, error: 'No encontramos ese pedido' },
   no_entregado: { status: 409, error: 'Tu pedido todavía no se ha entregado' },
   ya_reclamado: { status: 409, error: 'Ya nos contaste de este pedido: lo estamos revisando' },
-  fuera_de_plazo: { status: 409, error: 'Pasaron más de 48 horas desde la entrega. Escríbenos y lo vemos.' },
+  // Sin «escríbenos» (2026-10-12): Umbani es solo app, no hay chat. El plazo es
+  // un ajuste de la base (1 hora por defecto), así que el texto no lo nombra.
+  fuera_de_plazo: { status: 409, error: 'El tiempo para reportar este pedido ya terminó.' },
   tipo_invalido: { status: 400, error: 'Dinos qué pasó: faltó algo, vino mal o no llegó' },
   sin_lineas: { status: 400, error: 'Elige qué faltó o qué vino mal' },
   linea_invalida: { status: 400, error: 'Revisa lo que elegiste: no coincide con tu pedido' },
