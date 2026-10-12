@@ -121,6 +121,7 @@ test('la guía «Cómo funciona» explica el dinero y no promete lo que aún no 
 })
 
 test('en Problemas, lo que se le descontó a su repartidor va línea a línea, nunca sumado', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
   await simularApi(page)
   await page.addInitScript(() => localStorage.setItem('cooperativa_token', 'tok-coop'))
   await page.goto(`${url}#/problemas`)
@@ -129,6 +130,8 @@ test('en Problemas, lo que se le descontó a su repartidor va línea a línea, n
   await expect(page.getByText('+$10.94')).toBeVisible()
   await expect(page.getByText('Se le descuenta el pedido, menos la comisión de Umbani')).toBeVisible()
   await expect(page.getByText('−$9.99')).toBeVisible()
+  // En el teléfono, el monto en UNA línea: partido, «−» quedaba suelto arriba.
+  expect((await page.getByText('−$9.99').boundingBox())?.height ?? 99).toBeLessThan(30)
   // Sumadas darían «+$0.95 a favor»: eso no se enseña nunca.
   await expect(page.getByText('$0.95')).toHaveCount(0)
 })

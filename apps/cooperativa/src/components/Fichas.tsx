@@ -41,7 +41,8 @@ export function Dato({ nombre, valor }: { nombre: string; valor: ReactNode }) {
   return (
     <div className="flex items-baseline justify-between gap-3 text-sm">
       <span className="text-muted-foreground">{nombre}</span>
-      <span className="text-right tabular-nums text-foreground">{valor}</span>
+      {/* El valor no se parte: «−$9.99» en dos líneas se leía como un guion suelto (2026-10-12). */}
+      <span className="whitespace-nowrap text-right tabular-nums text-foreground">{valor}</span>
     </div>
   )
 }

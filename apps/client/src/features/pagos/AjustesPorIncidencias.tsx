@@ -68,7 +68,9 @@ export default function AjustesPorIncidencias({ ajustes }: { ajustes: AjusteDelL
                   <div className="font-medium">#{a.numero ?? '—'}</div>
                   <div className="text-xs text-muted-foreground">{dia(a.fecha)}</div>
                 </TableCell>
-                <TableCell>
+                {/* El porqué se parte en líneas: de una sola, empujaba el monto fuera
+                    de la pantalla del teléfono (2026-10-12). */}
+                <TableCell className="whitespace-normal">
                   <div>{QUE_PASO[a.tipo || ''] || 'Incidencia'}</div>
                   <div className="text-xs text-muted-foreground">{porQue(a)}</div>
                 </TableCell>
