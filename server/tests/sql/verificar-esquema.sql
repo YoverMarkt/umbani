@@ -9066,3 +9066,248 @@ end;
 $marca$;
 
 select '✅ la marca de la tarjeta se guarda entera' as resultado;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- QUE PAGUE QUIEN TUVO LA CULPA (2026-10-12, fase 2 de las incidencias, parte 3)
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Cuentas a mano: un pedido de $13,00 = comida del local $10,00 + envío $2,00
+-- + comisión de Umbani $1,00. Una gaseosa que faltó: $1,10 ($1,00 del local +
+-- $0,10 de comisión). Al confirmar quién responde, su liquidación se ajusta.
+
+-- Un pedido entregado (con su venta y su libro), a domicilio.
+create or replace function pg_temp.verif_entregado(p_local uuid, p_pago text, p_repartidor uuid, p_telefono text)
+returns uuid
+language plpgsql
+as $f$
+declare
+  v_id uuid;
+begin
+  -- Con su cuenta: el saldo se le da a una persona, no a un teléfono suelto.
+  insert into customers (phone) values (p_telefono) on conflict do nothing;
+  insert into orders (business_id, contact_phone, source, status, fulfillment, subtotal, shipping, total,
+                      payment_method, courier_id, payment_confirmed_at, customer_id)
+  values (p_local, p_telefono, 'manual', 'completado', 'delivery', 10, 2, 13, p_pago, p_repartidor,
+          case when p_pago = 'tarjeta' then now() end,
+          (select id from customers where phone = p_telefono))
+  returning id into v_id;
+  update orders set platform_markup = 1 where id = v_id;
+  insert into sales (business_id, order_id, total, shipping, platform_markup, status, source, sold_at)
+  values (p_local, v_id, 13, 2, 1, 'completada', 'tienda', now());
+  return v_id;
+end;
+$f$;
+
+-- Una incidencia abierta, con el reparto que calcula la base al reportar.
+create or replace function pg_temp.verif_incidencia(p_local uuid, p_pedido uuid, p_tipo text,
+  p_local_c integer, p_umbani_c integer, p_reparto_c integer)
+returns uuid
+language plpgsql
+as $f$
+declare
+  v_id uuid;
+begin
+  insert into order_incidents (business_id, order_id, courier_id, kind, origin, suggested_cents,
+                               local_cents, umbani_cents, reparto_cents)
+  select p_local, p_pedido, o.courier_id, p_tipo,
+         case when p_tipo in ('falta_producto', 'vino_mal', 'no_llego') then 'cliente' else 'superadmin' end,
+         coalesce(p_local_c, 0) + coalesce(p_umbani_c, 0) + coalesce(p_reparto_c, 0),
+         p_local_c, p_umbani_c, p_reparto_c
+    from orders o where o.id = p_pedido
+  returning id into v_id;
+  return v_id;
+end;
+$f$;
+
+-- Los ajustes de una incidencia, como «parte:concepto:centavos» ordenados.
+create or replace function pg_temp.verif_ajustes(p_incidencia uuid)
+returns text
+language sql
+as $f$
+  select coalesce(string_agg(party || ':' || concepto || ':' || cents, ' ' order by party, concepto), '')
+    from settlement_adjustments where incident_id = p_incidencia
+$f$;
+
+do $culpa$
+declare
+  v_local uuid; v_moto uuid; v_propio uuid; v_cliente uuid;
+  v_ped uuid; v_inc uuid; v_r jsonb; v_efecto jsonb;
+begin
+  insert into businesses (slug, name, type, whatsapp_provider, whatsapp_number, ycloud_number, takes_orders, storefront_enabled, delivery_by)
+  values ('verif-culpa', 'Culpa', 'pizzería', 'ycloud', '+593900779000', '+593900779000', true, true, 'umbani') returning id into v_local;
+  update businesses set city_id = pg_temp.chone() where id = v_local;
+  insert into couriers (phone, name, city_id) values ('593900779100', 'Moto de Umbani', pg_temp.chone()) returning id into v_moto;
+  insert into couriers (phone, name, fleet_business_id) values ('593900779101', 'Repartidor del local', v_local) returning id into v_propio;
+  insert into customers (phone, name) values ('593900779200', 'Cliente ausente') returning id into v_cliente;
+
+  -- ── 1. Faltó la gaseosa: responde el LOCAL → se le cobra su parte ────────
+  v_ped := pg_temp.verif_entregado(v_local, 'efectivo', null, '593900779201');
+  v_inc := pg_temp.verif_incidencia(v_local, v_ped, 'falta_producto', 100, 10, 0);
+  v_efecto := public.efecto_de_la_incidencia(v_inc, 'local', 110);
+  v_r := public.resolve_incident(v_inc, 'resuelta', 'local', 110, 'El local olvidó la gaseosa', 'superadmin');
+  if pg_temp.verif_ajustes(v_inc) <> 'local:reclamo:-100' then
+    raise exception 'faltó la gaseosa y responde el local: esperaba local -100, quedó «%»', pg_temp.verif_ajustes(v_inc);
+  end if;
+  if jsonb_array_length(v_r -> 'ajustes') <> 1 or v_efecto -> 'ajustes' <> v_r -> 'ajustes' then
+    raise exception 'lo que se vio antes de confirmar no es lo que se aplicó: % vs %', v_efecto, v_r;
+  end if;
+  if not exists (select 1 from money_audit_log where action = 'ajuste_por_incidencia' and target_id = v_inc::text) then
+    raise exception 'el ajuste no quedó en el registro de dinero';
+  end if;
+  -- Una vez: aplicarlo otra vez no duplica, y resuelta no se reescribe.
+  perform public.aplicar_ajustes_de_la_incidencia(v_inc);
+  if (select count(*) from settlement_adjustments where incident_id = v_inc) <> 1 then
+    raise exception 'el ajuste se aplicó dos veces';
+  end if;
+  if public.resolve_incident(v_inc, 'resuelta', 'umbani', 110, 'Otra vez', 'superadmin') ->> 'result' <> 'ya_resuelta' then
+    raise exception 'se pudo resolver dos veces';
+  end if;
+
+  -- Si se compensa MENOS de lo sugerido, la comisión que devuelve Umbani baja
+  -- en proporción: de $0,60, Umbani pone $0,05 y el local $0,55.
+  v_ped := pg_temp.verif_entregado(v_local, 'efectivo', null, '593900779209');
+  v_inc := pg_temp.verif_incidencia(v_local, v_ped, 'falta_producto', 100, 10, 0);
+  perform public.resolve_incident(v_inc, 'resuelta', 'local', 60, 'Solo la mitad', 'superadmin');
+  if pg_temp.verif_ajustes(v_inc) <> 'local:reclamo:-55' then
+    raise exception 'compensar $0,60: esperaba local -55, quedó «%»', pg_temp.verif_ajustes(v_inc);
+  end if;
+
+  -- ── 2. Responde el repartidor de UMBANI → a él; el del LOCAL → al local ──
+  v_ped := pg_temp.verif_entregado(v_local, 'efectivo', v_moto, '593900779202');
+  v_inc := pg_temp.verif_incidencia(v_local, v_ped, 'vino_mal', 100, 10, 0);
+  perform public.resolve_incident(v_inc, 'resuelta', 'repartidor', 110, 'Se aplastó en el camino', 'superadmin');
+  if pg_temp.verif_ajustes(v_inc) <> 'motorizado:reclamo:-100'
+     or (select courier_id from settlement_adjustments where incident_id = v_inc) <> v_moto then
+    raise exception 'responde el repartidor de Umbani: esperaba motorizado -100, quedó «%»', pg_temp.verif_ajustes(v_inc);
+  end if;
+  v_ped := pg_temp.verif_entregado(v_local, 'efectivo', v_propio, '593900779203');
+  v_inc := pg_temp.verif_incidencia(v_local, v_ped, 'vino_mal', 100, 10, 0);
+  perform public.resolve_incident(v_inc, 'resuelta', 'repartidor', 110, 'Su repartidor la aplastó', 'superadmin');
+  if pg_temp.verif_ajustes(v_inc) <> 'local:reclamo:-100' then
+    raise exception 'el repartidor de la flota del local lo paga el local, quedó «%»', pg_temp.verif_ajustes(v_inc);
+  end if;
+
+  -- ── 3. Responde UMBANI → lo absorbe: ningún ajuste ───────────────────────
+  v_ped := pg_temp.verif_entregado(v_local, 'efectivo', null, '593900779204');
+  v_inc := pg_temp.verif_incidencia(v_local, v_ped, 'falta_producto', 100, 10, 0);
+  perform public.resolve_incident(v_inc, 'resuelta', 'umbani', 110, 'Fallo de la app', 'superadmin');
+  if pg_temp.verif_ajustes(v_inc) <> '' then raise exception 'Umbani respondía y se le cobró a alguien'; end if;
+
+  -- ── 4. No llegó, con TARJETA: el repartidor paga comida y carrera ────────
+  v_ped := pg_temp.verif_entregado(v_local, 'tarjeta', v_moto, '593900779205');
+  v_inc := pg_temp.verif_incidencia(v_local, v_ped, 'no_llego', 1000, 100, 200);
+  perform public.resolve_incident(v_inc, 'resuelta', 'repartidor', 1300, 'No lo entregó', 'superadmin');
+  if pg_temp.verif_ajustes(v_inc) <> 'motorizado:reclamo:-1200' then
+    raise exception 'no llegó con tarjeta: esperaba motorizado -1200, quedó «%»', pg_temp.verif_ajustes(v_inc);
+  end if;
+
+  -- ── 5. No llegó, en EFECTIVO: se deshace el «cobro» y paga comida+carrera ─
+  -- El libro dice que el repartidor cobró $13,00: no los cobró. Al final paga
+  -- justo la comida: carrera 200 − efectivo 1300 + 1300 − 1200 = −1000.
+  v_ped := pg_temp.verif_entregado(v_local, 'efectivo', v_moto, '593900779206');
+  v_inc := pg_temp.verif_incidencia(v_local, v_ped, 'no_llego', 1000, 100, 200);
+  perform public.resolve_incident(v_inc, 'resuelta', 'repartidor', 0, 'Dijo que cobró y no entregó', 'superadmin');
+  if pg_temp.verif_ajustes(v_inc) <> 'motorizado:no_cobro:1300 motorizado:reclamo:-1200' then
+    raise exception 'no llegó en efectivo: quedó «%»', pg_temp.verif_ajustes(v_inc);
+  end if;
+  -- Si respondía UMBANI, solo se deshace el cobro: él no tenía la culpa.
+  v_ped := pg_temp.verif_entregado(v_local, 'efectivo', v_moto, '593900779207');
+  v_inc := pg_temp.verif_incidencia(v_local, v_ped, 'no_llego', 1000, 100, 200);
+  perform public.resolve_incident(v_inc, 'resuelta', 'umbani', 0, 'Falló la app', 'superadmin');
+  if pg_temp.verif_ajustes(v_inc) <> 'motorizado:no_cobro:1300' then
+    raise exception 'no llegó en efectivo y respondía Umbani: quedó «%»', pg_temp.verif_ajustes(v_inc);
+  end if;
+
+  -- ── 6. Antes de entregar: la comida perdida se le reconoce al local ──────
+  insert into orders (business_id, contact_phone, source, status, fulfillment, subtotal, shipping, total, payment_method, courier_id, customer_id)
+  values (v_local, '593900779200', 'manual', 'cancelado', 'delivery', 10, 2, 13, 'efectivo', v_moto, v_cliente) returning id into v_ped;
+  v_inc := pg_temp.verif_incidencia(v_local, v_ped, 'comida_caida', null, null, null);
+  perform public.resolve_incident(v_inc, 'resuelta', 'repartidor', 1000, 'Se le cayó en la moto', 'superadmin');
+  if pg_temp.verif_ajustes(v_inc) <> 'local:comida_reconocida:1000 motorizado:comida_cobrada:-1000' then
+    raise exception 'comida caída: quedó «%»', pg_temp.verif_ajustes(v_inc);
+  end if;
+  v_inc := pg_temp.verif_incidencia(v_local, v_ped, 'accidente', null, null, null);
+  perform public.resolve_incident(v_inc, 'resuelta', 'umbani', 1000, 'Lo atropellaron', 'superadmin');
+  if pg_temp.verif_ajustes(v_inc) <> 'local:comida_reconocida:1000' then
+    raise exception 'accidente: quedó «%»', pg_temp.verif_ajustes(v_inc);
+  end if;
+  v_inc := pg_temp.verif_incidencia(v_local, v_ped, 'comida_caida', null, null, null);
+  perform public.resolve_incident(v_inc, 'resuelta', 'local', 1000, 'La tiró el local', 'superadmin');
+  if pg_temp.verif_ajustes(v_inc) <> '' then raise exception 'respondía el local y se le «reconoció» su propia comida'; end if;
+
+  -- ── 7. El cliente no estaba (efectivo): la pone Umbani y se le bloquea ───
+  v_inc := pg_temp.verif_incidencia(v_local, v_ped, 'cliente_ausente', null, null, null);
+  perform public.resolve_incident(v_inc, 'resuelta', 'cliente', 1000, 'No abrió la puerta', 'superadmin');
+  if pg_temp.verif_ajustes(v_inc) <> 'local:comida_reconocida:1000' then
+    raise exception 'cliente ausente: quedó «%»', pg_temp.verif_ajustes(v_inc);
+  end if;
+  if (select blocked_at is null or blocked_kind <> 'manual' or blocked_reason not like '%#%' from customers where id = v_cliente) then
+    raise exception 'el cliente que no estaba no quedó bloqueado';
+  end if;
+
+  -- ── 8. Una compensada al instante: al confirmar, se cobra ────────────────
+  v_ped := pg_temp.verif_entregado(v_local, 'efectivo', null, '593900779208');
+  v_inc := pg_temp.verif_incidencia(v_local, v_ped, 'falta_producto', 100, 10, 0);
+  update order_incidents set status = 'compensada', compensation_cents = 110, compensated_at = now(), auto_approved = true where id = v_inc;
+  perform public.resolve_incident(v_inc, 'resuelta', 'local', -1, 'El local la olvidó', 'superadmin');
+  if pg_temp.verif_ajustes(v_inc) <> 'local:reclamo:-100' then
+    raise exception 'confirmar una compensada no cobró al local: quedó «%»', pg_temp.verif_ajustes(v_inc);
+  end if;
+
+  -- ── 9. El saldo en curso del local ya los cuenta ─────────────────────────
+  if (select ajustes_cents from public.settlement_balances(v_local))
+     <> (select sum(cents) from settlement_adjustments where business_id = v_local and party = 'local') then
+    raise exception 'el saldo en curso no suma los ajustes: %', (select row_to_json(b) from public.settlement_balances(v_local) b);
+  end if;
+  if (public.courier_balance(v_moto) ->> 'ajustesCents')::int
+     <> (select sum(cents) from settlement_adjustments where courier_id = v_moto) then
+    raise exception 'la semana del repartidor no dice sus ajustes: %', public.courier_balance(v_moto);
+  end if;
+end;
+$culpa$;
+
+-- ── El cierre del lunes los liquida (y una vez) ───────────────────────────
+-- Todo se lleva a una semana de marzo ya terminada, con el corte adelantado.
+create or replace function public.liquidacion_semanal_desde()
+returns date language sql stable set search_path = public, pg_temp
+as $x$ select date '2026-03-02' $x$;
+
+do $culpa_cierre$
+declare
+  v_local uuid := (select id from businesses where slug = 'verif-culpa');
+  v_moto uuid := (select id from couriers where phone = '593900779100');
+  v_ajustes_local integer; v_ajustes_moto integer;
+  v_s public.settlements%rowtype; v_cs public.courier_settlements%rowtype;
+begin
+  update settlement_adjustments set created_at = '2026-03-04 12:00-05' where business_id = v_local;
+  update order_ledger set sold_at = '2026-03-04 12:00-05' where business_id = v_local;
+  select sum(cents) into v_ajustes_local from settlement_adjustments where business_id = v_local and party = 'local';
+  select sum(cents) into v_ajustes_moto from settlement_adjustments where courier_id = v_moto;
+
+  perform public.close_weekly_settlements('2026-03-02');
+  perform public.close_weekly_courier_settlements('2026-03-02');
+
+  select * into v_s from settlements where business_id = v_local and period_start = '2026-03-02' and party = 'local';
+  if v_s.id is null or v_s.ajustes_cents <> v_ajustes_local
+     or v_s.neto_cents <> v_s.derecho_cents - v_s.en_mano_cents + v_s.arrastre_cents - v_s.cuota_cents + v_s.ajustes_cents then
+    raise exception 'el cierre del local no liquidó sus ajustes (%): %', v_ajustes_local, row_to_json(v_s);
+  end if;
+  select * into v_cs from courier_settlements where courier_id = v_moto and period_start = '2026-03-02';
+  if v_cs.id is null or v_cs.ajustes_cents <> v_ajustes_moto then
+    raise exception 'el cierre del repartidor no liquidó sus ajustes (%): %', v_ajustes_moto, row_to_json(v_cs);
+  end if;
+  if exists (select 1 from settlement_adjustments where business_id = v_local
+              and ((party = 'local' and settlement_id is null) or (party = 'motorizado' and courier_settlement_id is null))) then
+    raise exception 'quedaron ajustes sin liquidar';
+  end if;
+  -- Ya liquidados: el saldo en curso ya no los cuenta.
+  if coalesce((select ajustes_cents from public.settlement_balances(v_local)), 0) <> 0 then
+    raise exception 'un ajuste ya liquidado siguió en el saldo en curso';
+  end if;
+end;
+$culpa_cierre$;
+
+create or replace function public.liquidacion_semanal_desde()
+returns date language sql stable set search_path = public, pg_temp
+as $x$ select date '2026-09-28' $x$;
+
+select '✅ que pague quien tuvo la culpa: reclamos al local o al repartidor (menos la comisión), no llegó en efectivo deshace el cobro, la comida perdida se le reconoce al local, el cliente ausente se bloquea, una vez, y el lunes lo liquida' as resultado;

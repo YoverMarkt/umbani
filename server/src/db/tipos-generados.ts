@@ -1066,6 +1066,7 @@ export type Database = {
       }
       courier_settlements: {
         Row: {
+          ajustes_cents: number
           arrastre_cents: number
           courier_id: string
           created_at: string
@@ -1082,6 +1083,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          ajustes_cents?: number
           arrastre_cents?: number
           courier_id: string
           created_at?: string
@@ -1098,6 +1100,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          ajustes_cents?: number
           arrastre_cents?: number
           courier_id?: string
           created_at?: string
@@ -3755,8 +3758,94 @@ export type Database = {
         }
         Relationships: []
       }
+      settlement_adjustments: {
+        Row: {
+          business_id: string
+          cents: number
+          concepto: string
+          courier_id: string | null
+          courier_settlement_id: string | null
+          created_at: string
+          id: string
+          incident_id: string
+          order_id: string
+          party: string
+          settlement_id: string | null
+        }
+        Insert: {
+          business_id: string
+          cents: number
+          concepto: string
+          courier_id?: string | null
+          courier_settlement_id?: string | null
+          created_at?: string
+          id?: string
+          incident_id: string
+          order_id: string
+          party: string
+          settlement_id?: string | null
+        }
+        Update: {
+          business_id?: string
+          cents?: number
+          concepto?: string
+          courier_id?: string | null
+          courier_settlement_id?: string | null
+          created_at?: string
+          id?: string
+          incident_id?: string
+          order_id?: string
+          party?: string
+          settlement_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "settlement_adjustments_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "settlement_adjustments_courier_id_fkey"
+            columns: ["courier_id"]
+            isOneToOne: false
+            referencedRelation: "couriers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "settlement_adjustments_courier_settlement_id_fkey"
+            columns: ["courier_settlement_id"]
+            isOneToOne: false
+            referencedRelation: "courier_settlements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "settlement_adjustments_incident_fk"
+            columns: ["incident_id", "business_id"]
+            isOneToOne: false
+            referencedRelation: "order_incidents"
+            referencedColumns: ["id", "business_id"]
+          },
+          {
+            foreignKeyName: "settlement_adjustments_order_fk"
+            columns: ["order_id", "business_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id", "business_id"]
+          },
+          {
+            foreignKeyName: "settlement_adjustments_settlement_fk"
+            columns: ["settlement_id", "business_id"]
+            isOneToOne: false
+            referencedRelation: "settlements"
+            referencedColumns: ["id", "business_id"]
+          },
+        ]
+      }
       settlements: {
         Row: {
+          ajustes_cents: number
           arrastre_cents: number
           billing_id: string | null
           business_id: string
@@ -3777,6 +3866,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          ajustes_cents?: number
           arrastre_cents?: number
           billing_id?: string | null
           business_id: string
@@ -3797,6 +3887,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          ajustes_cents?: number
           arrastre_cents?: number
           billing_id?: string | null
           business_id?: string
@@ -4006,6 +4097,10 @@ export type Database = {
           p_motivo: string
           p_order_number: number
         }
+        Returns: Json
+      }
+      aplicar_ajustes_de_la_incidencia: {
+        Args: { p_incident_id: string }
         Returns: Json
       }
       apply_business_menu: {
@@ -4235,6 +4330,14 @@ export type Database = {
       distancia_km: {
         Args: { lat1: number; lat2: number; lng1: number; lng2: number }
         Returns: number
+      }
+      efecto_de_la_incidencia: {
+        Args: {
+          p_compensation_cents: number
+          p_incident_id: string
+          p_responsible: string
+        }
+        Returns: Json
       }
       enqueue_outbox_event: {
         Args: {
@@ -4768,6 +4871,7 @@ export type Database = {
       settlement_balances: {
         Args: { p_business_id?: string }
         Returns: {
+          ajustes_cents: number
           arrastre_cents: number
           business_id: string
           business_name: string
