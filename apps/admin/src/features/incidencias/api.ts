@@ -38,6 +38,10 @@ export type Incidencia = {
   ajustes: Ajuste[]
   /** En lo perdido antes de entregar: la comida que se propone reconocerle al local. */
   comidaSugeridaCents: number | null
+  /** «No estaba» (2026-10-12): hasta cuándo solo paga por adelantado (ya no se bloquea). */
+  soloPorAdelantadoHasta: string | null
+  /** Si Umbani se lo levantó antes: cuándo y quién. */
+  restriccionLevantada: { en: string; por: string | null } | null
 }
 
 /**
@@ -112,6 +116,14 @@ export const resolverIncidencia = (id: string, datos: { estado: 'resuelta' | 'de
 
 /** Lo que pasaría al resolver, sin escribir nada (2026-10-12). */
 export const getEfecto = (id: string, responsable: Responsable, compensacionCents: number) =>
-  api<{ ajustes?: Ajuste[]; bloquea?: boolean }>(
+  api<{ ajustes?: Ajuste[]; soloPorAdelantado?: boolean; diasSoloPorAdelantado?: number | null }>(
     `/api/admin/incidencias/${id}/efecto?responsable=${responsable}&compensacionCents=${compensacionCents}`,
-  ).then(r => ({ ajustes: r?.ajustes ?? [], bloquea: r?.bloquea === true }))
+  ).then(r => ({
+    ajustes: r?.ajustes ?? [],
+    soloPorAdelantado: r?.soloPorAdelantado === true,
+    diasSoloPorAdelantado: r?.diasSoloPorAdelantado ?? null,
+  }))
+
+/** Umbani le levanta antes el «solo por adelantado» a quien no estaba (2026-10-12). */
+export const levantarSoloAdelantado = (id: string) =>
+  api<{ ok: true }>(`/api/admin/incidencias/${id}/levantar`, { method: 'POST' })

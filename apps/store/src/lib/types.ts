@@ -353,7 +353,7 @@ export interface TrackedOrder {
 /** Si el cliente dijo «Todo bien», su reclamo, y hasta cuándo puede reclamar. */
 export interface ConfirmacionDelPedido {
   todoBien: boolean
-  /** null = ya no puede (no se entregó, ya reclamó, o pasaron 48 h). */
+  /** null = ya no puede (no se entregó, ya reclamó, o ya pasó el plazo, 1 hora). */
   reclamableHasta: string | null
   reclamo: {
     tipo: 'falta_producto' | 'vino_mal' | 'no_llego'

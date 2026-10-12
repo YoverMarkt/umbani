@@ -183,8 +183,11 @@ uno que no existe.
 ## 5b. Reportar un problema y el saldo Umbani (2026-10-10)
 
 **Todo empieza cuando el cliente reporta.** Si no dice nada, todo llegó bien:
-no le pidas confirmar. En un pedido entregado, durante 48 horas
-(`confirmacion.reclamableHasta`), la app ofrece «¿Algún problema con tu pedido?».
+no le pidas confirmar. En un pedido entregado, durante la primera hora
+(2026-10-12; antes eran 48: en comida, un reclamo de dos días después no se
+puede comprobar), la app ofrece «¿Algún problema con tu pedido?». El plazo es
+un ajuste del servidor: no lo cuentes en la app, usa
+`confirmacion.reclamableHasta` (null = ya no).
 
 1. **Qué pasó:** `falta_producto` y `vino_mal` (con qué líneas y cuántas
    unidades) o `no_llego`.

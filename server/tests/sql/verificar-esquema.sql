@@ -8317,18 +8317,29 @@ begin
     raise exception '«no llegó» en efectivo devolvió algo que el cliente nunca pagó';
   end if;
 
-  -- ── 7. Pasadas 48 h, ya no ───────────────────────────────────────────────
+  -- ── 7. Pasada la hora, ya no (2026-10-12: antes, 48 h) ───────────────────
   execute v_crear_pedido using v_local into v_tarde;
   update orders set status = 'completado' where id = v_tarde;
-  update sales set sold_at = now() - interval '49 hours' where order_id = v_tarde;
+  update sales set sold_at = now() - interval '61 minutes' where order_id = v_tarde;
   if not exists (select 1 from sales where order_id = v_tarde) then
     insert into order_events (business_id, order_id, from_status, to_status, created_at)
-    values (v_local, v_tarde, 'preparacion', 'completado', now() - interval '49 hours');
-    update orders set updated_at = now() - interval '49 hours' where id = v_tarde;
+    values (v_local, v_tarde, 'preparacion', 'completado', now() - interval '61 minutes');
+    update orders set updated_at = now() - interval '61 minutes' where id = v_tarde;
   end if;
-  if public.customer_report_order(v_tarde, '593900123200', 'no_llego', '[]', null) ->> 'result' <> 'fuera_de_plazo' then
-    raise exception 'se reclamó pasadas las 48 horas';
+  v_r := public.customer_report_order(v_tarde, '593900123200', 'no_llego', '[]', null);
+  if v_r ->> 'result' <> 'fuera_de_plazo' or (v_r ->> 'plazoMinutos')::integer <> 60 then
+    raise exception 'se reclamó pasada la hora: %', v_r;
   end if;
+  -- El plazo vive en `server_settings` y se cambia sin publicar app; acotado
+  -- para que un valor absurdo no lo apague ni lo deje abierto días.
+  insert into server_settings (key, value) values ('reclamo_plazo_minutos', '120')
+  on conflict (key) do update set value = excluded.value;
+  if public.plazo_de_reclamo_minutos() <> 120 then raise exception 'el plazo no lee su ajuste'; end if;
+  update server_settings set value = '1' where key = 'reclamo_plazo_minutos';
+  if public.plazo_de_reclamo_minutos() <> 5 then raise exception 'el plazo baja de 5 minutos'; end if;
+  update server_settings set value = '999999' where key = 'reclamo_plazo_minutos';
+  if public.plazo_de_reclamo_minutos() <> 2880 then raise exception 'el plazo pasa de 48 horas'; end if;
+  delete from server_settings where key = 'reclamo_plazo_minutos';
 
   -- ── 8. «Todo bien», una vez ──────────────────────────────────────────────
   v_r := public.customer_confirm_order(v_tarde, '593900123200');
@@ -8369,7 +8380,7 @@ begin
 end;
 $incidencias$;
 
-select '✅ incidencias: el cliente reclama una vez, en 48 h y solo lo suyo; la base calcula lo que le corresponde; resuelta no se reescribe' as resultado;
+select '✅ incidencias: el cliente reclama una vez, en la primera hora (ajustable) y solo lo suyo; la base calcula lo que le corresponde; resuelta no se reescribe' as resultado;
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- EL SALDO UMBANI (2026-10-10, fase 2 de las incidencias, parte 1)
@@ -9240,14 +9251,57 @@ begin
   perform public.resolve_incident(v_inc, 'resuelta', 'local', 1000, 'La tiró el local', 'superadmin');
   if pg_temp.verif_ajustes(v_inc) <> '' then raise exception 'respondía el local y se le «reconoció» su propia comida'; end if;
 
-  -- ── 7. El cliente no estaba (efectivo): la pone Umbani y se le bloquea ───
+  -- ── 7. El cliente no estaba (efectivo): la pone Umbani, y desde el
+  --       2026-10-12 no se le bloquea: 90 días solo paga por adelantado ─────
   v_inc := pg_temp.verif_incidencia(v_local, v_ped, 'cliente_ausente', null, null, null);
+  v_efecto := public.efecto_de_la_incidencia(v_inc, 'cliente', 1000);
+  if (v_efecto ->> 'soloPorAdelantado')::boolean is not true or (v_efecto ->> 'diasSoloPorAdelantado')::integer <> 90 then
+    raise exception 'el efecto no avisa que solo pagará por adelantado: %', v_efecto;
+  end if;
+  if (public.escalera_del_cliente(v_cliente) ->> 'escalon')::integer = 3 then
+    raise exception 'antes de resolver ya pagaba solo por adelantado';
+  end if;
   perform public.resolve_incident(v_inc, 'resuelta', 'cliente', 1000, 'No abrió la puerta', 'superadmin');
   if pg_temp.verif_ajustes(v_inc) <> 'local:comida_reconocida:1000' then
     raise exception 'cliente ausente: quedó «%»', pg_temp.verif_ajustes(v_inc);
   end if;
-  if (select blocked_at is null or blocked_kind <> 'manual' or blocked_reason not like '%#%' from customers where id = v_cliente) then
-    raise exception 'el cliente que no estaba no quedó bloqueado';
+  if (select blocked_at from customers where id = v_cliente) is not null then
+    raise exception 'el cliente que no estaba quedó bloqueado: ahora solo paga por adelantado';
+  end if;
+  if (select prepaid_only_until from order_incidents where id = v_inc) not between now() + interval '89 days' and now() + interval '91 days' then
+    raise exception 'el «solo por adelantado» no dura 90 días';
+  end if;
+  v_r := public.escalera_del_cliente(v_cliente);
+  if (v_r ->> 'escalon')::integer <> 3 or not (v_r -> 'motivos') ? 'no_estaba' then
+    raise exception 'el cliente que no estaba debía pagar solo por adelantado: %', v_r;
+  end if;
+  -- Umbani lo levanta antes: vuelve a pagar como quiera; y una vez.
+  if public.levantar_solo_adelantado(v_inc, 'superadmin:verif@umbani.ec') ->> 'result' <> 'ok' then
+    raise exception 'no se pudo levantar el «solo por adelantado»';
+  end if;
+  if (public.escalera_del_cliente(v_cliente) ->> 'escalon')::integer = 3 then
+    raise exception 'levantado, seguía pagando solo por adelantado';
+  end if;
+  if (select restriction_lifted_by from order_incidents where id = v_inc) <> 'superadmin:verif@umbani.ec' then
+    raise exception 'levantar no dejó quién fue';
+  end if;
+  if public.levantar_solo_adelantado(v_inc, 'x') ->> 'result' <> 'no_activa' then
+    raise exception 'se levantó dos veces';
+  end if;
+  -- Solo se levanta un «no estaba»: un accidente no tiene nada que levantar.
+  if public.levantar_solo_adelantado(
+       (select id from order_incidents where order_id = v_ped and kind = 'accidente' limit 1), 'x') ->> 'result' <> 'no_activa' then
+    raise exception 'se «levantó» algo que no era un no estaba';
+  end if;
+  -- Y vencido, ya no cuenta.
+  v_inc := pg_temp.verif_incidencia(v_local, v_ped, 'cliente_ausente', null, null, null);
+  perform public.resolve_incident(v_inc, 'resuelta', 'cliente', 0, 'Otra vez no estaba', 'superadmin');
+  if (public.escalera_del_cliente(v_cliente) ->> 'escalon')::integer <> 3 then
+    raise exception 'un segundo no estaba no lo puso solo por adelantado';
+  end if;
+  update order_incidents set prepaid_only_until = now() - interval '1 minute' where id = v_inc;
+  if (public.escalera_del_cliente(v_cliente) ->> 'escalon')::integer = 3 then
+    raise exception 'vencidos los 90 días, seguía pagando solo por adelantado';
   end if;
 
   -- ── 8. Una compensada al instante: al confirmar, se cobra ────────────────
@@ -9316,4 +9370,4 @@ create or replace function public.liquidacion_semanal_desde()
 returns date language sql stable set search_path = public, pg_temp
 as $x$ select date '2026-09-28' $x$;
 
-select '✅ que pague quien tuvo la culpa: reclamos al local o al repartidor (menos la comisión), no llegó en efectivo deshace el cobro, la comida perdida se le reconoce al local, el cliente ausente se bloquea, una vez, y el lunes lo liquida' as resultado;
+select '✅ que pague quien tuvo la culpa: reclamos al local o al repartidor (menos la comisión), no llegó en efectivo deshace el cobro, la comida perdida se le reconoce al local, el cliente ausente paga solo por adelantado 90 días (Umbani lo levanta antes), una vez, y el lunes lo liquida' as resultado;

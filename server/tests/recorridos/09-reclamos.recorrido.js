@@ -9,7 +9,7 @@ import {
 // ═══════════════════════════════════════════════════════════════════════════
 //
 // Como las grandes: el cliente reporta qué faltó, qué vino mal o que no
-// llegó, una vez y en 48 horas. La base calcula lo que le corresponde —lo que
+// llegó, una vez y en la primera hora (2026-10-12; antes, 48). La base calcula lo que le corresponde —lo que
 // pagó por eso— y se le devuelve como SALDO UMBANI (fase 2): lo pequeño al
 // instante si su historial está limpio; lo demás, cuando el superadmin decide
 // quién responde. ⚠️ El ORDEN de las pruebas importa (vitest las corre en el
@@ -71,7 +71,10 @@ describe('«¿Llegó todo bien?»', () => {
     const entregado = await pedidoEntregado(1)
     const visto = await cliente.pedido(entregado.id)
     expect(visto.confirmacion).toMatchObject({ todoBien: false, reclamo: null })
-    expect(new Date(visto.confirmacion.reclamableHasta).getTime()).toBeGreaterThan(Date.now() + 47 * 3600_000)
+    // Una hora desde la entrega (2026-10-12): ni 48, ni sin límite.
+    const quedan = new Date(visto.confirmacion.reclamableHasta).getTime() - Date.now()
+    expect(quedan).toBeGreaterThan(50 * 60_000)
+    expect(quedan).toBeLessThanOrEqual(60 * 60_000)
   })
 
   it('AL INSTANTE: el primer reclamo, pequeño y con el historial limpio, ya es saldo en su app', async () => {

@@ -2211,11 +2211,14 @@ export type Database = {
           order_id: string
           origin: string
           photo_public_id: string | null
+          prepaid_only_until: string | null
           reparto_cents: number | null
           resolution_note: string | null
           resolved_at: string | null
           resolved_by: string | null
           responsible: string | null
+          restriction_lifted_at: string | null
+          restriction_lifted_by: string | null
           review_reasons: string[]
           status: string
           suggested_cents: number
@@ -2238,11 +2241,14 @@ export type Database = {
           order_id: string
           origin: string
           photo_public_id?: string | null
+          prepaid_only_until?: string | null
           reparto_cents?: number | null
           resolution_note?: string | null
           resolved_at?: string | null
           resolved_by?: string | null
           responsible?: string | null
+          restriction_lifted_at?: string | null
+          restriction_lifted_by?: string | null
           review_reasons?: string[]
           status?: string
           suggested_cents?: number
@@ -2265,11 +2271,14 @@ export type Database = {
           order_id?: string
           origin?: string
           photo_public_id?: string | null
+          prepaid_only_until?: string | null
           reparto_cents?: number | null
           resolution_note?: string | null
           resolved_at?: string | null
           resolved_by?: string | null
           responsible?: string | null
+          restriction_lifted_at?: string | null
+          restriction_lifted_by?: string | null
           review_reasons?: string[]
           status?: string
           suggested_cents?: number
@@ -4478,6 +4487,10 @@ export type Database = {
           provider: string
         }[]
       }
+      levantar_solo_adelantado: {
+        Args: { p_actor: string; p_incident_id: string }
+        Returns: Json
+      }
       lineas_del_plato_por_partes: {
         Args: {
           p_business_id: string
@@ -4708,6 +4721,7 @@ export type Database = {
           reparto: number
         }[]
       }
+      plazo_de_reclamo_minutos: { Args: never; Returns: number }
       producto_en_horario: {
         Args: {
           p_ahora?: string

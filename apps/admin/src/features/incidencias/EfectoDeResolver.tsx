@@ -86,14 +86,19 @@ export function EfectoDeResolver({ incidencia, responsable, compensacionCents }:
     return <p className="text-xs text-destructive">No pudimos calcular qué pasará en las liquidaciones. Revisa el monto.</p>
   }
   if (!efecto.data) return <Skeleton className="h-12 w-full" />
-  const { ajustes, bloquea } = efecto.data
+  const { ajustes, soloPorAdelantado, diasSoloPorAdelantado } = efecto.data
   return (
     <div className="space-y-1 rounded-md border bg-muted/40 p-3 text-sm">
       <div className="font-medium text-foreground">Al resolver</div>
       {ajustes.length
         ? ajustes.map(a => <p key={`${a.parte}-${a.concepto}`}>{frase(a, incidencia)}</p>)
         : <p className="text-muted-foreground">{responsable === 'umbani' ? 'Lo pone Umbani: no cambia la liquidación de nadie.' : 'No cambia la liquidación de nadie.'}</p>}
-      {bloquea && <p className="font-medium text-destructive">El cliente quedará bloqueado en Umbani: no podrá hacer más pedidos.</p>}
+      {/* Ya no se le bloquea (2026-10-12): solo paga por adelantado unos días. */}
+      {soloPorAdelantado && (
+        <p className="font-medium text-amber-700 dark:text-amber-400">
+          Durante {diasSoloPorAdelantado ?? 90} días, el cliente solo podrá pagar por adelantado (tarjeta o transferencia).
+        </p>
+      )}
     </div>
   )
 }

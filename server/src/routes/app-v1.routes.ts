@@ -233,7 +233,8 @@ router.get('/api/v1/pedidos/:id', appLimiter, authApp, async (req, res) => {
 
 // ── «¿Llegó todo bien?» (2026-10-06) ─────────────────────────────────────
 // Por el teléfono de la sesión: la base comprueba que el pedido es suyo, que
-// se entregó y que no pasaron 48 horas; y calcula lo que le corresponde.
+// se entregó y que sigue dentro del plazo (1 hora desde el 2026-10-12,
+// ajustable); y calcula lo que le corresponde.
 router.post('/api/v1/pedidos/:id/todo-bien', appLimiter, authApp, async (req, res) => {
   const id = String(req.params.id || '').trim()
   if (!UUID.test(id)) return res.status(404).json({ error: 'No encontramos ese pedido' })

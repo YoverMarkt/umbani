@@ -811,7 +811,7 @@ test('Incidencias: el reclamo del cliente, con el responsable propuesto por la t
   const previas: string[] = []
   await page.route('**/api/admin/incidencias/inc-1/efecto?*', route => {
     previas.push(new URL(route.request().url()).search)
-    return route.fulfill({ json: { ajustes: [{ parte: 'local', cents: -400, concepto: 'reclamo' }], bloquea: false } })
+    return route.fulfill({ json: { ajustes: [{ parte: 'local', cents: -400, concepto: 'reclamo' }], soloPorAdelantado: false } })
   })
   await page.route('**/api/admin/incidencias/inc-1/resolver', async route => {
     decisiones.push(route.request().postDataJSON())
@@ -855,7 +855,7 @@ test('Incidencias: el saldo ya dado al instante solo se confirma, con el monto b
     escalon: 1, motivos: [], fotoUrl: null, ajustes: [], comidaSugeridaCents: null,
   }] } }))
   await page.route('**/api/admin/incidencias/inc-2/efecto?*', route => route.fulfill({
-    json: { ajustes: [{ parte: 'local', cents: -130, concepto: 'reclamo' }], bloquea: false },
+    json: { ajustes: [{ parte: 'local', cents: -130, concepto: 'reclamo' }], soloPorAdelantado: false },
   }))
   await page.route('**/api/admin/incidencias/inc-2/resolver', async route => {
     decisiones.push(route.request().postDataJSON())
@@ -875,7 +875,35 @@ test('Incidencias: el saldo ya dado al instante solo se confirma, con el monto b
   expect(decisiones[0]).toEqual({ estado: 'resuelta', responsable: 'local', compensacionCents: 150, nota: 'El local olvidó la cola' })
 })
 
-test('Incidencias: el cliente no estaba — se le reconoce la comida al local, el cliente queda bloqueado, y lo aplicado se ve', async ({ page }) => {
+test('Incidencias: al cliente que no estaba se le ve hasta cuándo paga solo por adelantado, y se le puede levantar', async ({ page }) => {
+  await seedAdminSession(page)
+  await mockAdminApi(page)
+  const levantadas: string[] = []
+  const enUnMes = new Date(Date.now() + 30 * 86_400_000).toISOString()
+  await page.route('**/api/admin/incidencias?estado=*', route => route.fulfill({ json: { incidencias: [{
+    id: 'inc-9', tipo: 'cliente_ausente', origen: 'superadmin', estado: 'resuelta', responsable: 'cliente', lineas: [],
+    nota: 'No abrió', sugeridoCents: null, compensacionCents: 849, resolucion: 'No estaba', resueltaPor: 'superadmin:yo@umbani.ec',
+    creadaEn: '2026-10-12T12:00:00Z', resueltaEn: '2026-10-12T13:00:00Z',
+    pedido: { id: 'p9', numero: 14, totalCents: 1094, pago: 'efectivo', cliente: 'Ana', telefono: '593991234567' },
+    local: { id: 'b1', nombre: 'Monster Pizza' }, repartidor: null, alInstante: false, saldoDadoEn: null,
+    reparto: { localCents: null, umbaniCents: null, carreraCents: null }, escalon: null, motivos: [], fotoUrl: null,
+    ajustes: [{ parte: 'local', cents: 849, concepto: 'comida_reconocida' }], comidaSugeridaCents: null,
+    soloPorAdelantadoHasta: enUnMes, restriccionLevantada: null,
+  }] } }))
+  await page.route('**/api/admin/incidencias/inc-9/levantar', route => {
+    levantadas.push(route.request().method())
+    return route.fulfill({ json: { ok: true } })
+  })
+
+  await page.goto(`${adminUrl}#/incidencias`)
+  await expect(page.getByText(/Este cliente solo puede pagar por adelantado hasta el/)).toBeVisible()
+  await page.getByRole('button', { name: 'Levantarlo ya' }).click()
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Levantarlo' }).click()
+  await expect.poll(() => levantadas).toEqual(['POST'])
+  await expect(page.getByText('Listo: el cliente ya puede pagar como quiera')).toBeVisible()
+})
+
+test('Incidencias: el cliente no estaba — se le reconoce la comida al local, pasa a pagar solo por adelantado, y lo aplicado se ve', async ({ page }) => {
   await seedAdminSession(page)
   await mockAdminApi(page)
   const decisiones: unknown[] = []
@@ -900,7 +928,7 @@ test('Incidencias: el cliente no estaba — se le reconoce la comida al local, e
       ajustes: [{ parte: 'motorizado', cents: 1094, concepto: 'no_cobro' }, { parte: 'motorizado', cents: -999, concepto: 'reclamo' }] },
   ] } }))
   await page.route('**/api/admin/incidencias/inc-3/efecto?*', route => route.fulfill({
-    json: { ajustes: [{ parte: 'local', cents: 999, concepto: 'comida_reconocida' }], bloquea: true },
+    json: { ajustes: [{ parte: 'local', cents: 999, concepto: 'comida_reconocida' }], soloPorAdelantado: true, diasSoloPorAdelantado: 90 },
   }))
   await page.route('**/api/admin/incidencias/inc-3/resolver', async route => {
     decisiones.push(route.request().postDataJSON())
@@ -920,7 +948,9 @@ test('Incidencias: el cliente no estaba — se le reconoce la comida al local, e
   await expect(ventana.getByRole('combobox', { name: 'Quién responde' })).toContainText('El cliente')
   await expect(ventana.getByLabel('Comida que se le reconoce al local ($)')).toHaveValue('9.99')
   await expect(ventana.getByText('Al local Monster Pizza se le pagarán $9.99 el lunes: la comida que perdió.')).toBeVisible()
-  await expect(ventana.getByText('El cliente quedará bloqueado en Umbani: no podrá hacer más pedidos.')).toBeVisible()
+  // Ya no se le bloquea (2026-10-12): solo paga por adelantado unos días.
+  await expect(ventana.getByText('Durante 90 días, el cliente solo podrá pagar por adelantado (tarjeta o transferencia).')).toBeVisible()
+  await expect(ventana.getByText(/bloqueado/)).toHaveCount(0)
   await ventana.getByLabel('Qué pasó (queda anotado)').fill('No estaba')
   await ventana.getByRole('button', { name: 'Resolver' }).click()
   await expect.poll(() => decisiones.length).toBe(1)

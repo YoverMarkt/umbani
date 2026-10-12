@@ -3,8 +3,9 @@ import type { Database } from '../tipos-generados'
 
 // LAS INCIDENCIAS Y EL «¿LLEGÓ TODO BIEN?» (2026-10-06, fase 1)
 //
-// Las reglas —de quién es el pedido, el plazo de 48 h, una vez por pedido,
-// cuánto le corresponde al cliente— viven en PostgreSQL
+// Las reglas —de quién es el pedido, el plazo para reportar (1 hora desde el
+// 2026-10-12, ajustable), una vez por pedido, cuánto le corresponde al
+// cliente— viven en PostgreSQL
 // (`migration-2026-10-06-incidencias.sql`). Aquí se piden.
 //
 // Fase 2 (2026-10-10, `migration-2026-10-10-saldo-umbani.sql`): lo que el
@@ -20,9 +21,6 @@ const sinError = <T>(r: { data: T; error: { message: string } | null }): T => {
   if (r.error) throw new Error(r.error.message)
   return r.data
 }
-
-/** El plazo para reclamar. ⚠️ La base lo exige igual: aquí solo se enseña hasta cuándo. */
-const PLAZO_MS = 48 * 60 * 60 * 1000
 
 export interface EstadoDelReclamo {
   todoBien: boolean
@@ -59,8 +57,9 @@ const customerCreditBalance = async (customerId: string) => {
 
 /**
  * ¿Esta persona solo puede pagar POR ADELANTADO? Es el escalón 3 de la escalera
- * (dos reclamos rechazados). La base lo exige igual al crear el pedido
- * (2026-10-10); esto es para que la app no le ofrezca el efectivo.
+ * (dos reclamos rechazados, o no estaba para recibir un pedido hace poco). La
+ * base lo exige igual al crear el pedido (2026-10-10); esto es para que la app
+ * no le ofrezca el efectivo.
  */
 const customerPaysUpfrontOnly = async (customerId: string): Promise<boolean> => {
   const datos = leer(sinError(await db.rpc('escalera_del_cliente', { p_customer_id: customerId })))
@@ -70,21 +69,27 @@ const customerPaysUpfrontOnly = async (customerId: string): Promise<boolean> => 
 /**
  * Lo que el cliente ve de cada pedido suyo: si dijo «todo bien», su reclamo
  * y hasta cuándo puede reclamar. De TODOS los pedidos de una lista a la vez:
- * tres consultas, no tres por pedido.
+ * tres consultas, no tres por pedido. ⚠️ El plazo lo exige la base al reportar;
+ * aquí solo se enseña hasta cuándo, con el MISMO ajuste
+ * (`plazo_de_reclamo_minutos`, 2026-10-12: antes eran 48 h escritas aquí).
  */
 const claimStates = async (orders: { id: string; status: string; received_ok_at?: string | null }[]) => {
   const estados = new Map<string, EstadoDelReclamo>()
   const entregados = orders.filter(o => o.status === 'completado').map(o => o.id)
   const reclamos = new Map<string, EstadoDelReclamo['reclamo']>()
   const entregadoEn = new Map<string, string>()
+  let plazoMs = 0
   if (entregados.length) {
-    const [r, v] = await Promise.all([
+    const [r, v, plazo] = await Promise.all([
       db.from('order_incidents').select('order_id, kind, status, suggested_cents, compensation_cents')
         .in('order_id', entregados).eq('origin', 'cliente'),
       db.from('sales').select('order_id, sold_at').in('order_id', entregados),
+      db.rpc('plazo_de_reclamo_minutos'),
     ])
     if (r.error) throw new Error(r.error.message)
     if (v.error) throw new Error(v.error.message)
+    if (plazo.error) throw new Error(plazo.error.message)
+    plazoMs = (Number(plazo.data) || 0) * 60 * 1000
     for (const fila of r.data || []) {
       reclamos.set(fila.order_id, {
         tipo: fila.kind, estado: fila.status, sugeridoCents: fila.suggested_cents, compensacionCents: fila.compensation_cents,
@@ -96,7 +101,7 @@ const claimStates = async (orders: { id: string; status: string; received_ok_at?
   for (const o of orders) {
     const reclamo = reclamos.get(o.id) ?? null
     const desde = entregadoEn.get(o.id)
-    const hasta = desde ? new Date(new Date(desde).getTime() + PLAZO_MS) : null
+    const hasta = desde && plazoMs ? new Date(new Date(desde).getTime() + plazoMs) : null
     estados.set(o.id, {
       todoBien: Boolean(o.received_ok_at),
       reclamo,
@@ -118,6 +123,7 @@ const listIncidents = async (estado: 'abierta' | 'todas', limite = 200) => {
     .select(`id, kind, origin, status, responsible, lines, note, suggested_cents, compensation_cents, resolution_note,
       resolved_by, created_at, resolved_at, order_id, business_id, auto_approved, compensated_at,
       local_cents, umbani_cents, reparto_cents, photo_public_id, escalon, review_reasons,
+      prepaid_only_until, restriction_lifted_at, restriction_lifted_by,
       orders!order_incidents_order_fk(order_number, total, payment_method, contact_name, contact_phone, status, merchant_subtotal),
       businesses(name), couriers(name, cooperative_id, cooperatives(name)),
       settlement_adjustments(party, courier_id, cents, concepto)`)
@@ -152,9 +158,15 @@ const incidentEffect = async (id: string, responsible: string, compensationCents
   })))
   return {
     ajustes: (Array.isArray(datos.ajustes) ? datos.ajustes : []) as { party: string; courierId: string | null; cents: number; concepto: string }[],
-    bloquea: datos.bloquea === true,
+    // El cliente que no estaba ya no se bloquea (2026-10-12): paga solo por adelantado unos días.
+    soloPorAdelantado: datos.soloPorAdelantado === true,
+    diasSoloPorAdelantado: Number(datos.diasSoloPorAdelantado) || null,
   }
 }
+
+/** Umbani levanta antes el «solo por adelantado» de quien no estaba (2026-10-12). */
+const liftPrepaidOnly = async (id: string, actor: string) =>
+  leer(sinError(await db.rpc('levantar_solo_adelantado', { p_incident_id: id, p_actor: actor })))
 
 // ── La cooperativa ─────────────────────────────────────────────────────────
 
@@ -172,5 +184,5 @@ const cooperativeIncidents = async (courierIds: string[]) => {
 
 export {
   confirmOrderReceived, reportOrderProblem, claimStates, customerCreditBalance, customerPaysUpfrontOnly,
-  listIncidents, registerIncident, resolveIncident, incidentEffect, cooperativeIncidents,
+  listIncidents, registerIncident, resolveIncident, incidentEffect, liftPrepaidOnly, cooperativeIncidents,
 }
