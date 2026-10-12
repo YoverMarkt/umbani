@@ -851,6 +851,37 @@ test('un local de demostración lo dice en todo el panel y en su estado de cuent
   await expect(page.getByText(/Estado de cuenta de ejemplo/)).toBeVisible()
 })
 
+// Parte 3 de las incidencias (2026-10-12): en el teléfono, el monto de cada
+// ajuste se ve sin desplazar de lado. De una sola línea, el porqué lo empujaba
+// fuera de la pantalla (lo vio el ejemplo completo del staging).
+test('«Mis pagos» dice el porqué de cada ajuste, y en el teléfono el monto se ve', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockClientApi(page)
+  await page.route('**/api/client/mis-pagos', route => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      demo: false,
+      semana: { pedidos: 2, pedidosTarjeta: 0, tuyoCents: 1698, yaCobrasteCents: 0, deAntesCents: 0, comisionCents: 190, ajustesCents: 599, netoCents: 2297 },
+      pedidos: [],
+      ajustes: [
+        { numero: 12, fecha: '2026-10-12T04:36:00Z', tipo: 'comida_caida', concepto: 'comida_reconocida', cents: 849 },
+        { numero: 11, fecha: '2026-10-12T04:36:00Z', tipo: 'no_llego', concepto: 'reclamo', cents: -250 },
+      ],
+      depositos: [],
+    }),
+  }))
+  await seedClientSession(page)
+  await page.goto(`${clientUrl}#/pagos`)
+  await expect(page.getByText(/Incluye \$5\.99 a tu favor por/)).toBeVisible()
+  await expect(page.getByText('Umbani te paga la comida que perdiste')).toBeVisible()
+  // En un «no llegó» no se dice «lo devuelto al cliente»: en efectivo no se le devolvió nada.
+  await expect(page.getByText('El pedido no llegó: su valor, menos la comisión de Umbani')).toBeVisible()
+  const monto = page.getByText('−$2.50')
+  await expect(monto).toBeVisible()
+  const caja = await monto.boundingBox()
+  expect((caja?.x ?? 0) + (caja?.width ?? 0)).toBeLessThanOrEqual(390)
+})
+
 test('un local de verdad no lleva la franja de demostración', async ({ page }) => {
   await mockClientApi(page)
   await seedClientSession(page)
