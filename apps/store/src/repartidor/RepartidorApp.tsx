@@ -402,7 +402,7 @@ export function PedidoMio({ pedido, liquidaConUmbani, onListo, alFallar }: {
       {llego && (
         <div className="mt-3 space-y-2">
           <p className="texto-cuerpo flex items-center gap-1.5 text-[14px]">
-            <RiTimeLine size={16} className="shrink-0" /> Llegaste a las {horaDe(pedido.llegoEn)}.
+            <RiTimeLine size={16} className="shrink-0" /> Llegaste a las {horaDe(pedido.llegoEn)}
           </p>
           {/* El teléfono del cliente llega SOLO desde «Llegué» (decisión del dueño). */}
           {pedido.entregar.telefono && (
