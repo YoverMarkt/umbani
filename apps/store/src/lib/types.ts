@@ -348,6 +348,13 @@ export interface TrackedOrder {
   events: { to_status: string; created_at: string }[]
   /** «¿Llegó todo bien?» (2026-10-06): lo dice el servidor. */
   confirmacion?: ConfirmacionDelPedido | null
+  /** «Tu repartidor llegó» (2026-10-12): cuándo tocó «Llegué» en la puerta. */
+  arrived_at?: string | null
+  /**
+   * «No se pudo entregar» (2026-10-12): llegó, esperó y no lo encontró. El
+   * estado dice `completado`, pero NO lo recibió: nunca «Entregado».
+   */
+  customer_absent_at?: string | null
 }
 
 /** Si el cliente dijo «Todo bien», su reclamo, y hasta cuándo puede reclamar. */

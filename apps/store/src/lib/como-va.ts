@@ -30,3 +30,15 @@ export const COMO_VA: Record<string, { texto: string; tono: string }> = {
   rechazado: { texto: 'Rechazado', tono: PILL_QUIETO },
   expirado: { texto: 'Expirado', tono: PILL_QUIETO },
 }
+
+/**
+ * Cómo va UN pedido (2026-10-12). Dos cosas que el estado solo no dice:
+ * «Tu repartidor llegó» (está en la puerta) y, sobre todo, «No se pudo
+ * entregar»: quien repartía no lo encontró y cerró el pedido, que viene
+ * `completado` pero NO lo recibió. Decirle «Entregado» sería mentirle.
+ */
+export function comoVa(pedido: { status: string; arrived_at?: string | null; customer_absent_at?: string | null }) {
+  if (pedido.customer_absent_at) return { texto: 'No se pudo entregar', tono: PILL_ATENCION }
+  if (pedido.status === 'en_camino' && pedido.arrived_at) return { texto: 'Tu repartidor llegó', tono: PILL_ACTIVO }
+  return COMO_VA[pedido.status] || { texto: pedido.status, tono: PILL_QUIETO }
+}

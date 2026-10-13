@@ -65,3 +65,46 @@ describe('qué se manda', () => {
     expect(JSON.parse(fetchFalso.mock.calls[1][1].body)).toEqual({ tipo: 'falta_producto', lineas: [{ item: 'l1', cantidad: 1 }], nota: 'Faltó una' })
   })
 })
+
+// ═══════════════════════════════════════════════════════════════════════════
+// «NO ESTABA EL CLIENTE» (2026-10-12)
+// ═══════════════════════════════════════════════════════════════════════════
+// El pedido viene `completado` pero NO lo recibió: nunca «Entregado» ni
+// «¿Llegó todo bien?». Lo único que puede decir es que SÍ estaba.
+
+describe('el pedido que no se le entregó porque no estaba', () => {
+  const noEstaba = (confirmacion: ConfirmacionDelPedido | null): TrackedOrder => ({
+    ...pedido(confirmacion), arrived_at: '2026-10-12T20:05:00Z', customer_absent_at: '2026-10-12T20:16:00Z',
+  })
+  const pintarNoEstaba = async (confirmacion: ConfirmacionDelPedido | null) => {
+    const { LlegoTodoBien } = await import('../src/components/LlegoTodoBien')
+    return renderToStaticMarkup(createElement(LlegoTodoBien, { slug: 'demo', pedido: noEstaba(confirmacion), onCambio: () => {} }))
+  }
+
+  it('dentro del plazo: «No te encontramos» y SOLO «Sí estaba, no me llegó»', async () => {
+    const html = await pintarNoEstaba({ todoBien: false, reclamo: null, reclamableHasta: '2026-10-12T21:16:00Z' })
+    expect(html).toContain('No te encontramos')
+    expect(html).toMatch(/El repartidor llegó a las 3:05/)
+    expect(html).toContain('Sí estaba, no me llegó')
+    expect(html).not.toContain('¿Llegó todo bien?')
+    expect(html).not.toContain('Sí, todo bien')
+    expect(html).not.toContain('Algo salió mal')
+  })
+
+  it('fuera del plazo, solo lo que pasó; con su reclamo, lo de siempre', async () => {
+    const fuera = await pintarNoEstaba({ todoBien: false, reclamo: null, reclamableHasta: null })
+    expect(fuera).toContain('No te encontramos')
+    expect(fuera).not.toContain('Sí estaba, no me llegó')
+    const reclamado = await pintarNoEstaba({ todoBien: false, reclamableHasta: null, reclamo: { tipo: 'no_llego', estado: 'abierta', sugeridoCents: 0, compensacionCents: null } })
+    expect(reclamado).toContain('lo estamos revisando')
+  })
+
+  it('la pastilla de «Mis pedidos» (tienda y /u): nunca «Entregado»; y en la puerta, «Tu repartidor llegó»', async () => {
+    const { comoVa } = await import('../src/lib/como-va')
+    expect(comoVa({ status: 'completado', customer_absent_at: '2026-10-12T20:16:00Z' }).texto).toBe('No se pudo entregar')
+    expect(comoVa({ status: 'en_camino', arrived_at: '2026-10-12T20:05:00Z' }).texto).toBe('Tu repartidor llegó')
+    expect(comoVa({ status: 'en_camino' }).texto).toBe('En camino')
+    expect(comoVa({ status: 'completado' }).texto).toBe('Entregado')
+    expect(comoVa({ status: 'raro' }).texto).toBe('raro')
+  })
+})

@@ -9,9 +9,10 @@ suyo lo registró quien lo dio de alta.
 > 🌐 **La app web de repartidores es la referencia viva** (2026-10-05): abre
 > `https://umbani-pruebas.up.railway.app/r` en el móvil mientras construyes.
 > Hace este recorrido entero —entrar, disponible, tomar, recoger, entregar con
-> el efectivo confirmado, «Mi semana» y las liquidaciones— con la MISMA API, y
+> el efectivo confirmado, «Llegué» y «No estaba el cliente», «Mi semana» y las
+> liquidaciones— con la MISMA API, y
 > su código está en `apps/store/src/repartidor/` (`api.ts` es cada llamada).
-> Una prueba vigila que sus siete rutas estén en `openapi.yaml`. Su sesión va
+> Una prueba vigila que sus nueve rutas estén en `openapi.yaml`. Su sesión va
 > **aparte** de la de cliente, como irán las dos apps Flutter: entrar como
 > repartidor no cierra la sesión de quien pide en el mismo teléfono.
 

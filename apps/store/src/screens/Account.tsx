@@ -11,7 +11,7 @@ import {
 import { Aviso, Boton, EstadoVacio } from '../components/ui'
 import { LlegoTodoBien } from '../components/LlegoTodoBien'
 import { getOrders } from '../lib/api'
-import { COMO_VA, PILL_ACTIVO, PILL_QUIETO } from '../lib/como-va'
+import { comoVa, PILL_ACTIVO } from '../lib/como-va'
 import { money } from '../lib/format'
 import { DIRECCION_DE_UMBANI } from '../lib/umbani'
 import type { Address, Me, TrackedOrder } from '../lib/types'
@@ -247,7 +247,7 @@ export default function Account({
                 && (pedido.status === 'esperando_pago' || pedido.status === 'pago_en_revision')
               const estado = cobrado
                 ? { texto: 'Pago confirmado', tono: PILL_ACTIVO }
-                : COMO_VA[pedido.status] || { texto: pedido.status, tono: PILL_QUIETO }
+                : comoVa(pedido)
               const cuantos = (pedido.order_items || []).length
               return (
                 // ⚠️ Sigue siendo un `div`, no un botón: esta fila no lleva a

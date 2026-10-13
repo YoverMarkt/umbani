@@ -8,7 +8,8 @@ import { Card } from '@botpanel/ui/components/card'
 // Pedida por el dueño: «dejar claro para la cooperativa» cómo se trabaja con
 // Umbani. ⚠️ Solo lo que YA hace la plataforma: lo que aún no existe se dice
 // como «pronto», nunca como si existiera. El descuento al repartidor que
-// respondía en una incidencia existe desde el 2026-10-12.
+// respondía en una incidencia existe desde el 2026-10-12, y «Llegué» y «No
+// estaba el cliente» en su app, también desde el 2026-10-12.
 
 function Bloque({ titulo, children }: { titulo: string; children: ReactNode }) {
   return (
@@ -45,6 +46,11 @@ export default function ComoFunciona() {
         <p>
           Lo entrega y marca «Lo entregué». Si el cliente paga en efectivo, la app le pide confirmar que lo cobró.
           El cliente recibe «llegó».
+        </p>
+        <p>
+          Si el cliente no sale: marca «Llegué a la puerta» y lo llama desde la app (el número aparece desde ese
+          momento). Si a los 10 minutos nadie sale, marca «No estaba el cliente»: el pedido se cierra, cobra su
+          carrera igual y, si era en efectivo, no debe nada por él. La comida se la queda.
         </p>
       </Bloque>
 

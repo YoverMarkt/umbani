@@ -51,6 +51,9 @@ export interface PedidoDeLaApp {
   total: number
   created_at: string
   local: { nombre: string | null; slug: string | null }
+  /** «Tu repartidor llegó» y «No se pudo entregar» (2026-10-12). */
+  arrived_at?: string | null
+  customer_absent_at?: string | null
 }
 
 export class ErrorDeLaApp extends Error {
