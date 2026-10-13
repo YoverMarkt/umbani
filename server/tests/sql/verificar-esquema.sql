@@ -9371,3 +9371,279 @@ returns date language sql stable set search_path = public, pg_temp
 as $x$ select date '2026-09-28' $x$;
 
 select '✅ que pague quien tuvo la culpa: reclamos al local o al repartidor (menos la comisión), no llegó en efectivo deshace el cobro, la comida perdida se le reconoce al local, el cliente ausente paga solo por adelantado 90 días (Umbani lo levanta antes), una vez, y el lunes lo liquida' as resultado;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- «NO ESTABA EL CLIENTE»: QUIEN REPARTE CIERRA EL PEDIDO (2026-10-12)
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Las mismas cuentas de arriba: $13,00 = comida del local $10,00 + carrera
+-- $2,00 + comisión de Umbani $1,00. «Llegué» y, a los 10 minutos, «No estaba
+-- el cliente»: entregado con su marca, sin devolución; en efectivo se deshace
+-- el cobro; la incidencia nace sola y el cliente paga por adelantado 90 días.
+
+-- Un pedido EN CAMINO a domicilio, con la dirección en Chone.
+create or replace function pg_temp.verif_en_camino(p_local uuid, p_pago text, p_repartidor uuid, p_telefono text)
+returns uuid
+language plpgsql
+as $f$
+declare
+  v_id uuid;
+begin
+  insert into customers (phone) values (p_telefono) on conflict do nothing;
+  insert into orders (business_id, contact_phone, source, status, fulfillment, subtotal, shipping, total,
+                      payment_method, courier_id, payment_confirmed_at, customer_id,
+                      delivery_latitude, delivery_longitude)
+  values (p_local, p_telefono, 'manual', 'en_camino', 'delivery', 10, 2, 13, p_pago, p_repartidor,
+          case when p_pago in ('tarjeta', 'transferencia') then now() end,
+          (select id from customers where phone = p_telefono), -0.6950000, -80.0950000)
+  returning id into v_id;
+  update orders set platform_markup = 1 where id = v_id;
+  return v_id;
+end;
+$f$;
+
+-- «Llegué» hace 11 minutos: ya puede marcar que no estaba.
+create or replace function pg_temp.verif_ya_espero(p_pedido uuid)
+returns void
+language sql
+as $f$
+  update orders set arrived_at = now() - interval '11 minutes' where id = p_pedido
+$f$;
+
+do $no_estaba$
+declare
+  v_local uuid; v_ajeno uuid; v_moto uuid; v_otro uuid; v_propio uuid;
+  v_ped uuid; v_r jsonb; v_inc uuid; v_contra uuid; v_encima integer; v_o orders%rowtype;
+  v_l order_ledger%rowtype;
+begin
+  insert into businesses (slug, name, type, whatsapp_provider, whatsapp_number, ycloud_number, takes_orders, storefront_enabled, delivery_by)
+  values ('verif-no-estaba', 'No estaba', 'pizzería', 'ycloud', '+593900880000', '+593900880000', true, true, 'umbani') returning id into v_local;
+  update businesses set city_id = pg_temp.chone() where id = v_local;
+  v_ajeno := (select id from businesses where slug = 'verif-culpa');
+  insert into couriers (phone, name, city_id) values ('593900880100', 'Moto que espera', pg_temp.chone()) returning id into v_moto;
+  insert into couriers (phone, name, city_id) values ('593900880101', 'Otra moto', pg_temp.chone()) returning id into v_otro;
+  insert into couriers (phone, name, fleet_business_id) values ('593900880102', 'Repartidor del local', v_local) returning id into v_propio;
+
+  -- ── 1. Con TARJETA: se cobra sin devolución, como un pedido entregado ────
+  v_ped := pg_temp.verif_en_camino(v_local, 'tarjeta', v_moto, '593900880201');
+  insert into payments (business_id, order_id, environment, client_transaction_id, amount_cents, status)
+  values (v_local, v_ped, 'pruebas', 'noestaba' || replace(gen_random_uuid()::text, '-', ''), 1300, 'aprobado');
+
+  -- Solo quien lo lleva: otro repartidor, el local (lo lleva Umbani), los
+  -- dos a la vez o nadie → «no existe».
+  if public.pedido_llegue(v_ped, v_otro, null) ->> 'result' <> 'not_found'
+     or public.pedido_llegue(v_ped, null, v_local) ->> 'result' <> 'not_found'
+     or public.pedido_llegue(v_ped, v_moto, v_local) ->> 'result' <> 'not_found'
+     or public.pedido_llegue(v_ped, null, null) ->> 'result' <> 'not_found'
+     or public.pedido_cliente_ausente(v_ped, v_otro, null, 'x') ->> 'result' <> 'not_found' then
+    raise exception 'alguien que no lleva el pedido pudo tocar «Llegué» o «No estaba»';
+  end if;
+  if (select arrived_at from orders where id = v_ped) is not null then
+    raise exception 'un intento ajeno dejó marcado «Llegué»';
+  end if;
+
+  -- Sin «Llegué», no hay «No estaba».
+  if public.pedido_cliente_ausente(v_ped, v_moto, null, 'repartidor:verif') ->> 'result' <> 'sin_llegada' then
+    raise exception 'se pudo marcar «no estaba» sin haber llegado';
+  end if;
+  -- Antes de llegar, el repartidor no ve el teléfono del cliente.
+  if (select p -> 'entregar' ->> 'telefono' from jsonb_array_elements(public.courier_orders(v_moto)) p
+       where p ->> 'id' = v_ped::text) is not null then
+    raise exception 'el repartidor veía el teléfono del cliente antes de llegar';
+  end if;
+
+  -- «Llegué» a ~111 m de la dirección (0,001° de longitud en Chone).
+  v_r := public.pedido_llegue(v_ped, v_moto, null, -0.6950000, -80.0960000);
+  if v_r ->> 'result' <> 'ok' or (v_r ->> 'metros')::integer not between 100 and 125
+     or (v_r ->> 'noEstabaDesde')::timestamptz not between now() + interval '9 minutes' and now() + interval '11 minutes' then
+    raise exception '«Llegué» no guardó la distancia o la espera: %', v_r;
+  end if;
+  -- El primer toque cuenta: otro «Llegué» no reinicia la espera ni la distancia.
+  v_r := public.pedido_llegue(v_ped, v_moto, null, -0.7950000, -80.0950000);
+  if (v_r ->> 'metros')::integer not between 100 and 125 then
+    raise exception 'un segundo «Llegué» pisó dónde estaba: %', v_r;
+  end if;
+  -- Desde «Llegué», sí lo ve (para llamarlo en la puerta).
+  if (select p -> 'entregar' ->> 'telefono' from jsonb_array_elements(public.courier_orders(v_moto)) p
+       where p ->> 'id' = v_ped::text) is distinct from '+593900880201' then
+    raise exception 'desde «Llegué» el repartidor debía ver el teléfono del cliente';
+  end if;
+
+  -- Antes de los 10 minutos, la base lo rechaza (aunque llamen a la API).
+  v_r := public.pedido_cliente_ausente(v_ped, v_moto, null, 'repartidor:verif');
+  if v_r ->> 'result' <> 'todavia_no' or v_r ->> 'noEstabaDesde' is null then
+    raise exception 'se pudo marcar «no estaba» antes de esperar: %', v_r;
+  end if;
+  -- Y la espera vive en server_settings: con 30 minutos, 11 no bastan.
+  perform pg_temp.verif_ya_espero(v_ped);
+  insert into server_settings (key, value) values ('no_estaba_espera_minutos', '30')
+    on conflict (key) do update set value = excluded.value;
+  if public.pedido_cliente_ausente(v_ped, v_moto, null, 'repartidor:verif') ->> 'result' <> 'todavia_no' then
+    raise exception 'la espera no se lee de server_settings';
+  end if;
+  delete from server_settings where key = 'no_estaba_espera_minutos';
+
+  v_r := public.pedido_cliente_ausente(v_ped, v_moto, null, 'repartidor:verif');
+  if v_r ->> 'result' <> 'ok' then raise exception '«No estaba» con tarjeta falló: %', v_r; end if;
+  v_inc := (v_r ->> 'incidentId')::uuid;
+  select * into v_o from orders where id = v_ped;
+  if v_o.status <> 'completado' or v_o.customer_absent_at is null then
+    raise exception 'el pedido no quedó entregado con su marca: % %', v_o.status, v_o.customer_absent_at;
+  end if;
+  -- ⚠️ La tarjeta NO se devuelve: el pago sigue aprobado.
+  if (select status from payments where order_id = v_ped) <> 'aprobado' then
+    raise exception 'con «no estaba» la tarjeta se devolvió: %', (select status from payments where order_id = v_ped);
+  end if;
+  -- Su venta y su libro, como cualquier entrega: el local cobra su comida,
+  -- el repartidor su carrera, Umbani su comisión. Ningún ajuste.
+  select * into v_l from order_ledger where order_id = v_ped and kind = 'venta';
+  if v_l.id is null or v_l.local_cents <> 1000 or v_l.reparto_cents <> 200 or v_l.umbani_cents <> 100
+     or v_l.en_mano <> 'umbani' or v_l.reparto_para <> 'motorizado' or v_l.courier_id <> v_moto then
+    raise exception 'el libro del «no estaba» con tarjeta no es el de una entrega: %', row_to_json(v_l);
+  end if;
+  if pg_temp.verif_ajustes(v_inc) <> '' then
+    raise exception 'con tarjeta no hay nada que ajustar, quedó «%»', pg_temp.verif_ajustes(v_inc);
+  end if;
+  -- La incidencia nació sola, resuelta, respondiendo el cliente: 90 días.
+  if not exists (select 1 from order_incidents where id = v_inc and kind = 'cliente_ausente' and origin = 'reparto'
+                   and status = 'resuelta' and responsible = 'cliente' and compensation_cents = 0
+                   and resolved_by = 'repartidor:verif' and courier_id = v_moto and customer_id is not null
+                   and prepaid_only_until between now() + interval '89 days' and now() + interval '91 days') then
+    raise exception 'la incidencia del «no estaba» no nació como debía: %',
+      (select row_to_json(i) from order_incidents i where i.id = v_inc);
+  end if;
+  v_r := public.escalera_del_cliente((select id from customers where phone = '593900880201'));
+  if (v_r ->> 'escalon')::integer <> 3 or not (v_r -> 'motivos') ? 'no_estaba' then
+    raise exception 'quien no estaba debía pagar solo por adelantado: %', v_r;
+  end if;
+  -- …y lo que no recibió no cuenta como recibido.
+  if (v_r ->> 'entregados')::integer <> 0 then
+    raise exception 'la escalera contó como entregado lo que no recibió: %', v_r;
+  end if;
+  if not exists (select 1 from money_audit_log where action = 'pedido_no_estaba' and target_id = v_ped::text) then
+    raise exception 'el «no estaba» no quedó en el registro de dinero';
+  end if;
+  -- Idempotente: el segundo toque no repite nada.
+  v_r := public.pedido_cliente_ausente(v_ped, v_moto, null, 'repartidor:verif');
+  if v_r ->> 'result' <> 'ok' or (v_r ->> 'incidentId')::uuid <> v_inc
+     or (select count(*) from order_incidents where order_id = v_ped) <> 1
+     or (select count(*) from order_ledger where order_id = v_ped) <> 1 then
+    raise exception 'el segundo toque de «no estaba» repitió algo: %', v_r;
+  end if;
+  -- Cerrado, sale de su lista (y con él, el teléfono del cliente).
+  if exists (select 1 from jsonb_array_elements(public.courier_orders(v_moto)) p where p ->> 'id' = v_ped::text) then
+    raise exception 'el pedido cerrado seguía en la lista del repartidor';
+  end if;
+
+  -- «Todo bien» no vale; de lo que no recibió no le faltó nada: solo puede
+  -- decir que SÍ estaba («No me llegó»), y eso va a revisión.
+  if public.customer_confirm_order(v_ped, '593900880201') ->> 'result' <> 'no_entregado' then
+    raise exception '«todo bien» valía en un pedido que no recibió';
+  end if;
+  if public.customer_report_order(v_ped, '593900880201', 'falta_producto',
+       jsonb_build_array(jsonb_build_object('item', gen_random_uuid(), 'cantidad', '1')), null) ->> 'result' <> 'no_estabas' then
+    raise exception 'de un «no estaba» se pudo reportar que faltó algo';
+  end if;
+  v_r := public.customer_report_order(v_ped, '+593900880201', 'no_llego', '[]'::jsonb, 'Sí estaba en la puerta');
+  v_contra := (v_r ->> 'id')::uuid;
+  if v_r ->> 'result' <> 'ok' or v_r ->> 'estado' <> 'abierta' or (v_r ->> 'sugeridoCents')::integer <> 1300
+     or not (select review_reasons from order_incidents where id = v_contra) @> array['dice_que_si_estaba', 'no_llego'] then
+    raise exception 'el «sí estaba» no fue a revisión con su motivo: % %', v_r,
+      (select review_reasons from order_incidents where id = v_contra);
+  end if;
+  -- El repartidor mintió: paga la comida (la regla de «no llegó» con tarjeta).
+  perform public.resolve_incident(v_contra, 'resuelta', 'repartidor', 1300, 'Sí estaba: el repartidor no llegó', 'superadmin');
+  if pg_temp.verif_ajustes(v_contra) <> 'motorizado:reclamo:-1200' then
+    raise exception '«sí estaba» con tarjeta: quedó «%»', pg_temp.verif_ajustes(v_contra);
+  end if;
+
+  -- ── 2. En EFECTIVO: nadie cobró; la comida y la carrera las pone Umbani ──
+  v_ped := pg_temp.verif_en_camino(v_local, 'efectivo', v_moto, '593900880202');
+  v_encima := public.courier_cash_in_hand(v_moto);
+  perform public.pedido_llegue(v_ped, v_moto, null);
+  perform pg_temp.verif_ya_espero(v_ped);
+  v_r := public.pedido_cliente_ausente(v_ped, v_moto, null, 'repartidor:verif');
+  v_inc := (v_r ->> 'incidentId')::uuid;
+  if pg_temp.verif_ajustes(v_inc) <> 'motorizado:no_cobro:1300' then
+    raise exception '«no estaba» en efectivo: esperaba deshacer el cobro de 1300, quedó «%»', pg_temp.verif_ajustes(v_inc);
+  end if;
+  -- Lo que iba a cobrar ya no cuenta para su tope, y lo «cobrado» se deshizo.
+  if public.courier_cash_in_hand(v_moto) <> v_encima - 1300 then
+    raise exception 'el efectivo encima sigue contando lo que no cobró: % (antes %)', public.courier_cash_in_hand(v_moto), v_encima;
+  end if;
+  -- Al final: el repartidor cobra su carrera (200 − 1300 + 1300) y el local
+  -- su comida (1000): los pone Umbani.
+  select * into v_l from order_ledger where order_id = v_ped and kind = 'venta';
+  if v_l.reparto_cents - v_l.en_mano_cents
+       + (select sum(cents) from settlement_adjustments where order_id = v_ped and party = 'motorizado') <> 200
+     or v_l.en_mano <> 'motorizado' or v_l.local_cents <> 1000 then
+    raise exception 'en efectivo el repartidor no termina cobrando su carrera: %', row_to_json(v_l);
+  end if;
+  -- «Sí estaba» en efectivo: el cobro ya se deshizo y NO se deshace otra vez;
+  -- si mintió, paga la comida y la carrera: 200 − 1300 + 1300 − 1200 = −1000.
+  v_r := public.customer_report_order(v_ped, '593900880202', 'no_llego', '[]'::jsonb, null);
+  v_contra := (v_r ->> 'id')::uuid;
+  if (v_r ->> 'sugeridoCents')::integer <> 0 then
+    raise exception 'en efectivo no pagó nada: no hay saldo que devolverle, quedó %', v_r;
+  end if;
+  perform public.resolve_incident(v_contra, 'resuelta', 'repartidor', 0, 'Sí estaba: el repartidor mintió', 'superadmin');
+  if pg_temp.verif_ajustes(v_contra) <> 'motorizado:reclamo:-1200' then
+    raise exception '«sí estaba» en efectivo deshizo el cobro dos veces: quedó «%»', pg_temp.verif_ajustes(v_contra);
+  end if;
+
+  -- ── 3. Con TRANSFERENCIA: el local ya tenía el dinero; nada que deshacer ─
+  v_ped := pg_temp.verif_en_camino(v_local, 'transferencia', v_moto, '593900880203');
+  perform public.pedido_llegue(v_ped, v_moto, null);
+  perform pg_temp.verif_ya_espero(v_ped);
+  v_inc := (public.pedido_cliente_ausente(v_ped, v_moto, null, 'repartidor:verif') ->> 'incidentId')::uuid;
+  if pg_temp.verif_ajustes(v_inc) <> '' then
+    raise exception 'con transferencia no hay cobro que deshacer, quedó «%»', pg_temp.verif_ajustes(v_inc);
+  end if;
+
+  -- ── 4. La flota del LOCAL: lo cierra el local, y la carrera es suya ──────
+  v_ped := pg_temp.verif_en_camino(v_local, 'efectivo', v_propio, '593900880204');
+  if public.pedido_llegue(v_ped, null, v_ajeno) ->> 'result' <> 'not_found' then
+    raise exception 'otro local pudo tocar «Llegué» en un pedido ajeno';
+  end if;
+  if public.pedido_llegue(v_ped, null, v_local) ->> 'result' <> 'ok' then
+    raise exception 'el local no pudo marcar «Llegué» en lo que reparte su flota';
+  end if;
+  perform pg_temp.verif_ya_espero(v_ped);
+  v_r := public.pedido_cliente_ausente(v_ped, null, v_local, 'local:verif@umbani.ec');
+  v_inc := (v_r ->> 'incidentId')::uuid;
+  select * into v_l from order_ledger where order_id = v_ped and kind = 'venta';
+  if v_r ->> 'result' <> 'ok' or v_l.reparto_para <> 'local' or v_l.en_mano <> 'local'
+     or pg_temp.verif_ajustes(v_inc) <> 'local:no_cobro:1300' then
+    raise exception 'flota del local en efectivo: % · libro % · «%»', v_r, row_to_json(v_l), pg_temp.verif_ajustes(v_inc);
+  end if;
+  -- El local termina cobrando comida y carrera: 1000 + 200 − 1300 + 1300.
+  if v_l.local_cents + v_l.reparto_cents - v_l.en_mano_cents + 1300 <> 1200 then
+    raise exception 'el local que reparte no cobra comida y carrera: %', row_to_json(v_l);
+  end if;
+
+  -- ── 5. Sin repartidor: el local que reparte él mismo ─────────────────────
+  v_ped := pg_temp.verif_en_camino(v_local, 'tarjeta', null, '593900880205');
+  if public.pedido_llegue(v_ped, v_moto, null) ->> 'result' <> 'not_found' then
+    raise exception 'un repartidor tocó «Llegué» en un pedido que no lleva';
+  end if;
+  perform public.pedido_llegue(v_ped, null, v_local);
+  perform pg_temp.verif_ya_espero(v_ped);
+  if public.pedido_cliente_ausente(v_ped, null, v_local, 'local:verif@umbani.ec') ->> 'result' <> 'ok' then
+    raise exception 'el local que reparte él mismo no pudo cerrar un «no estaba»';
+  end if;
+
+  -- ── 6. Solo en camino; y la marca no vive en un pedido sin entregar ──────
+  v_ped := pg_temp.verif_en_camino(v_local, 'efectivo', v_moto, '593900880206');
+  update orders set status = 'preparacion' where id = v_ped;
+  if public.pedido_llegue(v_ped, v_moto, null) ->> 'result' <> 'no_en_camino' then
+    raise exception 'se pudo marcar «Llegué» en un pedido que aún no salió';
+  end if;
+  begin
+    update orders set arrived_at = now(), customer_absent_at = now() where id = v_ped;
+    raise exception 'la marca «no estaba» entró en un pedido sin entregar';
+  exception when check_violation then
+    null;
+  end;
+end;
+$no_estaba$;
+
+select '✅ no estaba el cliente: solo quien lo lleva, «Llegué» y 10 minutos (ajustables); entregado sin devolución, en efectivo se deshace el cobro (una vez), la incidencia nace sola con 90 días por adelantado, y el cliente solo puede decir «sí estaba»' as resultado;
