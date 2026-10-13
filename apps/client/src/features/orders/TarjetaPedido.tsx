@@ -7,7 +7,8 @@ import {
   Banknote, Bike, Clock, CreditCard, Landmark, MapPin, Navigation, ShoppingBag, Check, X, FileText, RotateCcw, Wallet,
 } from 'lucide-react'
 import {
-  ACTIVOS, ESTADO_COLOR, ESTADO_TEXTO, confirmOrderPayment, getOrderProof, money, marcarLineaPreparada, requestNewProof, siguientePaso, type Order, type OrderStatus,
+  ACTIVOS, ESTADO_COLOR, ESTADO_TEXTO, confirmOrderPayment, getOrderProof, money, marcarLineaPreparada, marcarLlegada,
+  marcarNoEstaba, requestNewProof, siguientePaso, type Order, type OrderStatus,
 } from './api'
 import { desgloseDelPedido, elPedidoSeCobra, saldoDelPedido } from './dinero-del-pedido'
 import { Alert, AlertDescription, AlertTitle } from '@botpanel/ui/components/alert'
@@ -92,6 +93,24 @@ export function TarjetaPedido({ pedido, ocupado, onCambiar, onRefrescar }: {
   const [abriendo, setAbriendo] = useState(false)
   const [confirmando, setConfirmando] = useState(false)
 
+  // ── «Llegó a la dirección» y «No estaba el cliente» (2026-10-12) ─────────
+  // Solo lo que reparte el propio local (sin repartidor en la app): lo que
+  // lleva un repartidor lo marca él. La base lo vuelve a comprobar.
+  const repartePropio = pedido.status === 'en_camino' && !pedido.courier_id
+  const noEstaba = Boolean(pedido.customer_absent_at)
+  const puerta = useMutation({
+    mutationFn: async (que: 'llegue' | 'no_estaba') => {
+      if (que === 'llegue') await marcarLlegada(pedido.id)
+      else await marcarNoEstaba(pedido.id)
+    },
+    onSuccess: (_r, que) => {
+      if (que === 'no_estaba') toast.success('Pedido cerrado: el cliente no estaba')
+      onRefrescar()
+    },
+    // «Espera al cliente N minutos más…» lo dice el servidor tal cual.
+    onError: (e: Error) => toast.error(e.message || 'No se pudo marcar'),
+  })
+
   // Solo tiene sentido en transferencia y mientras el pedido siga esperando:
   // en efectivo se cobra al entregar, y una vez en preparación el pago ya se
   // dio por bueno al aceptarlo. La ruta lo vuelve a comprobar en el `where`.
@@ -163,8 +182,12 @@ export function TarjetaPedido({ pedido, ocupado, onCambiar, onRefrescar }: {
             {espera(pedido.created_at)} · {hora(pedido.created_at)}
           </div>
         </div>
-        <Badge variant="secondary" className={ESTADO_COLOR[pedido.status]}>
-          {ESTADO_TEXTO[pedido.status]}
+        {/* Entregado con la marca de «no estaba»: no se recibió, no se dice «Entregado». */}
+        <Badge
+          variant="secondary"
+          className={noEstaba ? 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300' : ESTADO_COLOR[pedido.status]}
+        >
+          {noEstaba ? 'Cliente no estaba' : ESTADO_TEXTO[pedido.status]}
         </Badge>
         {/* Un pedido programado no se prepara ahora. Si esto no se ve, la
             cocina lo saca cuatro horas antes de tiempo. */}
@@ -588,6 +611,24 @@ export function TarjetaPedido({ pedido, ocupado, onCambiar, onRefrescar }: {
               confirmLabel={paso.etiqueta}
               onConfirm={() => onCambiar(paso.status)}
             />
+            {repartePropio && !pedido.arrived_at && (
+              <Button variant="outline" size="sm" disabled={ocupado || puerta.isPending} onClick={() => puerta.mutate('llegue')}>
+                <MapPin /> Llegó a la dirección
+              </Button>
+            )}
+            {repartePropio && pedido.arrived_at && (
+              <ConfirmAction
+                trigger={<Button variant="outline" size="sm" disabled={ocupado || puerta.isPending}><X /> No estaba el cliente</Button>}
+                title="El cliente no estaba"
+                description={`Llegó a las ${hora(pedido.arrived_at)}. El pedido se cierra sin devolución: `
+                  + (pedido.payment_method === 'efectivo'
+                    ? 'como el efectivo no se cobró, tu comida y tu carrera las pone Umbani en tu pago del lunes.'
+                    : 'tu comida y tu carrera te llegan como en cualquier entrega.')
+                  + ' No se puede deshacer.'}
+                confirmLabel="Sí, no estaba"
+                onConfirm={() => puerta.mutate('no_estaba')}
+              />
+            )}
             {/* Atajo para quien no reparte: cerrar sin recorrer todo el flujo. */}
             {pedido.status !== 'pendiente' && paso.status !== 'completado' && (
               <ConfirmAction

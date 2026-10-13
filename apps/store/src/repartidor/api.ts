@@ -54,7 +54,12 @@ export interface PedidoDelRepartidor {
    */
   cobrarCents?: number
   recoger: Punto & { local: string | null }
-  entregar: Punto & { cliente: string | null; referencia: string | null; notas: string | null }
+  /** `telefono` (con «+») llega SOLO desde «Llegué» y mientras lo lleva (2026-10-12). */
+  entregar: Punto & { cliente: string | null; referencia: string | null; notas: string | null; telefono?: string | null }
+  /** Cuándo tocó «Llegué» (2026-10-12); null = aún no. */
+  llegoEn?: string | null
+  /** Desde cuándo puede marcar «No estaba el cliente». Los minutos los pone el servidor. */
+  noEstabaDesde?: string | null
 }
 
 export interface Liquidacion {
@@ -85,6 +90,18 @@ export const tomar = (id: string) => paso(`/api/v1/motorizado/pedidos/${encodeUR
 /** 409 si el local aún no termina de empacar: el mensaje dice qué falta. */
 export const recogido = (id: string) => paso(`/api/v1/motorizado/pedidos/${encodeURIComponent(id)}/recogido`)
 export const entregado = (id: string) => paso(`/api/v1/motorizado/pedidos/${encodeURIComponent(id)}/entregado`)
+
+/**
+ * «Llegué» (2026-10-12), con la ubicación del teléfono si la hay: se guarda a
+ * cuántos metros de la dirección estaba. Sin ella funciona igual.
+ */
+export const llegue = async (id: string, ubicacion: { lat: number; lng: number } | null) => {
+  await pedir<{ llegoEn: string; noEstabaDesde: string }>(`/api/v1/motorizado/pedidos/${encodeURIComponent(id)}/llegue`, {
+    metodo: 'POST', cuerpo: ubicacion ?? {}, conSesion: true,
+  })
+}
+/** 409 antes de tiempo: el mensaje dice cuántos minutos faltan. */
+export const noEstaba = (id: string) => paso(`/api/v1/motorizado/pedidos/${encodeURIComponent(id)}/no-estaba`)
 
 export const liquidaciones = async () =>
   (await pedir<{ liquidaciones: Liquidacion[] }>('/api/v1/motorizado/liquidaciones', { conSesion: true })).datos.liquidaciones

@@ -141,3 +141,80 @@ describe('la primera pantalla', () => {
     expect(html).not.toContain('WhatsApp')
   })
 })
+
+// ═══════════════════════════════════════════════════════════════════════════
+// «LLEGUÉ» Y «NO ESTABA EL CLIENTE» (2026-10-12)
+// ═══════════════════════════════════════════════════════════════════════════
+//   1. «Llegué» manda la ubicación SOLO si la hay; sin ella va vacío (no bloquea).
+//   2. El teléfono del cliente se enseña solo si el servidor lo manda (desde «Llegué»).
+//   3. «No estaba el cliente» espera la hora que dio el servidor; antes, apagado
+//      y diciendo desde cuándo.
+
+describe('«Llegué» y «No estaba el cliente»', () => {
+  it('cada uno a su ruta con POST; la ubicación viaja solo si la hay', async () => {
+    const { repartidor, comun } = await cargar()
+    comun.guardarToken('t')
+    fetchFalso.mockResolvedValue(respuesta(200, { ok: true }))
+    await repartidor.llegue('p-1', { lat: -0.69, lng: -80.09 })
+    await repartidor.llegue('p-1', null)
+    await repartidor.noEstaba('p-1')
+    expect(fetchFalso.mock.calls.map(([ruta, o]) => `${o.method} ${ruta} ${o.body ?? ''}`)).toEqual([
+      'POST /api/v1/motorizado/pedidos/p-1/llegue {"lat":-0.69,"lng":-80.09}',
+      'POST /api/v1/motorizado/pedidos/p-1/llegue {}',
+      'POST /api/v1/motorizado/pedidos/p-1/no-estaba ',
+    ])
+  })
+
+  it('antes de tiempo se repite el mensaje del servidor (los minutos los cuenta él)', async () => {
+    const { repartidor, comun } = await cargar()
+    comun.guardarToken('t')
+    fetchFalso.mockResolvedValueOnce(respuesta(409, { error: 'Espera al cliente 4 minutos más antes de marcarlo', reason: 'todavia_no' }))
+    await expect(repartidor.noEstaba('p-1')).rejects.toThrow('Espera al cliente 4 minutos más antes de marcarlo')
+  })
+
+  const enCamino = (extra: Record<string, unknown> = {}) => ({
+    id: 'p-1', numero: 7, estado: 'en_camino', mio: true, totalCents: 1094, carreraCents: 150,
+    cobrarEnEfectivo: true, cobrarCents: 1094,
+    recoger: { local: 'Local', direccion: 'Calle 1', lat: null, lng: null },
+    entregar: { cliente: 'Ana', direccion: 'Calle 2', referencia: null, notas: null, lat: null, lng: null },
+    ...extra,
+  })
+  const pintar = async (pedido: Record<string, unknown>, liquidaConUmbani = true) => {
+    const { PedidoMio } = await import('../src/repartidor/RepartidorApp')
+    return renderToStaticMarkup(createElement(PedidoMio, {
+      pedido: pedido as never, liquidaConUmbani, onListo: async () => {}, alFallar: () => null,
+    }))
+  }
+
+  it('en camino y sin «Llegué»: el botón «Llegué», y ni teléfono ni «No estaba»', async () => {
+    const html = await pintar(enCamino())
+    expect(html).toContain('Llegué a la puerta')
+    expect(html).not.toContain('Llamar al cliente')
+    expect(html).not.toContain('No estaba el cliente')
+  })
+
+  it('desde «Llegué»: llamar al cliente, y «No estaba» apagado hasta la hora del servidor', async () => {
+    const pronto = new Date(Date.now() + 6 * 60_000).toISOString()
+    const html = await pintar(enCamino({
+      llegoEn: new Date().toISOString(), noEstabaDesde: pronto,
+      entregar: { cliente: 'Ana', direccion: 'Calle 2', referencia: null, notas: null, lat: null, lng: null, telefono: '+593990000811' },
+    }))
+    expect(html).toContain('href="tel:+593990000811"')
+    expect(html).toContain('Llamar al cliente')
+    expect(html).toContain('No estaba el cliente · desde las')
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>No estaba el cliente · desde las/)
+    expect(html).not.toContain('Llegué a la puerta')
+  })
+
+  it('pasada la hora, «No estaba el cliente» se puede tocar', async () => {
+    const html = await pintar(enCamino({ llegoEn: '2026-10-12T20:00:00Z', noEstabaDesde: '2026-10-12T20:10:00Z' }))
+    // El atributo, no la clase: los estilos del botón dicen `disabled:` siempre.
+    expect(html).toMatch(/<button(?![^>]*disabled="")[^>]*>No estaba el cliente<\/button>/)
+  })
+
+  it('antes de recoger no hay «Llegué»', async () => {
+    const html = await pintar(enCamino({ estado: 'aceptado' }))
+    expect(html).toContain('Ya lo recogí')
+    expect(html).not.toContain('Llegué')
+  })
+})

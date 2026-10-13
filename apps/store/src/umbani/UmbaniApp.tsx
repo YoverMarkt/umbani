@@ -5,7 +5,7 @@ import {
 import { Aviso, Boton, EstadoVacio, LISTA, ROTULO } from '../components/ui'
 import { InstalarApp } from '../components/InstalarApp'
 import { CAMPO, Entrar, Marco, Cabecera } from './Entrar'
-import { COMO_VA } from '../lib/como-va'
+import { comoVa } from '../lib/como-va'
 import { money, rangoDeEspera } from '../lib/format'
 import {
   abrirLocal, ciudadAqui, ciudadGuardada, ciudades as listaDeCiudades, ErrorDeLaApp, guardarCiudad,
@@ -421,7 +421,7 @@ function Pedidos({ onVolver, onEntrar, onAbrir }: {
             {pedidos && pedidos.length > 0 && (
               <ul className={LISTA}>
                 {pedidos.map(p => {
-                  const va = COMO_VA[p.status] || { texto: p.status, tono: 'bg-black/5 texto-cuerpo' }
+                  const va = comoVa(p)
                   return (
                     <li key={p.id}>
                       <button type="button" disabled={!p.local.slug} onClick={() => p.local.slug && onAbrir(p.local.slug)}

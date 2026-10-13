@@ -36,6 +36,12 @@ import SoloPorAdelantado from './SoloPorAdelantado'
 const dinero = (centavos: number | null | undefined) => `$${((centavos ?? 0) / 100).toFixed(2)}`
 const fecha = (iso: string) => new Date(iso).toLocaleString('es-EC', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 const ESTADO = { abierta: 'Abierta', compensada: 'Saldo dado', resuelta: 'Resuelta', descartada: 'Descartada' } as const
+const ORIGEN = {
+  cliente: 'Lo reportó el cliente',
+  superadmin: 'Registrada por el superadmin',
+  // 2026-10-12: nace sola cuando quien repartía marca «No estaba el cliente».
+  reparto: 'La marcó quien repartía',
+} as const
 /** Las que le tocan al superadmin: decidir, o confirmar quién responde de un saldo ya dado. */
 const pendiente = (i: Incidencia) => i.estado === 'abierta' || i.estado === 'compensada'
 const esReclamo = (i: Incidencia | null) => Boolean(i && RECLAMOS.includes(i.tipo))
@@ -128,7 +134,7 @@ export default function Incidencias() {
                         {i.pedido.numero ? `#${i.pedido.numero}` : 'Pedido'} · {i.local.nombre || 'Local'}
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        {fecha(i.creadaEn)} · {i.origen === 'cliente' ? 'Lo reportó el cliente' : 'Registrada por el superadmin'}
+                        {fecha(i.creadaEn)} · {ORIGEN[i.origen]}
                         {i.pedido.pago ? ` · pagó con ${i.pedido.pago}` : ''} · total {dinero(i.pedido.totalCents)}
                       </div>
                     </div>
@@ -146,6 +152,15 @@ export default function Incidencias() {
                       <span className="text-muted-foreground">Lo llevó: </span>
                       {i.repartidor ? `${i.repartidor.nombre}${i.repartidor.cooperativa ? ` (${i.repartidor.cooperativa})` : ''}` : 'el local (sin repartidor de la app)'}
                     </div>
+                    {/* La prueba para revisar un «sí estaba» (2026-10-12). */}
+                    {i.pedido.llegoEn && (
+                      <div className="sm:col-span-2">
+                        <span className="text-muted-foreground">Llegó a la puerta: </span>
+                        {fecha(i.pedido.llegoEn)}
+                        {i.pedido.metrosDeLaDireccion == null ? ' · sin ubicación' : ` · a ${i.pedido.metrosDeLaDireccion} m de la dirección`}
+                        {i.pedido.noEstabaEn ? ` · marcó «no estaba» ${fecha(i.pedido.noEstabaEn)}` : ''}
+                      </div>
+                    )}
                   </div>
 
                   {i.lineas.length > 0 && (

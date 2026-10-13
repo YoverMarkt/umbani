@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import {
-  RiCheckLine, RiEBikeLine, RiHistoryLine, RiMapPin2Line, RiMoneyDollarCircleLine, RiStore2Line, RiUser3Line,
+  RiCheckLine, RiEBikeLine, RiHistoryLine, RiMapPin2Line, RiMoneyDollarCircleLine, RiSmartphoneLine, RiStore2Line,
+  RiTimeLine, RiUser3Line,
 } from '@remixicon/react'
 import { Aviso, Boton, EstadoVacio, LISTA, ROTULO } from '../components/ui'
 import { InstalarApp } from '../components/InstalarApp'
@@ -8,8 +9,8 @@ import { Cabecera, Entrar, Marco } from '../umbani/Entrar'
 import { money } from '../lib/format'
 import { ErrorDeLaApp, mensaje, salir, tokenDeLaApp } from '../umbani/api'
 import {
-  comoLlegar, entregado, liquidaciones as leerLiquidaciones, pedidos as leerPedidos, ponerDisponible, recogido,
-  tomar, yo as leerYo, type Liquidacion, type PedidoDelRepartidor, type Yo,
+  comoLlegar, entregado, liquidaciones as leerLiquidaciones, llegue, noEstaba, pedidos as leerPedidos, ponerDisponible,
+  recogido, tomar, yo as leerYo, type Liquidacion, type PedidoDelRepartidor, type Yo,
 } from './api'
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -36,6 +37,23 @@ const dolares = (centavos: number | null | undefined) => money((centavos ?? 0) /
 // Lo que COBRA en la puerta (2026-10-10): sin lo que el cliente pagó con su
 // saldo Umbani. Lo calcula el servidor; con uno anterior al saldo, el total.
 const aCobrar = (pedido: PedidoDelRepartidor) => pedido.cobrarCents ?? pedido.totalCents
+const horaDe = (iso: string | null | undefined) => (iso
+  ? new Date(iso).toLocaleTimeString('es-EC', { timeZone: 'America/Guayaquil', hour: 'numeric', minute: '2-digit' })
+  : '')
+
+/**
+ * Dónde está el teléfono al tocar «Llegué» (2026-10-12). OPCIONAL: si no da
+ * permiso o tarda, «Llegué» sale igual sin ella; la base solo guarda a cuántos
+ * metros de la dirección estaba, para revisar un «sí estaba».
+ */
+const ubicacionDelTelefono = () => new Promise<{ lat: number; lng: number } | null>((listo) => {
+  if (!('geolocation' in navigator)) { listo(null); return }
+  navigator.geolocation.getCurrentPosition(
+    p => listo({ lat: p.coords.latitude, lng: p.coords.longitude }),
+    () => listo(null),
+    { enableHighAccuracy: true, timeout: 8_000, maximumAge: 30_000 },
+  )
+})
 
 export default function RepartidorApp() {
   const [pantalla, setPantalla] = useState<Pantalla>(() => (tokenDeLaApp() ? 'cargando' : 'entrar'))
@@ -224,7 +242,7 @@ function Inicio({ perfil, onPerfil, onSemana, onSalir, alFallar }: {
         <section className="mb-6">
           <p className={ROTULO}>Llevando</p>
           <div className="space-y-3">
-            {llevando.map(p => <PedidoMio key={p.id} pedido={p} onListo={despues} alFallar={alFallar} />)}
+            {llevando.map(p => <PedidoMio key={p.id} pedido={p} liquidaConUmbani={liquidaConUmbani} onListo={despues} alFallar={alFallar} />)}
           </div>
         </section>
       )}
@@ -316,31 +334,41 @@ function PedidoLibre({ pedido, liquidaConUmbani, onTomado, alFallar }: {
   )
 }
 
-function PedidoMio({ pedido, onListo, alFallar }: {
+// Exportado para su prueba (`app-de-repartidores.test.ts`): sus botones cambian
+// con «Llegué» y la hora que da el servidor.
+export function PedidoMio({ pedido, liquidaConUmbani, onListo, alFallar }: {
   pedido: PedidoDelRepartidor
+  liquidaConUmbani: boolean
   onListo: () => Promise<void>
   alFallar: (e: unknown) => string | null
 }) {
   const [enviando, setEnviando] = useState(false)
-  const [confirmando, setConfirmando] = useState(false)
+  const [confirmando, setConfirmando] = useState<'cobro' | 'no_estaba' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const enCamino = pedido.estado === 'en_camino'
   const mapa = comoLlegar(enCamino ? pedido.entregar : pedido.recoger)
+  // «Llegué» y «No estaba el cliente» (2026-10-12): la hora la da el servidor.
+  // La lista se vuelve a pedir cada 15 s, así que el botón se habilita solo.
+  const llego = enCamino && Boolean(pedido.llegoEn)
+  const yaPuede = llego && Boolean(pedido.noEstabaDesde) && Date.now() >= new Date(pedido.noEstabaDesde!).getTime()
 
-  const avanzar = async () => {
+  const hacer = async (accion: () => Promise<void>) => {
     setEnviando(true)
     setError(null)
     try {
-      await (enCamino ? entregado(pedido.id) : recogido(pedido.id))
-      setConfirmando(false)
+      await accion()
+      setConfirmando(null)
       await onListo()
     } catch (e) {
-      // «El local aún no termina de empacar: falta …» viene del servidor tal cual.
+      // «El local aún no termina de empacar: falta …» o «Espera al cliente N
+      // minutos más…» vienen del servidor tal cual.
       setError(alFallar(e))
     } finally {
       setEnviando(false)
     }
   }
+  const avanzar = () => hacer(() => (enCamino ? entregado(pedido.id) : recogido(pedido.id)))
+  const alLlegar = () => hacer(async () => llegue(pedido.id, await ubicacionDelTelefono()))
 
   const notas = [pedido.entregar.referencia, pedido.entregar.notas].filter(Boolean).join(' · ')
 
@@ -371,26 +399,63 @@ function PedidoMio({ pedido, onListo, alFallar }: {
           <RiMapPin2Line size={18} /> Cómo llegar
         </a>
       )}
+      {llego && (
+        <div className="mt-3 space-y-2">
+          <p className="texto-cuerpo flex items-center gap-1.5 text-[14px]">
+            <RiTimeLine size={16} className="shrink-0" /> Llegaste a las {horaDe(pedido.llegoEn)}.
+          </p>
+          {/* El teléfono del cliente llega SOLO desde «Llegué» (decisión del dueño). */}
+          {pedido.entregar.telefono && (
+            <a href={`tel:${pedido.entregar.telefono}`}
+              className="superficie borde-tema flex w-full items-center justify-center gap-2 rounded-2xl border-2 px-4 py-3.5 text-[15px] font-bold shadow-tarjeta">
+              <RiSmartphoneLine size={18} /> Llamar al cliente
+            </a>
+          )}
+        </div>
+      )}
       {error && <div className="mt-3"><Aviso tono="alerta">{error}</Aviso></div>}
 
-      {confirmando
-        ? (
-          <div className="mt-3 space-y-2">
-            <p className="text-[15px] font-bold">¿Cobraste {dolares(aCobrar(pedido))} en efectivo?</p>
-            <Boton disabled={enviando} onClick={() => void avanzar()}>
-              {enviando ? 'Un momento…' : `Sí, cobré ${dolares(aCobrar(pedido))}`}
+      {confirmando === 'cobro' && (
+        <div className="mt-3 space-y-2">
+          <p className="text-[15px] font-bold">¿Cobraste {dolares(aCobrar(pedido))} en efectivo?</p>
+          <Boton disabled={enviando} onClick={() => void avanzar()}>
+            {enviando ? 'Un momento…' : `Sí, cobré ${dolares(aCobrar(pedido))}`}
+          </Boton>
+          <Boton variante="linea" disabled={enviando} onClick={() => setConfirmando(null)}>Todavía no</Boton>
+        </div>
+      )}
+      {/* «No estaba el cliente» se confirma antes: cierra el pedido y no se deshace. */}
+      {confirmando === 'no_estaba' && (
+        <div className="mt-3 space-y-2">
+          <p className="text-[15px] font-bold">¿Esperaste y llamaste al cliente?</p>
+          <p className="texto-cuerpo text-[14px]">
+            El pedido se cierra y no se puede deshacer.
+            {liquidaConUmbani ? ' Tu carrera la cobras igual' : ''}
+            {liquidaConUmbani && pedido.cobrarEnEfectivo ? ' y no debes ese efectivo.' : liquidaConUmbani ? '.' : ''}
+            {' '}La comida te la quedas.
+          </p>
+          <Boton disabled={enviando} onClick={() => void hacer(() => noEstaba(pedido.id))}>
+            {enviando ? 'Un momento…' : 'Sí, no estaba'}
+          </Boton>
+          <Boton variante="linea" disabled={enviando} onClick={() => setConfirmando(null)}>Todavía no</Boton>
+        </div>
+      )}
+      {!confirmando && (
+        <div className="mt-3 space-y-2">
+          {/* Con efectivo, «entregado» se confirma antes: es su dinero el que cuadra el lunes. */}
+          <Boton disabled={enviando} onClick={() => (enCamino && pedido.cobrarEnEfectivo ? setConfirmando('cobro') : void avanzar())}>
+            {enviando ? 'Un momento…' : enCamino ? 'Lo entregué' : 'Ya lo recogí'}
+          </Boton>
+          {enCamino && !llego && (
+            <Boton variante="linea" disabled={enviando} onClick={() => void alLlegar()}>Llegué a la puerta</Boton>
+          )}
+          {llego && (
+            <Boton variante="linea" disabled={enviando || !yaPuede} onClick={() => setConfirmando('no_estaba')}>
+              {yaPuede ? 'No estaba el cliente' : `No estaba el cliente · desde las ${horaDe(pedido.noEstabaDesde)}`}
             </Boton>
-            <Boton variante="linea" disabled={enviando} onClick={() => setConfirmando(false)}>Todavía no</Boton>
-          </div>
-        )
-        : (
-          <div className="mt-3">
-            {/* Con efectivo, «entregado» se confirma antes: es su dinero el que cuadra el lunes. */}
-            <Boton disabled={enviando} onClick={() => (enCamino && pedido.cobrarEnEfectivo ? setConfirmando(true) : void avanzar())}>
-              {enviando ? 'Un momento…' : enCamino ? 'Lo entregué' : 'Ya lo recogí'}
-            </Boton>
-          </div>
-        )}
+          )}
+        </div>
+      )}
     </article>
   )
 }

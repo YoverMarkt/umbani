@@ -26,6 +26,9 @@ const TIPOS: { tipo: TipoDeReclamo; texto: string; detalle: string }[] = [
 ]
 
 const mensaje = (e: unknown) => (e instanceof Error ? e.message : 'No pudimos enviarlo. Inténtalo de nuevo.')
+const horaDe = (iso: string) => new Date(iso).toLocaleTimeString('es-EC', {
+  timeZone: 'America/Guayaquil', hour: 'numeric', minute: '2-digit',
+})
 
 export function LlegoTodoBien({ slug, pedido, onCambio }: {
   slug: string
@@ -63,7 +66,11 @@ export function LlegoTodoBien({ slug, pedido, onCambio }: {
       </p>
     )
   }
-  if (!c.reclamableHasta) return null
+  // «No estaba el cliente» (2026-10-12): quien repartía llegó, esperó y no lo
+  // encontró. NO lo recibió: nada de «¿Llegó todo bien?». Lo único que puede
+  // decir es que SÍ estaba («No me llegó»), y eso lo revisa una persona.
+  const noEstaba = Boolean(pedido.customer_absent_at)
+  if (!c.reclamableHasta && !noEstaba) return null
 
   const lineas = (pedido.order_items || []).filter(l => l.id)
   const elegidas = Object.entries(cantidades).filter(([, n]) => n > 0)
@@ -111,9 +118,28 @@ export function LlegoTodoBien({ slug, pedido, onCambio }: {
 
   return (
     <div className="mt-3 border-t borde-tema pt-3">
-      <p className="text-[13.5px] font-bold">¿Llegó todo bien?</p>
+      {noEstaba
+        ? (
+          <>
+            <p className="text-[13.5px] font-bold">No te encontramos</p>
+            <p className="mt-0.5 text-[12.5px] texto-cuerpo">
+              {pedido.arrived_at ? `El repartidor llegó a las ${horaDe(pedido.arrived_at)} y te esperó.` : 'El repartidor llegó y te esperó.'}
+            </p>
+            {c.reclamableHasta && (
+              <button
+                type="button"
+                disabled={enviando}
+                onClick={() => { setTipo('no_llego'); setAbierta(true) }}
+                className="superficie mt-2 flex w-full items-center justify-center gap-1.5 rounded-full border-2 borde-tema px-3 py-2.5 text-[13.5px] font-bold transition active:scale-[0.98] disabled:opacity-50"
+              >
+                <RiErrorWarningLine size={16} /> Sí estaba, no me llegó
+              </button>
+            )}
+          </>
+        )
+        : <p className="text-[13.5px] font-bold">¿Llegó todo bien?</p>}
       {error && !abierta && <p className="mt-1 text-[12.5px] font-semibold text-amber-700">{error}</p>}
-      <div className="mt-2 grid grid-cols-2 gap-2">
+      {!noEstaba && <div className="mt-2 grid grid-cols-2 gap-2">
         <button
           type="button"
           disabled={enviando}
@@ -130,9 +156,9 @@ export function LlegoTodoBien({ slug, pedido, onCambio }: {
         >
           <RiErrorWarningLine size={16} /> Algo salió mal
         </button>
-      </div>
+      </div>}
 
-      <Hoja abierta={abierta} onCerrar={cerrar} onAtras={tipo ? () => setTipo(null) : undefined} titulo="Cuéntanos qué pasó">
+      <Hoja abierta={abierta} onCerrar={cerrar} onAtras={tipo && !noEstaba ? () => setTipo(null) : undefined} titulo="Cuéntanos qué pasó">
         <div className="space-y-4 p-4 pb-6">
           {!tipo
             ? (
@@ -194,7 +220,7 @@ export function LlegoTodoBien({ slug, pedido, onCambio }: {
                     value={nota}
                     onChange={e => setNota(e.target.value.slice(0, 500))}
                     rows={3}
-                    placeholder="Ej: faltó la cola, la pizza llegó fría…"
+                    placeholder={noEstaba ? 'Ej: estuve en la puerta y nadie llegó…' : 'Ej: faltó la cola, la pizza llegó fría…'}
                     className="superficie w-full resize-none rounded-(--radius-tarjeta) border-2 borde-tema px-4 py-3 text-[14px] shadow-tarjeta outline-none focus:border-(--tinta) placeholder:texto-tenue"
                   />
                 </section>

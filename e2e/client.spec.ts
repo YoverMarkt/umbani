@@ -269,6 +269,73 @@ test('un pedido recorre confirmación, preparación y reparto sin generar cobros
   await avanzar('Marcar entregado', 'completado')
 })
 
+// «No estaba el cliente» (2026-10-12): el local que reparte él mismo marca
+// «Llegó a la dirección» y después «No estaba el cliente». Lo que lleva un
+// repartidor de la app no tiene esos botones: lo marca él desde su app.
+test('el local que reparte marca que llegó y que el cliente no estaba', async ({ page }) => {
+  await seedClientSession(page)
+  await mockClientApi(page)
+  let llego: string | null = null
+  let noEstaba: string | null = null
+  const llamadas: string[] = []
+  const pedido = (id: string, extra: Record<string, unknown>) => ({
+    id, contact_phone: '+593999000111', contact_name: `Cliente ${id}`, status: 'en_camino',
+    subtotal: 10, discount: 0, total: 10.94, currency: 'USD', created_at: '2026-10-12T20:00:00.000Z',
+    payment_method: 'efectivo',
+    order_items: [{ id: `${id}-linea`, product_id: 'p', product_name: 'Nuggets', quantity: 1, unit_price: 8.49, line_total: 8.49, prepared_at: '2026-10-12T20:01:00.000Z' }],
+    ...extra,
+  })
+  await page.route('**/api/client/orders**', route => {
+    const path = new URL(route.request().url()).pathname
+    const metodo = route.request().method()
+    if (metodo === 'POST' && path === '/api/client/orders/lo-reparte-el-local/llegue') {
+      llamadas.push('llegue')
+      llego = '2026-10-12T20:05:00.000Z'
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ llegoEn: llego, noEstabaDesde: '2026-10-12T20:15:00.000Z' }) })
+    }
+    if (metodo === 'POST' && path === '/api/client/orders/lo-reparte-el-local/no-estaba') {
+      llamadas.push('no-estaba')
+      noEstaba = '2026-10-12T20:16:00.000Z'
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) })
+    }
+    if (path === '/api/client/orders' && metodo === 'GET') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([
+          pedido('lo-reparte-el-local', {
+            courier_id: null, arrived_at: llego, customer_absent_at: noEstaba,
+            ...(noEstaba ? { status: 'completado' } : {}),
+          }),
+          pedido('lo-lleva-un-repartidor', { courier_id: 'moto-1', contact_name: 'Cliente con repartidor' }),
+        ]),
+      })
+    }
+    return route.fallback()
+  })
+  await page.goto(`${clientUrl}#/orders`)
+
+  const delLocal = page.locator('[data-slot="card"]').filter({ hasText: 'Cliente lo-reparte-el-local' })
+  const conRepartidor = page.locator('[data-slot="card"]').filter({ hasText: 'Cliente con repartidor' })
+  await expect(conRepartidor.getByRole('button', { name: 'Marcar entregado' }).first()).toBeVisible()
+  await expect(conRepartidor.getByRole('button', { name: 'Llegó a la dirección' })).toHaveCount(0)
+  await expect(conRepartidor.getByRole('button', { name: 'No estaba el cliente' })).toHaveCount(0)
+
+  await delLocal.getByRole('button', { name: 'Llegó a la dirección' }).click()
+  await expect.poll(() => llamadas).toEqual(['llegue'])
+  await delLocal.getByRole('button', { name: 'No estaba el cliente' }).click()
+  const dialogo = page.getByRole('alertdialog').filter({ hasText: 'El cliente no estaba' })
+  // En efectivo, el dueño sabe ANTES quién pone su comida y su carrera.
+  await expect(dialogo).toContainText('tu comida y tu carrera las pone Umbani')
+  await dialogo.getByRole('button', { name: 'Sí, no estaba' }).dispatchEvent('click')
+  await expect.poll(() => llamadas).toEqual(['llegue', 'no-estaba'])
+  // Cerrado, sale de «En curso»; en el historial dice lo que pasó, nunca «Entregado».
+  await page.getByRole('tab', { name: 'Historial' }).click()
+  const cerrado = page.locator('[data-slot="card"]').filter({ hasText: 'Cliente lo-reparte-el-local' })
+  await expect(cerrado.getByText('Cliente no estaba', { exact: true })).toBeVisible()
+  await expect(cerrado.getByText('Entregado', { exact: true })).toHaveCount(0)
+})
+
 // El saldo Umbani (2026-10-10): el total del pedido no cambia, pero lo que el
 // local COBRA sí. Sin decirlo en la tarjeta, quien lleva el pedido le pediría
 // el total entero a un cliente que ya pagó una parte con su saldo.

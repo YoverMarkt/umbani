@@ -8,7 +8,8 @@ import { api } from '../../api/client'
 export type Incidencia = {
   id: string
   tipo: TipoDeIncidencia
-  origen: 'cliente' | 'superadmin'
+  /** `reparto` (2026-10-12): la abrió sola quien repartía al marcar «No estaba el cliente». */
+  origen: 'cliente' | 'superadmin' | 'reparto'
   estado: 'abierta' | 'compensada' | 'resuelta' | 'descartada'
   responsable: Responsable | null
   lineas: { nombre: string; cantidad: number; centavos: number }[]
@@ -20,7 +21,13 @@ export type Incidencia = {
   resueltaPor: string | null
   creadaEn: string
   resueltaEn: string | null
-  pedido: { id: string; numero: number | null; totalCents: number; pago: string | null; cliente: string | null; telefono: string | null }
+  pedido: {
+    id: string; numero: number | null; totalCents: number; pago: string | null; cliente: string | null; telefono: string | null
+    /** «Llegué» (2026-10-12): cuándo, a cuántos metros de la dirección (si se supo) y cuándo marcó que no estaba. */
+    llegoEn?: string | null
+    metrosDeLaDireccion?: number | null
+    noEstabaEn?: string | null
+  }
   local: { id: string; nombre: string | null }
   repartidor: { nombre: string; cooperativa: string | null } | null
   /** El saldo se le dio por la regla, sin revisión. */
@@ -69,6 +76,9 @@ export const MOTIVOS: Record<string, string> = {
   rechazo_reciente: 'Tuvo un reporte rechazado hace poco',
   rechazos: 'Escalón 3: dos o más reportes rechazados',
   sin_cuenta: 'No encontramos su cuenta',
+  no_estaba: 'Hace poco no estaba para recibir un pedido (solo paga por adelantado)',
+  // 2026-10-12: quien repartía marcó «No estaba el cliente» y él dice que sí.
+  dice_que_si_estaba: 'Quien repartía dijo que no estaba: mira la hora y la distancia del «Llegué»',
 }
 
 export type TipoDeIncidencia = 'falta_producto' | 'vino_mal' | 'no_llego' | 'comida_caida' | 'cliente_ausente' | 'accidente' | 'no_aparecio' | 'otro'

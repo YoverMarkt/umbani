@@ -105,6 +105,15 @@ export type Order = {
   credit_cents?: number | null
   /** Lo que el cliente escribió para ESTE pedido: «llame al llegar». */
   delivery_notes?: string | null
+  /** Quién lo lleva: nulo = lo reparte el propio local (sin repartidor en la app). */
+  courier_id?: string | null
+  /** «Llegó a la dirección» (2026-10-12): desde aquí cuentan los minutos. */
+  arrived_at?: string | null
+  /**
+   * «No estaba el cliente» (2026-10-12): se cerró como entregado SIN
+   * entregarlo. Se cobra igual; en efectivo, lo pone Umbani.
+   */
+  customer_absent_at?: string | null
   payment_proof_url?: string | null
   /** Cuándo el negocio dio el pago por bueno. Nulo = todavía no. */
   payment_confirmed_at?: string | null
@@ -134,6 +143,17 @@ export type Order = {
 }
 
 export const getOrders = () => api<Order[]>('/api/client/orders')
+
+/**
+ * «Llegó a la dirección» y «No estaba el cliente» (2026-10-12), para lo que
+ * reparte el propio local. Las reglas las pone la base: solo lo suyo, y «No
+ * estaba» pasados los minutos desde que llegó (si no, el error dice cuántos
+ * faltan).
+ */
+export const marcarLlegada = (id: string) =>
+  api<{ llegoEn: string; noEstabaDesde: string }>(`/api/client/orders/${id}/llegue`, { method: 'POST' })
+export const marcarNoEstaba = (id: string) =>
+  api<Order>(`/api/client/orders/${id}/no-estaba`, { method: 'POST' })
 
 /** Catálogo para el pedido de mostrador. Los precios son informativos: el
  *  importe oficial lo resuelve la base con los ids que se le manden. */

@@ -30,9 +30,10 @@ describe('el contrato con las apps Flutter', () => {
 
   it('cada ruta que usa la app de repartidores está en docs/apps/openapi.yaml', () => {
     const rutas = rutasDe('../src/repartidor/api.ts')
-    // Las siete de la guía del motorizado: si alguna se arma por partes, la
-    // prueba dejaría de verla — por eso se cuentan.
-    expect(rutas).toHaveLength(7)
+    // Las nueve de la guía del motorizado (2026-10-12: + «Llegué» y «No estaba
+    // el cliente»): si alguna se arma por partes, la prueba dejaría de verla —
+    // por eso se cuentan.
+    expect(rutas).toHaveLength(9)
     for (const ruta of rutas) expect(openapi, `falta ${ruta} en openapi.yaml`).toMatch(documentada(ruta))
   })
 

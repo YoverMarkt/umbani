@@ -38,7 +38,9 @@ function Quien({ actor }: { actor: string }) {
   if (actor === 'base') return <Badge variant="destructive">Cambio directo en la base</Badge>
   const [tipo, ...resto] = actor.split(':')
   const quien = resto.join(':')
-  const etiqueta = tipo === 'superadmin' ? 'Superadmin' : tipo === 'local' ? 'Local' : tipo === 'script' ? 'Script' : tipo
+  // `repartidor` (2026-10-12): lo que marca desde su app, como «No estaba el cliente».
+  const etiqueta = tipo === 'superadmin' ? 'Superadmin' : tipo === 'local' ? 'Local' : tipo === 'script' ? 'Script'
+    : tipo === 'repartidor' ? 'Repartidor' : tipo
   return (
     <div className="leading-tight">
       <div className="text-xs text-muted-foreground">{etiqueta}</div>
@@ -79,6 +81,8 @@ function que(m: MovimientoDeDinero): string {
   if (a === 'pedido_pagado_cancelado') return 'Pedido YA PAGADO cancelado'
   if (a === 'venta_anulada') return 'Venta anulada por Umbani'
   if (a === 'ajuste_por_incidencia') return 'Ajuste por incidencia'
+  // 2026-10-12: quien repartía cerró el pedido sin entregarlo (se cobra igual).
+  if (a === 'pedido_no_estaba') return 'No estaba el cliente (cobrado sin devolución)'
   if (a === 'factura_creada') return 'Factura creada'
   if (a.startsWith('factura_')) return `Factura ${ESTADO[a.slice(8)] ?? a.slice(8)}`
   if (a === 'margen_creado') return 'Regla de margen creada'
@@ -120,6 +124,11 @@ function detalle(m: MovimientoDeDinero): string {
     return `Pedido #${texto(d.numero)} · ${dolares(d.total)} · ${texto(d.metodo)}${saldo}`
   }
   if (a === 'venta_anulada') return `Pedido #${texto(d.numero)} · ${dolares(d.total)} · «${texto(d.motivo)}»`
+  if (a === 'pedido_no_estaba') {
+    const saldo = Number(d.saldoCents) > 0 ? ` · ${dinero(d.saldoCents)} con saldo` : ''
+    const donde = d.metros == null ? 'sin ubicación' : `llegó a ${texto(d.metros)} m`
+    return `Pedido #${texto(d.numero)} · ${dolares(d.total)} · ${texto(d.metodo)}${saldo} · ${donde}`
+  }
   if (a === 'ajuste_por_incidencia') {
     return `Pedido #${texto(d.numero)} · ${d.parte === 'motorizado' ? 'repartidor' : 'local'} ${dinero(d.cents)}`
       + ` · ${d.concepto === 'reclamo' && d.tipo === 'no_llego' ? 'el pedido que no llegó, menos la comisión' : AJUSTE[String(d.concepto)] ?? texto(d.concepto)}`
