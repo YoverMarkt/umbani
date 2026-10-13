@@ -618,7 +618,10 @@ const bindStorefrontSession = async (sessionId: string, deviceHash: string) => {
 // pagó el CLIENTE. `line_total` en la base es el precio del LOCAL.
 // ⚠️ `received_ok_at` y el `id` de cada línea (2026-10-06): el cliente dice
 // «Todo bien» o reporta QUÉ línea faltó, y para eso necesita su identificador.
-const CAMPOS_DEL_SEGUIMIENTO = 'id,order_number,status,total,shipping,service_fee,credit_cents,currency,fulfillment,created_at,payment_confirmed_at,payment_method,received_ok_at,order_items(id,product_name,variant_name,extras_names,item_note,quantity,line_total,order_item_options(option_group_name,option_name,quantity,group_sort))' as const
+// ⚠️ `arrived_at` y `customer_absent_at` (2026-10-12): «tu repartidor llegó»
+// y «no se pudo entregar: no te encontramos». La distancia NO viaja: es la
+// prueba que mira Umbani si dice que sí estaba.
+const CAMPOS_DEL_SEGUIMIENTO = 'id,order_number,status,total,shipping,service_fee,credit_cents,currency,fulfillment,created_at,payment_confirmed_at,payment_method,received_ok_at,arrived_at,customer_absent_at,order_items(id,product_name,variant_name,extras_names,item_note,quantity,line_total,order_item_options(option_group_name,option_name,quantity,group_sort))' as const
 
 /**
  * Los pedidos de UN cliente en ESTE negocio, para su pestaña de Cuenta.

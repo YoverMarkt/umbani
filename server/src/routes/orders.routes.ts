@@ -8,6 +8,8 @@ import {
 import { avisarAlCliente } from '../services/order-status-notice'
 import { conOpcionesAgrupadasEnLote } from '../services/order-detail'
 import type { BusinessRecord } from '../db/types'
+import { actorActual } from '../lib/actor-de-la-peticion'
+import { idDelPedido, respuestaDeLaPuerta } from '../lib/no-estaba-el-cliente'
 
 // Estados que hoy acepta orders.status. El GET puede filtrar por cualquiera
 // (la vigilancia del panel consulta «pendiente»); el PUT no acepta volver a
@@ -80,6 +82,9 @@ interface ModuloDb {
     status: string,
   ): Promise<PedidoParaAvisar | null>
   getBusinessById(id: string): Promise<BusinessRecord | null>
+  // «Llegué» y «No estaba el cliente» del local que reparte él mismo (2026-10-12).
+  markArrived(quien: { businessId: string }, orderId: string): Promise<Record<string, unknown>>
+  markCustomerAbsent(quien: { businessId: string }, orderId: string, actor: string): Promise<Record<string, unknown>>
 }
 const db: ModuloDb = require('../db') as typeof import('../db')
 interface ModuloAuth {
@@ -565,6 +570,46 @@ router.put(
       )
       res.status(500).json({ error: 'No se pudo actualizar el pedido' })
     }
+  },
+)
+
+// ── «Llegué» y «No estaba el cliente» (2026-10-12) ─────────────────────────
+//
+// Para el local que reparte él mismo: su repartidor le avisa desde la puerta y
+// el dueño lo marca aquí. Las MISMAS reglas que en la app del repartidor, y
+// las pone la base (`pedido_llegue`, `pedido_cliente_ausente`): solo lo que
+// reparte este local —el negocio sale del JWT—, y «No estaba» pasados los
+// minutos desde «Llegué». Lo que lleva un repartidor de Umbani o de una
+// cooperativa lo marca ese repartidor.
+//
+// ⚠️ Sin aviso al cliente: el pedido queda «entregado» con su marca, y el
+// aviso de «entregado» le diría que lo recibió.
+router.post(
+  '/api/client/orders/:id/llegue',
+  auth.authClient,
+  auth.requirePermission('ventas'),
+  async (req, res) => {
+    const pedidoId = idDelPedido(req.params.id)
+    if (!pedidoId) return res.status(404).json({ error: 'No encontramos ese pedido' })
+    const r = await db.markArrived({ businessId: getClientBusinessId(req) }, pedidoId)
+    if (r.result === 'ok') return res.json({ llegoEn: r.llegoEn, noEstabaDesde: r.noEstabaDesde })
+    const e = respuestaDeLaPuerta(r)
+    return res.status(e.status).json(e.body)
+  },
+)
+
+router.post(
+  '/api/client/orders/:id/no-estaba',
+  auth.authClient,
+  auth.requirePermission('ventas'),
+  async (req, res) => {
+    const pedidoId = idDelPedido(req.params.id)
+    if (!pedidoId) return res.status(404).json({ error: 'No encontramos ese pedido' })
+    const businessId = getClientBusinessId(req)
+    const r = await db.markCustomerAbsent({ businessId }, pedidoId, actorActual() || `local:${businessId}`)
+    if (r.result === 'ok') return res.json(r.order ?? { ok: true })
+    const e = respuestaDeLaPuerta(r)
+    return res.status(e.status).json(e.body)
   },
 )
 
