@@ -107,6 +107,12 @@ router.get('/api/admin/incidencias', auth.authAdmin, async (req, res) => {
         pago: i.orders?.payment_method ?? null,
         cliente: i.orders?.contact_name ?? null,
         telefono: i.orders?.contact_phone ?? null,
+        // «No estaba el cliente» (2026-10-12): cuándo llegó quien repartía, a
+        // cuántos metros de la dirección (si el teléfono lo dijo) y cuándo
+        // marcó que no estaba. Es lo que se mira si el cliente dice «sí estaba».
+        llegoEn: i.orders?.arrived_at ?? null,
+        metrosDeLaDireccion: i.orders?.arrived_distance_m ?? null,
+        noEstabaEn: i.orders?.customer_absent_at ?? null,
       },
       local: { id: i.business_id, nombre: i.businesses?.name ?? null },
       repartidor: i.couriers ? { nombre: i.couriers.name, cooperativa: i.couriers.cooperatives?.name ?? null } : null,

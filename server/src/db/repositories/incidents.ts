@@ -124,7 +124,8 @@ const listIncidents = async (estado: 'abierta' | 'todas', limite = 200) => {
       resolved_by, created_at, resolved_at, order_id, business_id, auto_approved, compensated_at,
       local_cents, umbani_cents, reparto_cents, photo_public_id, escalon, review_reasons,
       prepaid_only_until, restriction_lifted_at, restriction_lifted_by,
-      orders!order_incidents_order_fk(order_number, total, payment_method, contact_name, contact_phone, status, merchant_subtotal),
+      orders!order_incidents_order_fk(order_number, total, payment_method, contact_name, contact_phone, status, merchant_subtotal,
+        arrived_at, arrived_distance_m, customer_absent_at),
       businesses(name), couriers(name, cooperative_id, cooperatives(name)),
       settlement_adjustments(party, courier_id, cents, concepto)`)
     .order('created_at', { ascending: false })

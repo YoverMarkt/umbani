@@ -21,6 +21,9 @@ export const RESPUESTA_AL_CLIENTE: Record<string, { status: number; error: strin
   linea_invalida: { status: 400, error: 'Revisa lo que elegiste: no coincide con tu pedido' },
   nota_larga: { status: 400, error: 'La nota es muy larga: máximo 500 caracteres' },
   foto_invalida: { status: 400, error: 'Esa foto no es de este pedido. Súbela otra vez.' },
+  // «No estaba el cliente» (2026-10-12): de un pedido que no se le entregó
+  // solo puede decir que SÍ estaba, y eso es «no me llegó».
+  no_estabas: { status: 409, error: 'Este pedido no se te entregó porque no te encontramos. Si estabas, dinos que no te llegó.' },
 }
 const NO_SE_PUDO = { status: 409, error: 'No pudimos registrarlo. Inténtalo de nuevo.' }
 export const respuestaAlCliente = (resultado: unknown) => RESPUESTA_AL_CLIENTE[String(resultado)] || NO_SE_PUDO

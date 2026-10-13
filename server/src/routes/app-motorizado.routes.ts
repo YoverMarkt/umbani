@@ -3,6 +3,8 @@ import type { Request, RequestHandler } from 'express'
 import { createRouter } from '../middleware/async'
 import { authApp, correoDe, telefonoDe } from '../services/sesion-app'
 import { avisarAlCliente } from '../services/order-status-notice'
+import { conActor } from '../lib/actor-de-la-peticion'
+import { idDelPedido, leerUbicacion, respuestaDeLaPuerta } from '../lib/no-estaba-el-cliente'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // LA API DE LA APP DEL MOTORIZADO (v1)
@@ -37,9 +39,12 @@ const soloMotorizado: RequestHandler = async (req, res, next) => {
       : 'Este número no es de un motorizado activo de Umbani' })
   }
   ;(req as ConMotorizado).motorizado = courier
-  return next()
+  // Quién, para el registro de dinero (2026-10-12): lo que mueve dinero desde
+  // su app —un «no estaba el cliente»— dice que fue él, no «sistema».
+  return conActor(actorDelRepartidor(courier), next)
 }
 const yo = (req: Request) => (req as ConMotorizado).motorizado!
+const actorDelRepartidor = (m: import('../db/repositories/couriers').Courier) => `repartidor:${m.email || m.phone}`
 
 const RESPUESTA_AL_TOMAR: Record<string, { status: number; error: string }> = {
   not_found: { status: 404, error: 'No encontramos ese pedido' },
@@ -119,6 +124,37 @@ const avanzar = (estado: 'en_camino' | 'completado'): RequestHandler => async (r
 
 router.post(`${base}/pedidos/:id/recogido`, limiter, authApp, soloMotorizado, avanzar('en_camino'))
 router.post(`${base}/pedidos/:id/entregado`, limiter, authApp, soloMotorizado, avanzar('completado'))
+
+/**
+ * «Llegué» (2026-10-12): en la puerta del cliente. Desde aquí cuentan los
+ * minutos para «No estaba el cliente» y su lista le enseña el teléfono del
+ * cliente para llamarlo. La ubicación es opcional: se guarda a cuántos metros
+ * de la dirección estaba —la prueba si el cliente dice «sí estaba»— y no
+ * bloquea nada. El primer toque cuenta.
+ */
+router.post(`${base}/pedidos/:id/llegue`, limiter, authApp, soloMotorizado, async (req, res) => {
+  const pedidoId = idDelPedido(req.params.id)
+  if (!pedidoId) return res.status(404).json({ error: 'No encontramos ese pedido' })
+  const r = await db.markArrived({ courierId: yo(req).id }, pedidoId, leerUbicacion(req.body))
+  if (r.result === 'ok') return res.json({ llegoEn: r.llegoEn, noEstabaDesde: r.noEstabaDesde })
+  const e = respuestaDeLaPuerta(r)
+  return res.status(e.status).json(e.body)
+})
+
+/**
+ * «No estaba el cliente» (2026-10-12), pasados los minutos desde «Llegué». El
+ * pedido se cierra como entregado y se cobra sin devolución; su carrera la
+ * cobra igual y, si era en efectivo, no debe nada por él. La comida se la
+ * queda. ⚠️ Sin aviso al cliente: «entregado» le diría que lo recibió.
+ */
+router.post(`${base}/pedidos/:id/no-estaba`, limiter, authApp, soloMotorizado, async (req, res) => {
+  const pedidoId = idDelPedido(req.params.id)
+  if (!pedidoId) return res.status(404).json({ error: 'No encontramos ese pedido' })
+  const r = await db.markCustomerAbsent({ courierId: yo(req).id }, pedidoId, actorDelRepartidor(yo(req)))
+  if (r.result === 'ok') return res.json({ ok: true })
+  const e = respuestaDeLaPuerta(r)
+  return res.status(e.status).json(e.body)
+})
 
 router.get(`${base}/liquidaciones`, limiter, authApp, soloMotorizado, async (req, res) => (
   res.json({ liquidaciones: await db.listCourierSettlements(yo(req).id, 52) })

@@ -114,6 +114,14 @@ components:
         payment_confirmed_at: { type: [string, 'null'] }
         created_at: { type: string }
         received_ok_at: { type: [string, 'null'], description: Cuándo el cliente dijo «Todo bien» }
+        arrived_at: { type: [string, 'null'], description: '«Tu repartidor llegó» (2026-10-12): cuándo tocó «Llegué» en tu puerta. Enséñalo mientras el pedido siga en camino.' }
+        customer_absent_at:
+          type: [string, 'null']
+          description: |
+            «No se pudo entregar» (2026-10-12): quien repartía llegó (`arrived_at`), esperó y no te encontró. El
+            pedido viene con `status: completado` pero NO se entregó: no lo pintes como «Entregado» ni ofrezcas
+            «Todo bien». Se cobró igual (no hay devolución) y en efectivo no se cobró nada. Si `confirmacion.reclamableHasta`
+            no es null, ofrece SOLO «Sí estaba, no me llegó» → POST /api/v1/pedidos/{id}/reclamo con `tipo: no_llego`.
         confirmacion:
           type: object
           description: |
@@ -436,7 +444,7 @@ paths:
             Enseña `mensaje` TAL CUAL: no le explica al cliente por qué no salió al instante, a propósito.
         '400': { description: 'Tipo inválido, sin líneas, una línea que no es del pedido o se pasa de su cantidad, nota larga, o una foto que no es de este pedido' }
         '404': { description: No existe o no es de este teléfono }
-        '409': { description: 'Todavía no se entregó, ya reclamó este pedido, o ya pasó el plazo para reportar' }
+        '409': { description: 'Todavía no se entregó, ya reclamó este pedido, ya pasó el plazo para reportar, o (2026-10-12) es un pedido que no se le entregó porque no estaba (`customer_absent_at`) y el tipo no es `no_llego`' }
   /api/v1/pedidos/{id}/reclamo/foto:
     post:
       summary: Sube la foto de un reclamo (una imagen, en multipart), antes de mandar el reclamo
@@ -480,7 +488,7 @@ paths:
       summary: Los pedidos que puede tomar y los suyos en curso
       security: [{ sesionApp: [] }]
       responses:
-        '200': { description: '{ pedidos[{ id, numero, estado, mio, totalCents, carreraCents, cobrarEnEfectivo, cobrarCents, recoger{local,direccion,lat,lng}, entregar{cliente,direccion,referencia,notas,lat,lng} }] }. cobrarCents (2026-10-10) es lo que COBRA en la puerta: el total menos lo que el cliente pagó con saldo Umbani. Nunca cobres totalCents.' }
+        '200': { description: '{ pedidos[{ id, numero, estado, mio, totalCents, carreraCents, cobrarEnEfectivo, cobrarCents, recoger{local,direccion,lat,lng}, entregar{cliente,direccion,referencia,notas,lat,lng,telefono}, llegoEn, noEstabaDesde }] }. cobrarCents (2026-10-10) es lo que COBRA en la puerta: el total menos lo que el cliente pagó con saldo Umbani. Nunca cobres totalCents. (2026-10-12) llegoEn = cuándo tocó «Llegué» (null = aún no); noEstabaDesde = desde cuándo puede marcar «No estaba el cliente»; entregar.telefono (con «+») llega SOLO desde «Llegué» y mientras lo lleva, para llamar al cliente.' }
   /api/v1/motorizado/pedidos/{id}/tomar:
     post:
       summary: Toma un pedido (atómico; respeta el tope de efectivo)
@@ -504,6 +512,40 @@ paths:
       parameters: [{ $ref: '#/components/parameters/id' }]
       responses:
         '200': { description: Entregado }
+  /api/v1/motorizado/pedidos/{id}/llegue:
+    post:
+      summary: «Llegué» a la puerta del cliente (2026-10-12)
+      description: |
+        Desde aquí cuentan los minutos para «No estaba el cliente» y su lista le enseña el teléfono del
+        cliente. Manda la ubicación del teléfono si la tienes: se guarda a cuántos metros de la dirección
+        estaba (la prueba si el cliente dice «sí estaba»). Es OPCIONAL y no bloquea nada. El primer toque cuenta.
+      security: [{ sesionApp: [] }]
+      parameters: [{ $ref: '#/components/parameters/id' }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                lat: { type: number, minimum: -90, maximum: 90 }
+                lng: { type: number, minimum: -180, maximum: 180 }
+      responses:
+        '200': { description: '{ llegoEn, noEstabaDesde } — desde noEstabaDesde puede marcar «No estaba el cliente»' }
+        '404': { description: No existe o no lo lleva él }
+        '409': { description: 'reason: no_en_camino (primero «Ya lo recogí»)' }
+  /api/v1/motorizado/pedidos/{id}/no-estaba:
+    post:
+      summary: «No estaba el cliente» (2026-10-12)
+      description: |
+        Pasados los minutos desde «Llegué» (10 por defecto; un ajuste del servidor). El pedido se cierra
+        como entregado y se cobra SIN devolución: su carrera la cobra igual, y si era en efectivo no debe
+        nada por él. La comida se la queda. Pide confirmación antes: no se deshace.
+      security: [{ sesionApp: [] }]
+      parameters: [{ $ref: '#/components/parameters/id' }]
+      responses:
+        '200': { description: Cerrado }
+        '404': { description: No existe o no lo lleva él }
+        '409': { description: 'reason: sin_llegada (primero «Llegué») | todavia_no (trae noEstabaDesde; enseña `error` tal cual) | no_en_camino' }
   /api/v1/motorizado/liquidaciones:
     get:
       summary: Sus liquidaciones semanales

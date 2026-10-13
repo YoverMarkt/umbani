@@ -74,8 +74,9 @@ repartidores propios encendidos.
 - **Llama:** `GET /api/v1/motorizado/pedidos` cada 15–20 s mientras esté
   disponible. Cada pedido trae `mio`, `numero`, `estado`, `totalCents`,
   `carreraCents`, `cobrarEnEfectivo`, `cobrarCents`, `recoger` (local,
-  dirección, lat/lng) y `entregar` (cliente, dirección, referencia, notas,
-  lat/lng).
+  dirección, lat/lng), `entregar` (cliente, dirección, referencia, notas,
+  lat/lng y, solo desde «Llegué», `telefono`), `llegoEn` y `noEstabaDesde`
+  (ver §3b).
 - ⚠️ **Lo que cobra en la puerta es `cobrarCents`, nunca `totalCents`**
   (2026-10-10): si el cliente pagó una parte con su saldo Umbani, el total es
   mayor que lo que hay que cobrarle. «¿Cobraste $X en efectivo?» lleva
@@ -93,6 +94,30 @@ repartidores propios encendidos.
   El cliente ve cada paso («en camino», «entregado») en su app en cuanto esta
   lo marca; la app del motorizado no le manda nada. Desde el 2026-10-09 no se
   le avisa por WhatsApp, y las notificaciones push llegarán después.
+
+## 3b. «Llegué» y «No estaba el cliente» (2026-10-12)
+Como Uber Eats y DoorDash: si el cliente no sale, el repartidor espera, lo
+llama y cierra el pedido sin entregarlo. Las reglas las pone la base.
+- **«Llegué»** (en un pedido `en_camino`, cuando está en la puerta):
+  `POST /api/v1/motorizado/pedidos/{id}/llegue`, con `{ lat, lng }` del
+  teléfono **si los tienes** —se guarda a cuántos metros de la dirección
+  estaba, la prueba si el cliente dice «sí estaba»—. Sin ubicación funciona
+  igual: no bloquea nada. Responde `{ llegoEn, noEstabaDesde }`; el primer
+  toque cuenta.
+- Desde «Llegué», el pedido trae **`entregar.telefono`** (con «+»): enseña
+  «Llamar al cliente» (`tel:`). Antes de «Llegué» y después de cerrar no viene.
+- **«No estaba el cliente»**: aparece desde `noEstabaDesde` (10 minutos
+  después de «Llegué»; es un ajuste del servidor, no lo escribas en la app).
+  Pide confirmación —«¿Esperaste y lo llamaste? El pedido se cierra y no se
+  puede deshacer»— y llama a
+  `POST /api/v1/motorizado/pedidos/{id}/no-estaba`. Antes de tiempo la base
+  responde `409 todavia_no` con `noEstabaDesde`: enseña su `error` tal cual.
+- **Qué pasa con el dinero:** el pedido se cierra como entregado y se cobra
+  sin devolución. **Su carrera la cobra igual**; si era en efectivo, **no
+  debe nada** por ese pedido (su semana trae la línea `no_cobro`: «No
+  cobraste ese efectivo: ya no te cuenta»). **La comida se la queda.**
+- Si el cliente dice que sí estaba, lo revisa Umbani con la hora y la
+  distancia del «Llegué». Si no llegó a la puerta, paga él la comida.
 
 ## 4. Mis liquidaciones
 - **Llama:** `GET /api/v1/motorizado/liquidaciones` → cada semana con

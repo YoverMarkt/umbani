@@ -76,6 +76,22 @@ const courierTakeOrder = async (courierId: string, orderId: string) =>
 const courierAdvanceOrder = async (courierId: string, orderId: string, status: 'en_camino' | 'completado') =>
   leer(sinError(await db.rpc('courier_advance_order', { p_courier_id: courierId, p_order_id: orderId, p_status: status })))
 
+/**
+ * «Llegué» y «No estaba el cliente» (2026-10-12). Quien lo pide es UNO de los
+ * dos: su repartidor, o el local con lo que reparte él mismo. La base decide
+ * si de verdad lo lleva, cuenta la espera y cierra todo en una transacción.
+ */
+type QuienReparte = { courierId: string } | { businessId: string }
+const quienReparte = (q: QuienReparte) => ('courierId' in q ? { p_courier_id: q.courierId } : { p_business_id: q.businessId })
+
+const markArrived = async (q: QuienReparte, orderId: string, ubicacion: { lat: number; lng: number } | null = null) =>
+  leer(sinError(await db.rpc('pedido_llegue', {
+    p_order_id: orderId, ...quienReparte(q), ...(ubicacion ? { p_lat: ubicacion.lat, p_lng: ubicacion.lng } : {}),
+  })))
+
+const markCustomerAbsent = async (q: QuienReparte, orderId: string, actor: string) =>
+  leer(sinError(await db.rpc('pedido_cliente_ausente', { p_order_id: orderId, ...quienReparte(q), p_actor: actor })))
+
 const getCourierBalance = async (courierId: string) =>
   leer(sinError(await db.rpc('courier_balance', { p_courier_id: courierId })))
 
@@ -216,7 +232,7 @@ const fleetCash = async (businessId: string, courierIds: string[], desde: string
 
 export {
   getActiveCourierByPhone, getActiveCourierByEmail, setCourierAvailable, getCourierOrders, courierTakeOrder, courierAdvanceOrder,
-  getCourierBalance, retainCourierFee, closeWeeklyCourierSettlements, markCourierSettlementPaid,
+  markArrived, markCustomerAbsent, getCourierBalance, retainCourierFee, closeWeeklyCourierSettlements, markCourierSettlementPaid,
   listCourierSettlements, listCouriers, createCourier, setCourierActive,
   listCourierRuns, listFleetCouriers, setFleetCourierActive, fleetCash,
 }
