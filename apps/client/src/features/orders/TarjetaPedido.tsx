@@ -620,7 +620,7 @@ export function TarjetaPedido({ pedido, ocupado, onCambiar, onRefrescar }: {
               <ConfirmAction
                 trigger={<Button variant="outline" size="sm" disabled={ocupado || puerta.isPending}><X /> No estaba el cliente</Button>}
                 title="El cliente no estaba"
-                description={`Llegó a las ${hora(pedido.arrived_at)}. El pedido se cierra sin devolución: `
+                description={`Llegó a las ${hora(pedido.arrived_at)} y nadie salió. El pedido se cierra sin devolución: `
                   + (pedido.payment_method === 'efectivo'
                     ? 'como el efectivo no se cobró, tu comida y tu carrera las pone Umbani en tu pago del lunes.'
                     : 'tu comida y tu carrera te llegan como en cualquier entrega.')
