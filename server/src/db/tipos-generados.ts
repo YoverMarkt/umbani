@@ -2579,6 +2579,8 @@ export type Database = {
       orders: {
         Row: {
           address_id: string | null
+          arrived_at: string | null
+          arrived_distance_m: number | null
           business_id: string
           contact_name: string | null
           contact_phone: string
@@ -2587,6 +2589,7 @@ export type Database = {
           created_at: string | null
           credit_cents: number
           currency: string
+          customer_absent_at: string | null
           customer_id: string | null
           customer_notified_at: string | null
           customer_notified_status: string | null
@@ -2624,6 +2627,8 @@ export type Database = {
         }
         Insert: {
           address_id?: string | null
+          arrived_at?: string | null
+          arrived_distance_m?: number | null
           business_id: string
           contact_name?: string | null
           contact_phone: string
@@ -2632,6 +2637,7 @@ export type Database = {
           created_at?: string | null
           credit_cents?: number
           currency?: string
+          customer_absent_at?: string | null
           customer_id?: string | null
           customer_notified_at?: string | null
           customer_notified_status?: string | null
@@ -2669,6 +2675,8 @@ export type Database = {
         }
         Update: {
           address_id?: string | null
+          arrived_at?: string | null
+          arrived_distance_m?: number | null
           business_id?: string
           contact_name?: string | null
           contact_phone?: string
@@ -2677,6 +2685,7 @@ export type Database = {
           created_at?: string | null
           credit_cents?: number
           currency?: string
+          customer_absent_at?: string | null
           customer_id?: string | null
           customer_notified_at?: string | null
           customer_notified_status?: string | null
@@ -4374,6 +4383,7 @@ export type Database = {
         Args: { p_customer_id: string; p_nuevo?: boolean }
         Returns: Json
       }
+      espera_no_estaba_minutos: { Args: never; Returns: number }
       expire_card_payment: {
         Args: { p_client_transaction_id: string; p_detail?: string }
         Returns: boolean
@@ -4502,6 +4512,14 @@ export type Database = {
         Returns: Json
       }
       liquidacion_semanal_desde: { Args: never; Returns: string }
+      lleva_el_pedido: {
+        Args: {
+          p_business_id: string
+          p_courier_id: string
+          p_order_id: string
+        }
+        Returns: boolean
+      }
       local_embudo: {
         Args: { p_business_id: string; p_dias?: number }
         Returns: {
@@ -4700,6 +4718,15 @@ export type Database = {
           status: string
         }[]
       }
+      pedido_cliente_ausente: {
+        Args: {
+          p_actor?: string
+          p_business_id?: string
+          p_courier_id?: string
+          p_order_id: string
+        }
+        Returns: Json
+      }
       pedido_entregado_de: {
         Args: { p_order_id: string; p_phone: string }
         Returns: {
@@ -4708,6 +4735,16 @@ export type Database = {
           order_id: string
           status: string
         }[]
+      }
+      pedido_llegue: {
+        Args: {
+          p_business_id?: string
+          p_courier_id?: string
+          p_lat?: number
+          p_lng?: number
+          p_order_id: string
+        }
+        Returns: Json
       }
       platform_markup_summary: {
         Args: { p_business_id?: string; p_from: string; p_to: string }
