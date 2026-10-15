@@ -127,7 +127,7 @@ describe('en la tienda (la mini app)', () => {
     })
     expect(r).toEqual({ status: 201, body: {
       ok: true, estado: 'abierta', sugeridoCents: 660, saldoCents: 0, venceEl: null,
-      mensaje: 'Lo estamos revisando. Te avisamos apenas tengamos una respuesta.',
+      mensaje: 'Recibimos tu reporte. Lo revisamos y la respuesta aparece en tu pedido.',
     } })
     expect(reclamar).toHaveBeenCalledWith(PEDIDO, '593991234567', 'falta_producto', [{ item: 'a', cantidad: '1' }], 'Faltó')
     reclamar.mockResolvedValue({ result: 'fuera_de_plazo' })
@@ -285,7 +285,7 @@ describe('fase 2: lo que se le dice al cliente al reportar', () => {
 
   it('a revisión: «lo estamos revisando», sin decirle la regla', () => {
     const r = reclamos.respuestaDelReclamo('falta_producto', { result: 'ok', estado: 'abierta', sugeridoCents: 900, saldoCents: 0 })
-    expect(r).toMatchObject({ estado: 'abierta', saldoCents: 0, venceEl: null, mensaje: 'Lo estamos revisando. Te avisamos apenas tengamos una respuesta.' })
+    expect(r).toMatchObject({ estado: 'abierta', saldoCents: 0, venceEl: null, mensaje: 'Recibimos tu reporte. Lo revisamos y la respuesta aparece en tu pedido.' })
     expect(r.mensaje).not.toMatch(/tope|escal|rechaz|30|90/)
   })
 
