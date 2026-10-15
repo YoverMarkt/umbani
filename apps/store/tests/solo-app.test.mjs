@@ -37,6 +37,13 @@ describe('ninguna pantalla manda a WhatsApp', () => {
     expect(culpables).toEqual([])
   })
 
+  // Como las grandes (2026-10-14): ningún texto le promete al cliente que le
+  // escribiremos o que nos escriba —no hay chat—; la respuesta aparece en su pedido.
+  it('ningún texto promete escribirle al cliente ni le pide que escriba', () => {
+    const culpables = codigo.filter(([, texto]) => /escr[ií]benos|te escrib(?:imos|iremos)/i.test(texto)).map(([ruta]) => ruta)
+    expect(culpables).toEqual([])
+  })
+
   it('la confirmación del número por WhatsApp ya no existe', () => {
     expect(codigo.map(([ruta]) => ruta)).not.toContain(path.join('screens', 'Confirmar.tsx'))
     expect(codigo.filter(([, texto]) => /confirmarTelefono|session\/verify/.test(texto)).map(([r]) => r)).toEqual([])

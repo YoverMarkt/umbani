@@ -125,7 +125,7 @@ describe('«¿Llegó todo bien?»', () => {
     expect(suya).toMatchObject({ tipo: 'falta_producto', origen: 'cliente', estado: 'abierta', sugeridoCents: r.sugeridoCents })
     // No salió al instante, y el superadmin ve por qué (el cliente, no).
     expect(suya.motivos).toEqual(expect.arrayContaining(['reportes_seguidos', 'al_instante_reciente', 'tope']))
-    expect(r.mensaje).toBe('Lo estamos revisando. Te avisamos apenas tengamos una respuesta.')
+    expect(r.mensaje).toBe('Recibimos tu reporte. Lo revisamos y la respuesta aparece en tu pedido.')
     const antes = await saldoDeLaApp()
     const resuelta = await exigir(200, admin.pedir('POST', `/api/admin/incidencias/${suya.id}/resolver`, {
       estado: 'resuelta', responsable: 'local', compensacionCents: r.sugeridoCents, nota: 'El local olvidó una unidad',

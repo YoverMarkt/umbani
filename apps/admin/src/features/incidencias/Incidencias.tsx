@@ -104,8 +104,11 @@ export default function Incidencias() {
 
   return (
     <div className="space-y-5">
+      {/* `basis-64` (2026-10-14): con `flex-1` solo, el título empezaba en ancho
+          cero, los botones nunca bajaban y en el teléfono el texto quedaba en
+          una columna de una palabra por línea. Pidiendo 16rem, bajan. */}
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 basis-64">
           <h1 className="text-2xl font-bold text-foreground">Incidencias</h1>
           <p className="text-sm text-muted-foreground">
             Lo que el cliente reporta en «¿Llegó todo bien?» y lo que registras tú. Primero se le resuelve al

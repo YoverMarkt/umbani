@@ -52,7 +52,9 @@ export function LlegoTodoBien({ slug, pedido, onCambio }: {
       ? 'Nos contaste un problema: lo estamos revisando.'
       : r.estado === 'resuelta'
         ? (r.compensacionCents ? `Lo revisamos: Umbani te compensa ${money(r.compensacionCents / 100)}.` : 'Lo revisamos y quedó resuelto.')
-        : 'Lo revisamos. Si tienes dudas, escríbenos.'
+        // Como las grandes (2026-10-14): el resultado se dice en el pedido; sin
+        // «escríbenos», que Umbani es solo app y no hay chat.
+        : 'Revisamos tu reporte: esta vez no corresponde devolución.'
     return (
       <p className="mt-2 flex items-center gap-1.5 text-[12.5px] font-semibold texto-cuerpo">
         <RiTimeLine size={15} className="shrink-0" /> {texto}
@@ -186,7 +188,7 @@ export function LlegoTodoBien({ slug, pedido, onCambio }: {
                 {tipo === 'no_llego'
                   ? (
                     <Aviso tono="alerta" icono={<RiErrorWarningLine size={18} />} titulo="No recibiste tu pedido">
-                      Lo revisamos con quien lo llevó y te escribimos.
+                      Lo revisamos con quien lo llevó. La respuesta aparece en tu pedido.
                     </Aviso>
                   )
                   : (

@@ -69,7 +69,9 @@ export function respuestaDelReclamo(tipo: string, r: Record<string, unknown>) {
   } else if (tipo === 'no_llego' && sugeridoCents === 0) {
     mensaje = 'Como ibas a pagar al recibir, no se te cobró nada. Revisamos qué pasó con el repartidor.'
   } else {
-    mensaje = 'Lo estamos revisando. Te avisamos apenas tengamos una respuesta.'
+    // Como las grandes (2026-10-14): la respuesta aparece en el pedido, no «te
+    // avisamos» por un canal que no existe (Umbani es solo app, aún sin push).
+    mensaje = 'Recibimos tu reporte. Lo revisamos y la respuesta aparece en tu pedido.'
   }
   return { ok: true, estado, sugeridoCents, saldoCents, venceEl, mensaje }
 }
