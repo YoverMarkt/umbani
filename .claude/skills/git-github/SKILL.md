@@ -20,7 +20,7 @@ rama → trabajo → verificación → PR → CI en verde → merge → desplieg
 
 **Un trabajo que no llegó a `main` no está hecho.** Nada de dejarlo en un PR
 «para mañana»: a los tres días nadie recuerda en qué estado quedó, y el
-repositorio acumula copias viejas del código. Ver CLAUDE.md §8.
+repositorio acumula copias viejas del código. Ver CLAUDE.md §7.
 
 ⚠️ **Al terminar, la rama muere.** GitHub la borra sola al fusionar
 (`delete_branch_on_merge`, activado el 2026-08-28); la local se borra a mano
@@ -50,7 +50,7 @@ Si el PR está `MERGED`, el código está en `main` y la rama sobra. GitHub
 conserva sus commits en la pestaña del PR aunque la rama se borre.
 
 ## Estrategia de ramas
-- **No commitees directo en `main`** para features o cambios grandes (CLAUDE.md §8). Crea una rama:
+- **No commitees directo en `main`** para features o cambios grandes (CLAUDE.md §7). Crea una rama:
   ```bash
   git checkout -b <tipo>/<tema-corto>     # feat/ventas-reportes, fix/correo-cruzado
   ```

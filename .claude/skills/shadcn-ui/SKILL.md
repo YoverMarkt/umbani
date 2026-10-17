@@ -58,4 +58,4 @@ En orden de impacto — revisa esto antes de optimizar nada más:
 3. **Pantallas pesadas con `lazy()`:** las rutas ya se cargan con dynamic import (se ve en los chunks del build); una pantalla nueva pesada sigue ese patrón.
 4. **Re-renders:** estado lo más local posible; no subas un `useState` al layout si solo lo usa una card. TanStack Query ya deduplica y cachea las llamadas — no agregues estados espejo de sus datos.
 5. **Listas largas:** el patrón actual es paginar/filtrar server-side (los repos ya lo soportan); no renderices cientos de filas de golpe ni agregues virtualización sin medir antes.
-6. **Polling:** cualquier `refetchInterval` nuevo se justifica; el egress de Supabase ya fue un problema real (CLAUDE.md §11).
+6. **Polling:** cualquier `refetchInterval` nuevo se justifica; el egress de Supabase ya fue un problema real (ver «Optimización de egress» en PENDIENTE.md).

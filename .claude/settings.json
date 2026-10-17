@@ -13,7 +13,7 @@
             "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/proteger-comandos.sh",
             "timeout": 10,
-            "statusMessage": "Verificando comando contra CLAUDE.md §8"
+            "statusMessage": "Verificando comando contra CLAUDE.md §7"
           }
         ]
       }

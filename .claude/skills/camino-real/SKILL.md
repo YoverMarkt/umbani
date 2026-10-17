@@ -1,6 +1,6 @@
 ---
 name: camino-real
-description: Úsala SIEMPRE antes de dar por terminada una feature, una rama de comportamiento o un modo nuevo en BotPanel, y siempre que aparezca un "está construido pero no responde". Obliga a demostrar que la configuración REAL de producción llega hasta el código nuevo. Caza la clase de fallo que las pruebas no ven: código correcto, probado, y al que nadie llega nunca.
+description: 'Úsala SIEMPRE antes de dar por terminada una feature, una rama de comportamiento o un modo nuevo en BotPanel, y siempre que aparezca un "está construido pero no responde". Obliga a demostrar que la configuración REAL de producción llega hasta el código nuevo. Caza la clase de fallo que las pruebas no ven: código correcto, probado, y al que nadie llega nunca.'
 ---
 
 # camino-real
