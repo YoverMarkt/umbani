@@ -39,7 +39,7 @@
 | CI/CD | No hay | **GitHub Actions**: lint + types + tests en cada PR | Fase 0 |
 | Deploy | Local + túnel Cloudflare | **Railway + dominio propio + Sentry** | Fase 0 — puerta irreversible |
 | Backups | No hay (plan free) | **Supabase Pro** (backups diarios) | Fase 0 — no negociable con clientes reales |
-| Escala | — | Redis/BullMQ (colas), workers, Realtime | ⏳ SOLO cuando el volumen lo pida (ver CLAUDE.md §11) |
+| Escala | — | Redis/BullMQ (colas), workers, Realtime | ⏳ SOLO cuando el volumen lo pida (ver PENDIENTE.md) |
 
 **¿Por qué Vite y no Next.js para los paneles?** Los paneles viven detrás de un
 login: Google no los ve (el SSR/SEO de Next no aporta) y Next exigiría operar un
@@ -160,4 +160,4 @@ Un panel React precioso corriendo en un Mac con túnel y sin backups NO es
 - Supabase/Postgres como única base; `schema.sql` como referencia del esquema.
 - Migraciones de BD aditivas, jamás destructivas.
 - Español en textos de cara al cliente; commits en español.
-- Monolito hasta que la demanda real exija otra cosa (CLAUDE.md §11).
+- Monolito hasta que la demanda real exija otra cosa (PENDIENTE.md).

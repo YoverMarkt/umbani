@@ -1,5 +1,5 @@
 #!/bin/bash
-# Hook PreToolUse (Bash): aplica CLAUDE.md §8 de forma mecánica.
+# Hook PreToolUse (Bash): aplica CLAUDE.md §7 de forma mecánica.
 # - Comandos git destructivos → pedir confirmación explícita al usuario.
 # - Forzar .env dentro de git → denegar siempre.
 # Lee el JSON del tool call por stdin y responde con permissionDecision.
@@ -20,18 +20,18 @@ ask() {
 # Nunca meter un .env al índice de git (ni con -f saltando el .gitignore).
 if printf '%s' "$CMD" | grep -qE 'git[[:space:]]+add[^|;&]*\.env($|[^.a-zA-Z])' \
   && ! printf '%s' "$CMD" | grep -qE '\.env\.example'; then
-  deny "CLAUDE.md §8: los archivos .env jamás entran a git. Revisa el comando."
+  deny "CLAUDE.md §7: los archivos .env jamás entran a git. Revisa el comando."
 fi
 
 # Acciones destructivas de git: requieren confirmación explícita del usuario.
 if printf '%s' "$CMD" | grep -qE 'git[[:space:]]+reset[^|;&]*--hard'; then
-  ask "git reset --hard descarta trabajo. CLAUDE.md §8 exige confirmación explícita del usuario."
+  ask "git reset --hard descarta trabajo. CLAUDE.md §7 exige confirmación explícita del usuario."
 fi
 if printf '%s' "$CMD" | grep -qE 'git[[:space:]]+clean[^|;&]*-[a-zA-Z]*f'; then
-  ask "git clean -f borra archivos sin trackear. CLAUDE.md §8 exige confirmación explícita."
+  ask "git clean -f borra archivos sin trackear. CLAUDE.md §7 exige confirmación explícita."
 fi
 if printf '%s' "$CMD" | grep -qE 'git[[:space:]]+push[^|;&]*([[:space:]]-f([[:space:]]|$)|--force)'; then
-  ask "git push --force reescribe historia remota. CLAUDE.md §8 exige confirmación explícita."
+  ask "git push --force reescribe historia remota. CLAUDE.md §7 exige confirmación explícita."
 fi
 if printf '%s' "$CMD" | grep -qE 'git[[:space:]]+branch[^|;&]*[[:space:]]-D([[:space:]]|$)'; then
   ask "Borrar una rama con -D pierde commits no fusionados. Confirmación explícita requerida."

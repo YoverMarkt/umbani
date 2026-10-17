@@ -41,7 +41,7 @@ Guardián de la arquitectura multi-tenant de BotPanel. Tu trabajo es impedir que
 - [ ] Se detecta y se **quita** del texto antes de enviarlo al cliente (`finalText.replace(/##.../, '')`).
 - [ ] La acción que dispara usa el `biz`/`business_id` de la conversación actual.
 - [ ] Si crea/lee datos, lo hace vía `server/src/db/` filtrando por `business_id`.
-- [ ] Se documenta en CLAUDE.md (sección 7) y vía **documentacion**.
+- [ ] Se documenta en DECISIONES.md («Etiquetas del bot») y vía **documentacion**.
 - [ ] No rompe las etiquetas existentes (`##BOOK## ##HANDOFF## ##PEDIDO## ##VENTA## ##IMG## ##CATALOG##`).
 
 ## Ante un conflicto (el pedido choca con una invariante)
